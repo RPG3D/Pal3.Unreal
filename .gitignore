@@ -82,9 +82,11 @@ Plugins/*/Intermediate/*
 DerivedDataCache/*
 Plugins/UnrealSharp/
 
+Content/ParagonShinbi/
+
 # Don't include launchSettings (contains local dev paths)
 /Script/Properties/launchSettings.json
 /Script/ProjectGlue
 
-
 /Windows/
+

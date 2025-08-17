@@ -46,10 +46,11 @@ namespace ManagedSharpDemo
             Console.WriteLine("ASharpThirdPersonCharacter.BeginPlay()");
 
             APlayerController PlayerController = Controller as APlayerController;
-            UEnhancedInputLocalPlayerSubsystem Subsystem = (PlayerController.Player as ULocalPlayer).GetLocalPlayerSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController);
 
-            //input config
-            {
+            UEnhancedInputLocalPlayerSubsystem Subsystem = USubsystemBlueprintLibrary.GetLocalPlayerSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController, new TSubclassOf<UEnhancedInputLocalPlayerSubsystem>());
+
+           //input config
+           {
 
                 UObject LoadedAsset = null;
 
