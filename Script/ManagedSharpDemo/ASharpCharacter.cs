@@ -19,7 +19,7 @@ namespace ManagedSharpDemo
     /// copy from SharpDemoCharacter.cpp
     /// </summary>
     [UClass]
-    internal class ASharpThirdPersonCharacter : ACharacter
+    internal class ASharpCharacter : ACharacter
     {
         [UProperty(DefaultComponent = true, AttachmentComponent = nameof(RootComponent), Category = "Camera")]
         protected USpringArmComponent CameraBoom { get; set; }
