@@ -12,100 +12,36 @@ public partial class ASharpDemoCharacter : UnrealSharp.Engine.ACharacter
     static ASharpDemoCharacter()
     {
         NativeClassPtr = UCoreUObjectExporter.CallGetNativeClassFromName(typeof(ASharpDemoCharacter).GetAssemblyName(), "UnrealSharp.SharpDemo", "SharpDemoCharacter");
-        IntPtr CameraBoom_NativeProperty = FPropertyExporter.CallGetNativePropertyFromName(NativeClassPtr, "CameraBoom");
-        CameraBoom_Offset = FPropertyExporter.CallGetPropertyOffset(CameraBoom_NativeProperty);
-        IntPtr FollowCamera_NativeProperty = FPropertyExporter.CallGetNativePropertyFromName(NativeClassPtr, "FollowCamera");
-        FollowCamera_Offset = FPropertyExporter.CallGetPropertyOffset(FollowCamera_NativeProperty);
-        IntPtr DefaultMappingContext_NativeProperty = FPropertyExporter.CallGetNativePropertyFromName(NativeClassPtr, "DefaultMappingContext");
-        DefaultMappingContext_Offset = FPropertyExporter.CallGetPropertyOffset(DefaultMappingContext_NativeProperty);
-        IntPtr JumpAction_NativeProperty = FPropertyExporter.CallGetNativePropertyFromName(NativeClassPtr, "JumpAction");
-        JumpAction_Offset = FPropertyExporter.CallGetPropertyOffset(JumpAction_NativeProperty);
-        IntPtr MoveAction_NativeProperty = FPropertyExporter.CallGetNativePropertyFromName(NativeClassPtr, "MoveAction");
-        MoveAction_Offset = FPropertyExporter.CallGetPropertyOffset(MoveAction_NativeProperty);
-        IntPtr LookAction_NativeProperty = FPropertyExporter.CallGetNativePropertyFromName(NativeClassPtr, "LookAction");
-        LookAction_Offset = FPropertyExporter.CallGetPropertyOffset(LookAction_NativeProperty);
+        OnTestSparseEvent_NativeProperty = FPropertyExporter.CallGetNativePropertyFromName(NativeClassPtr, "OnTestSparseEvent");
+        OnTestSparseEvent_Offset = FPropertyExporter.CallGetPropertyOffset(OnTestSparseEvent_NativeProperty);
+        UnrealSharp.SharpDemo.UOnTestSparseSignature.InitializeUnrealDelegate(OnTestSparseEvent_NativeProperty);
     }
     
-    static int CameraBoom_Offset;
+    static int OnTestSparseEvent_Offset;
+    static IntPtr OnTestSparseEvent_NativeProperty;
+    private TMulticastDelegate<UnrealSharp.SharpDemo.OnTestSparseSignature> OnTestSparseEvent_BackingField;
     
     /// <summary>
-    /// Camera boom positioning the camera behind the character
+    /// Called when the component has been activated, with parameter indicating if it was from a reset
     /// </summary>
-    public UnrealSharp.Engine.USpringArmComponent CameraBoom
+    public TMulticastDelegate<UnrealSharp.SharpDemo.OnTestSparseSignature> OnTestSparseEvent
     {
         get
         {
-            return ObjectMarshaller<UnrealSharp.Engine.USpringArmComponent>.FromNative(IntPtr.Add(NativeObject, CameraBoom_Offset), 0);
+            if (OnTestSparseEvent_BackingField == null)
+            {
+                OnTestSparseEvent_BackingField = MulticastDelegateMarshaller<UnrealSharp.SharpDemo.OnTestSparseSignature>.FromNative(IntPtr.Add(NativeObject, OnTestSparseEvent_Offset), OnTestSparseEvent_NativeProperty, 0);
+            }
+            return OnTestSparseEvent_BackingField;
         }
-    }
-    
-    
-    static int FollowCamera_Offset;
-    
-    /// <summary>
-    /// Follow camera
-    /// </summary>
-    public UnrealSharp.Engine.UCameraComponent FollowCamera
-    {
-        get
+        set
         {
-            return ObjectMarshaller<UnrealSharp.Engine.UCameraComponent>.FromNative(IntPtr.Add(NativeObject, FollowCamera_Offset), 0);
-        }
-    }
-    
-    
-    static int DefaultMappingContext_Offset;
-    
-    /// <summary>
-    /// MappingContext
-    /// </summary>
-    public UnrealSharp.EnhancedInput.UInputMappingContext DefaultMappingContext
-    {
-        get
-        {
-            return ObjectMarshaller<UnrealSharp.EnhancedInput.UInputMappingContext>.FromNative(IntPtr.Add(NativeObject, DefaultMappingContext_Offset), 0);
-        }
-    }
-    
-    
-    static int JumpAction_Offset;
-    
-    /// <summary>
-    /// Jump Input Action
-    /// </summary>
-    public UnrealSharp.EnhancedInput.UInputAction JumpAction
-    {
-        get
-        {
-            return ObjectMarshaller<UnrealSharp.EnhancedInput.UInputAction>.FromNative(IntPtr.Add(NativeObject, JumpAction_Offset), 0);
-        }
-    }
-    
-    
-    static int MoveAction_Offset;
-    
-    /// <summary>
-    /// Move Input Action
-    /// </summary>
-    public UnrealSharp.EnhancedInput.UInputAction MoveAction
-    {
-        get
-        {
-            return ObjectMarshaller<UnrealSharp.EnhancedInput.UInputAction>.FromNative(IntPtr.Add(NativeObject, MoveAction_Offset), 0);
-        }
-    }
-    
-    
-    static int LookAction_Offset;
-    
-    /// <summary>
-    /// Look Input Action
-    /// </summary>
-    public UnrealSharp.EnhancedInput.UInputAction LookAction
-    {
-        get
-        {
-            return ObjectMarshaller<UnrealSharp.EnhancedInput.UInputAction>.FromNative(IntPtr.Add(NativeObject, LookAction_Offset), 0);
+            if (value == OnTestSparseEvent_BackingField)
+            {
+                return;
+            }
+            OnTestSparseEvent_BackingField = value;
+            MulticastDelegateMarshaller<UnrealSharp.SharpDemo.OnTestSparseSignature>.ToNative(IntPtr.Add(NativeObject, OnTestSparseEvent_Offset), 0, value);
         }
     }
     

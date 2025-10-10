@@ -19,7 +19,7 @@ namespace ManagedSharpDemo
     /// copy from SharpDemoCharacter.cpp
     /// </summary>
     [UClass]
-    internal class ASharpCharacter : ACharacter
+    internal class ASharpCharacter : ASharpDemoCharacter
     {
         [UProperty(DefaultComponent = true, AttachmentComponent = nameof(RootComponent), Category = "Camera")]
         protected USpringArmComponent CameraBoom { get; set; }
@@ -104,6 +104,7 @@ namespace ManagedSharpDemo
                 FollowCamera.UsePawnControlRotation = false;
             }
 
+            //setup input
             if (Subsystem!= null && DefaultMappingContext != null)
             {
                 Subsystem.AddMappingContext(DefaultMappingContext, 0);
@@ -119,6 +120,8 @@ namespace ManagedSharpDemo
                 EnhancedInputComponent.BindAction(LookAction, ETriggerEvent.Triggered, HandleLookAction);
             }
 
+            //bind event
+            this.OnTestSparseEvent.Add(HandleTestSparseEvent);
         }
 
         [UFunction]
@@ -161,6 +164,13 @@ namespace ManagedSharpDemo
                 AddControllerYawInput((float)LookAxisVector.X);
                 AddControllerPitchInput((float)LookAxisVector.Y);
             }
+        }
+
+        [UFunction]
+        protected void HandleTestSparseEvent(float InFloatParam, int InIntParam)
+        {
+            //Console.WriteLine($"ASharpThirdPersonCharacter.HandleTestSparseEvent({InFloatParam},{InIntParam})");
+            PrintString($"ASharpThirdPersonCharacter.HandleTestSparseEvent({InFloatParam},{InIntParam})");
         }
     }
 }
