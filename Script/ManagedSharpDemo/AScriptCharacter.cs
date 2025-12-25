@@ -3,80 +3,73 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+
 using UnrealSharp;
 using UnrealSharp.Attributes;
-using UnrealSharp.Core.Attributes;
+using UnrealSharp.Core;
 using UnrealSharp.CoreUObject;
 using UnrealSharp.Engine;
 using UnrealSharp.EnhancedInput;
-using UnrealSharp.SharpDemo;
-using UnrealSharp.UnrealSharpCore;
-
 
 namespace ManagedSharpDemo
 {
-    /// <summary>
-    /// copy from SharpDemoCharacter.cpp
-    /// </summary>
     [UClass]
-    internal class ASharpCharacter : ASharpDemoCharacter
+    public partial class AScriptCharacter : ACharacter
     {
-        [UProperty(DefaultComponent = true, AttachmentComponent = nameof(RootComponent), Category = "Camera")]
-        protected USpringArmComponent CameraBoom { get; set; }
+        [UProperty(DefaultComponent = true, AttachmentComponent = nameof(RootComponent))]
+        protected partial USpringArmComponent CameraBoom { get; set; }
 
-        [UProperty(DefaultComponent = true, AttachmentComponent = nameof(CameraBoom), AttachmentSocket = "SpringEndpoint", Category = "Camera")]
-        protected UCameraComponent FollowCamera { get; set; }
+        [UProperty(DefaultComponent = true, AttachmentComponent = nameof(CameraBoom), AttachmentSocket = "SpringEndpoint")]
+        protected partial UCameraComponent FollowCamera { get; set; }
 
-        [UProperty(Category = "Input")]
-        UInputMappingContext DefaultMappingContext { get; set; }
+        [UProperty]
+        partial UInputMappingContext DefaultMappingContext { get; set; }
 
-        [UProperty(Category = "Input")]
-        UInputAction JumpAction { get; set; }
+        [UProperty]
+        partial UInputAction JumpAction { get; set; }
 
-        [UProperty(Category = "Input")]
-        UInputAction MoveAction { get; set; }
+        [UProperty]
+        partial UInputAction MoveAction { get; set; }
 
-        [UProperty(Category = "Input")]
-        UInputAction LookAction { get; set; }
+        [UProperty]
+        partial UInputAction LookAction { get; set; }
 
-        protected override void BeginPlay()
+        public override void BeginPlay()
         {
             base.BeginPlay();
 
-            Console.WriteLine("ASharpThirdPersonCharacter.BeginPlay()");
+            APlayerController PlayerCtrl = Controller as APlayerController;
 
-            APlayerController PlayerController = Controller as APlayerController;
+            UEnhancedInputLocalPlayerSubsystem Subsystem = USubsystemBlueprintLibrary.GetLocalPlayerSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerCtrl);
 
-            UEnhancedInputLocalPlayerSubsystem Subsystem = USubsystemBlueprintLibrary.GetLocalPlayerSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController, new TSubclassOf<UEnhancedInputLocalPlayerSubsystem>());
-
-           //input config
-           {
+            //input config
+            {
 
                 UObject LoadedAsset = null;
 
-                LoadedAsset = USharpGameFuncLib.LoadAsset("/Game/Input/IMC_Default.IMC_Default");
+                LoadedAsset = StaticLoadObject<UObject>("/Game/Input/IMC_Default.IMC_Default");
                 DefaultMappingContext = LoadedAsset as UInputMappingContext;
 
-                LoadedAsset = USharpGameFuncLib.LoadAsset("/Game/Input/Actions/IA_Jump.IA_Jump");
+                LoadedAsset = StaticLoadObject<UObject>("/Game/Input/Actions/IA_Jump.IA_Jump");
                 JumpAction = LoadedAsset as UInputAction;
 
-                LoadedAsset = USharpGameFuncLib.LoadAsset("/Game/Input/Actions/IA_Move.IA_Move");
+                LoadedAsset = StaticLoadObject<UObject>("/Game/Input/Actions/IA_Move.IA_Move");
                 MoveAction = LoadedAsset as UInputAction;
 
-                LoadedAsset = USharpGameFuncLib.LoadAsset("/Game/Input/Actions/IA_Look.IA_Look");
+                LoadedAsset = StaticLoadObject<UObject>("/Game/Input/Actions/IA_Look.IA_Look");
                 LookAction = LoadedAsset as UInputAction;
 
-                
+
             }
 
             //avatar mesh
             {
                 UObject LoadedAsset = null;
 
-                LoadedAsset = USharpGameFuncLib.LoadAsset("/Game/ParagonShinbi/Characters/Heroes/Shinbi/Shinbi_AnimBlueprint.Shinbi_AnimBlueprint_C");
+                LoadedAsset = StaticLoadObject<UObject>("/Game/ParagonShinbi/Characters/Heroes/Shinbi/Shinbi_AnimBlueprint.Shinbi_AnimBlueprint_C");
                 Mesh.AnimClass = LoadedAsset as UAnimBlueprintGeneratedClass;
 
-                LoadedAsset = USharpGameFuncLib.LoadAsset("/Game/ParagonShinbi/Characters/Heroes/Shinbi/Meshes/Shinbi.Shinbi");
+                LoadedAsset = StaticLoadObject<UObject>("/Game/ParagonShinbi/Characters/Heroes/Shinbi/Meshes/Shinbi.Shinbi");
                 Mesh.SkeletalMesh = LoadedAsset as USkeletalMesh;
 
                 //see these in blueprint
@@ -108,7 +101,7 @@ namespace ManagedSharpDemo
             if (Subsystem!= null && DefaultMappingContext != null)
             {
                 Subsystem.AddMappingContext(DefaultMappingContext, 0);
-            }  
+            }
 
             if (InputComponent != null && InputComponent is UEnhancedInputComponent)
             {
@@ -119,10 +112,8 @@ namespace ManagedSharpDemo
                 EnhancedInputComponent.BindAction(MoveAction, ETriggerEvent.Triggered, HandleMoveAction);
                 EnhancedInputComponent.BindAction(LookAction, ETriggerEvent.Triggered, HandleLookAction);
             }
-
-            //bind event
-            this.OnTestSparseEvent.Add(HandleTestSparseEvent);
         }
+
 
         [UFunction]
         protected void HandleJumpAction(FInputActionValue Value, float DeltaTime, float WorldDeltaTime, UInputAction InputAction)
@@ -164,13 +155,6 @@ namespace ManagedSharpDemo
                 AddControllerYawInput((float)LookAxisVector.X);
                 AddControllerPitchInput((float)LookAxisVector.Y);
             }
-        }
-
-        [UFunction]
-        protected void HandleTestSparseEvent(float InFloatParam, int InIntParam)
-        {
-            //Console.WriteLine($"ASharpThirdPersonCharacter.HandleTestSparseEvent({InFloatParam},{InIntParam})");
-            PrintString($"ASharpThirdPersonCharacter.HandleTestSparseEvent({InFloatParam},{InIntParam})");
         }
     }
 }

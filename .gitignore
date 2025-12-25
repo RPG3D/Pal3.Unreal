@@ -40,6 +40,7 @@
 *.VC.db
 *.VC.opendb
 **/SharpDemo.sln
+**/SharpDemo.Mixed.sln
 
 # Precompiled Assets
 SourceArt/**/*.png
@@ -94,3 +95,5 @@ Content/ParagonShinbi/
 
 /Windows/
 
+/ArchivedBuilds/
+/Content/Managed/

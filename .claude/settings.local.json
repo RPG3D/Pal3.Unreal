@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(taskkill //F //IM dotnet.exe)",
+      "Bash(rm -rf \"E:/UEProject/SharpDemo/Content/Managed/Win64/\"* \"E:/UEProject/SharpDemo/Plugins/UnrealSharp/Managed/UnrealSharp/\"**/obj \"E:/UEProject/SharpDemo/Plugins/UnrealSharp/Managed/UnrealSharp/\"**/bin)",
+      "Bash(dotnet publish *)",
+      "Bash(adb shell *)",
+      "Bash(cp -r \"E:/UEProject/SharpDemo/Content/Managed/Win64/\"* \"E:/UEProject/SharpDemo/Content/Managed/Android/\")",
+      "Bash(\"E:/Code/UE5/Engine/Build/BatchFiles/RunUAT.bat\" BuildCookRun -project=\"E:/UEProject/SharpDemo/SharpDemo.uproject\" -Build -Target=SharpDemo -TargetPlatform=Android -ClientConfig=Development -Cook -Pak -Stage -Archive -package -nocompileuat -StageDir=\"E:/UEProject/SharpDemo/Saved/StagedBuilds/Android\")",
+      "Bash(adb install *)",
+      "Bash(\"E:/Code/UE5/Engine/Build/BatchFiles/RunUAT.bat\" BuildCookRun -project=\"E:/UEProject/SharpDemo/SharpDemo.uproject\" -Build -Target=SharpDemo -TargetPlatform=Android -ClientConfig=Debug -Cook -Pak -Stage -Archive -package -nocompileuat -StageDir=\"E:/UEProject/SharpDemo/Saved/StagedBuilds/Android\")",
+      "Bash(adb devices *)",
+      "Bash(unzip -l \"E:/UEProject/SharpDemo/ArchivedBuilds/Android/SharpDemo-Android-Debug-arm64.apk\")",
+      "Bash(adb logcat *)",
+      "Bash(grep \"UE\")",
+      "Read(//d//**)",
+      "Bash(unzip -l \"E:/UEProject/SharpDemo/Binaries/Android/SharpDemo-Android-Debug-arm64.apk\")",
+      "Bash(unzip -l \"E:/UEProject/SharpDemo/Binaries/Android/SharpDemo-arm64.apk\")",
+      "Bash(cp \"E:/UEProject/SharpDemo/Binaries/Managed/net10.0/UserCode.LoadOrder.json\" \"E:/UEProject/SharpDemo/Content/Managed/Android/\")",
+      "Bash(rm -rf \"E:/UEProject/SharpDemo/Saved/StagedBuilds/Android\" \"E:/UEProject/SharpDemo/ArchivedBuilds/Android\")",
+      "Bash(\"E:/Code/UE5/Engine/Build/BatchFiles/Build.bat\" SharpDemoEditor Win64 Development -Project=\"E:/UEProject/SharpDemo/SharpDemo.uproject\" -WaitMutex)",
+      "Bash(\"E:/Code/UE5/Engine/Build/BatchFiles/Build.bat\" SharpDemo Android Debug -Project=\"E:/UEProject/SharpDemo/SharpDemo.uproject\" -WaitMutex)",
+      "Bash(\"E:/Code/UE5/Engine/Build/BatchFiles/Build.bat\" SharpDemo Android Development -Project=\"E:/UEProject/SharpDemo/SharpDemo.uproject\" -WaitMutex)",
+      "Bash(\"E:/Code/UE5/Engine/Build/BatchFiles/Build.bat\" SharpDemo Win64 Development -Project=\"E:/UEProject/SharpDemo/SharpDemo.uproject\" -WaitMutex)",
+      "Bash(\"E:/Code/UE5/Engine/Build/BatchFiles/RunUAT.bat\" BuildCookRun -project=\"E:/UEProject/SharpDemo/SharpDemo.uproject\" -skipBuild -nocompileuat -TargetPlatform=Android -ClientConfig=Debug -Cook -Pak -Stage -Archive -package -StageDir=\"E:/UEProject/SharpDemo/Saved/StagedBuilds/Android\")",
+      "Bash(\"E:/Code/UE5/Engine/Build/BatchFiles/RunUAT.bat\" BuildCookRun -project=\"E:/UEProject/SharpDemo/SharpDemo.uproject\" -skipBuild -TargetPlatform=Win64 -ClientConfig=Development -Cook -Pak -Stage)"
+    ]
+  }
+}
