@@ -83,9 +83,20 @@ args[i] = &managedCallbacksIntPtr;
 
 ---
 
-## 4. UAT 打包流程：Build 与 skipBuild 的选择
+## 4. UAT 打包流程：Game glue 顺序是关键
 
-UAT `BuildCookRun -Build` 会调用 UBT 编译 C++。如果 C++ 已编译且无改动，`-Build` 很快（缓存命中），不影响 `Content/Managed/`。但 UBT 的缓存机制可能导致之前 staged 的 RuntimeDependencies 被清除。
+### 必须先 Game C++ build，再 dotnet publish
+
+UHT 生成 C# glue 代码（`.generated.cs`）时，Editor 目标产生包含 EditorOnly 属性（如 `ArrowComponent`）的 glue，Game 目标产生不含这些属性的 glue。**顺序错了意味着 managed DLL 带着 EditorOnly 绑定打包，运行时段访问空指针 → 崩溃。**
+
+```
+正确: Game C++ build → 生成 Game glue → dotnet publish → UAT Cook+Pak
+错误: dotnet publish → Game C++ build (DLL 里是 Editor glue，EditorOnly 属性在 Game 中不存在)
+```
+
+### Build 与 skipBuild 的选择
+
+UAT `BuildCookRun -Build` 会调用 UBT 编译 C++。如果 C++ 已编译且无改动，`-Build` 很快（缓存命中）。
 
 **安全方案**（两种均可）:
 - **方案 A**: C++ 单独编译 → 复制 managed DLL → UAT `-skipBuild` Cook+Pak+Stage（最安全，BuildWin64.bat 用此方案）
@@ -126,7 +137,7 @@ UAT `BuildCookRun -Build` 会调用 UBT 编译 C++。如果 C++ 已编译且无�
 
 ---
 
-## 8. Android: `bPackageDataInsideApk=true`
+## 8. Android: `bPackageDataInsideApk=true` + `bUseExternalFilesDir=true`
 
 不设置此选项，UAT 把数据分到 OBB。Rider debug deploy 只推 APK 不推 OBB，导致运行时缺数据。
 
@@ -134,7 +145,9 @@ UAT `BuildCookRun -Build` 会调用 UBT 编译 C++。如果 C++ 已编译且无�
 ```ini
 [/Script/AndroidRuntimeSettings.AndroidRuntimeSettings]
 bPackageDataInsideApk=true
+bUseExternalFilesDir=true
 ```
+两个都必要：`bPackageDataInsideApk` 确保数据不进 OBB；`bUseExternalFilesDir` 让 `ProjectSavedDir()` 返回包名目录而非 SD 根目录。
 
 **Engine fix** (`AndroidPlatform.Automation.cs`): 两处硬编码 `bIsDataDeploy = true` 改为 `bIsDataDeploy = !Deploy.GetPackageDataInsideApk()`。
 
@@ -164,9 +177,39 @@ CoreCLR 用 Roslyn 做 hot-reload，Mono 不支持 Roslyn：
 
 ---
 
-## 12. `PurgeStaleOverrideDlls` — Packaged DLL 清理
+## 12. Override 目录 & `PurgeStaleOverrideDlls`
 
-打包构建中 `Saved/Managed/{Platform}/` 可能残留旧版本 DLL（上次打包留下的覆盖 DLL）。比较 exe 和 DLL 的时间戳，删除比 exe 旧的 DLL，防止 Mono 加载过期程序集。
+### 路径规则
+
+Override 目录基于 `FPaths::ProjectSavedDir()/Managed/{Platform}/`。
+
+| 平台 | Override 路径 |
+|------|-------------|
+| **Win64** | `<Project>/Saved/Managed/Win64/` |
+| **Android** | `/sdcard/Android/data/<pkg>/files/UnrealGame/<Project>/<Project>/Saved/Managed/Android/`（双层 ProjectName） |
+
+Android 必须配置 `bUseExternalFilesDir=true`，否则 `ProjectSavedDir()` 返回 SD 卡根目录（`/sdcard/UnrealGame/...`）而非包名目录：
+
+```ini
+[/Script/AndroidRuntimeSettings.AndroidRuntimeSettings]
+bPackageDataInsideApk=true
+bUseExternalFilesDir=true
+```
+
+### 推送命令
+
+```bash
+# Android — 先用 logcat 确认引擎日志中的 "Override search dir (Saved):" 路径
+adb push ManagedSharpDemo.dll /sdcard/Android/data/<pkg>/files/UnrealGame/<Project>/<Project>/Saved/Managed/Android/
+```
+
+### PurgeStaleOverrideDlls
+
+比较 DLL 和可执行文件（Android: `libUnreal.so`）的时间戳，删除比 exe 旧的 DLL。**push 后必须 `touch` 更新 DLL 时间戳**，否则每次启动都被清理：
+
+```bash
+adb push ... && adb shell touch .../ManagedSharpDemo.dll
+```
 
 ---
 
@@ -199,9 +242,11 @@ CoreCLR 用 Roslyn 做 hot-reload，Mono 不支持 Roslyn：
 - [ ] UHT: 在 `BuildUtilities.cs` 中直接读 ini 注入 `UNREALSHARP_MONO`
 - [ ] Editor: `#if WITH_EDITOR && !UNREALSHARP_MONO` 跳过 .NET SDK 检查
 - [ ] UAT packaging: managed DLL 必须在 Cook 之前就位
-- [ ] `bPackageDataInsideApk=true` for Android（Rider 不推 OBB）
+- [ ] `bPackageDataInsideApk=true` + `bUseExternalFilesDir=true` for Android
 - [ ] `/utf-8` for MSVC Mono SDK builds（code page 936 兼容）
 - [ ] Platform naming: 用 `PLATFORM_` 宏，不要用 `FPlatformProperties::PlatformName()`
+- [ ] 打包顺序：先 Game C++ build（生成 Game glue），再 `dotnet publish`
 - [ ] `dotnet publish` with `-p:UseMonoRuntime=true --no-self-contained`
 - [ ] `dotnet publish` exit code 不可靠，直接检查输出文件
+- [ ] Android override push 后 `touch` 更新时间戳，否则 PurgeStaleOverrideDlls 删除
 - [ ] Mono trace level: `"warning"` for production, `"debug"` for debugging

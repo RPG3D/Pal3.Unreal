@@ -75,7 +75,11 @@ namespace ManagedSharpDemo
                 //see these in blueprint
                 FTransform RelativeTransform = Mesh.RelativeTransform;
                 RelativeTransform.Location.Z = -99.0f;
-                RelativeTransform.Rotation.Z = -1;
+                // Rotation is an FQuat — must go through FRotator to avoid breaking normalization
+                FRotator Rot = RelativeTransform.Rotation.ToRotator();
+                Rot.Yaw = -90;
+                RelativeTransform.Rotation = Rot.ToQuaternion;
+
                 Mesh.SetRelativeTransform(RelativeTransform, false, out FHitResult HitResult, true);
 
             }
@@ -112,6 +116,7 @@ namespace ManagedSharpDemo
                 EnhancedInputComponent.BindAction(MoveAction, ETriggerEvent.Triggered, HandleMoveAction);
                 EnhancedInputComponent.BindAction(LookAction, ETriggerEvent.Triggered, HandleLookAction);
             }
+
         }
 
 
@@ -156,5 +161,6 @@ namespace ManagedSharpDemo
                 AddControllerPitchInput((float)LookAxisVector.Y);
             }
         }
+
     }
 }

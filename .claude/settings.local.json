@@ -23,7 +23,8 @@
       "Bash(\"E:/Code/UE5/Engine/Build/BatchFiles/Build.bat\" SharpDemo Android Development -Project=\"E:/UEProject/SharpDemo/SharpDemo.uproject\" -WaitMutex)",
       "Bash(\"E:/Code/UE5/Engine/Build/BatchFiles/Build.bat\" SharpDemo Win64 Development -Project=\"E:/UEProject/SharpDemo/SharpDemo.uproject\" -WaitMutex)",
       "Bash(\"E:/Code/UE5/Engine/Build/BatchFiles/RunUAT.bat\" BuildCookRun -project=\"E:/UEProject/SharpDemo/SharpDemo.uproject\" -skipBuild -nocompileuat -TargetPlatform=Android -ClientConfig=Debug -Cook -Pak -Stage -Archive -package -StageDir=\"E:/UEProject/SharpDemo/Saved/StagedBuilds/Android\")",
-      "Bash(\"E:/Code/UE5/Engine/Build/BatchFiles/RunUAT.bat\" BuildCookRun -project=\"E:/UEProject/SharpDemo/SharpDemo.uproject\" -skipBuild -TargetPlatform=Win64 -ClientConfig=Development -Cook -Pak -Stage)"
+      "Bash(\"E:/Code/UE5/Engine/Build/BatchFiles/RunUAT.bat\" BuildCookRun -project=\"E:/UEProject/SharpDemo/SharpDemo.uproject\" -skipBuild -TargetPlatform=Win64 -ClientConfig=Development -Cook -Pak -Stage)",
+      "Bash(\"E:/Code/UE5/Engine/Binaries/Win64/UnrealEditor.exe\" \"E:/UEProject/SharpDemo/SharpDemo.uproject\" -log)"
     ]
   }
 }
