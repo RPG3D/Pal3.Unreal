@@ -10,6 +10,7 @@ using UnrealSharp.Core;
 using UnrealSharp.CoreUObject;
 using UnrealSharp.Engine;
 using UnrealSharp.EnhancedInput;
+using UnrealSharp.InputCore;
 
 namespace ManagedSharpDemo
 {
@@ -42,24 +43,48 @@ namespace ManagedSharpDemo
 
             UEnhancedInputLocalPlayerSubsystem Subsystem = USubsystemBlueprintLibrary.GetLocalPlayerSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerCtrl);
 
-            //input config
+            //input config — dynamically created (no binary asset dependency)
             {
+                // Create Input Mapping Context
+                DefaultMappingContext = NewObject<UInputMappingContext>();
 
-                UObject LoadedAsset = null;
+                // Create Input Actions (ValueType defaults to Axis2D in UE)
+                JumpAction = NewObject<UInputAction>();
+                MoveAction = NewObject<UInputAction>();
+                LookAction = NewObject<UInputAction>();
 
-                LoadedAsset = StaticLoadObject<UObject>("/Game/Input/IMC_Default.IMC_Default");
-                DefaultMappingContext = LoadedAsset as UInputMappingContext;
+                // Map keys: keyboard + gamepad + touch
+                // Jump
+                DefaultMappingContext.MapKey(JumpAction, Keys.SpaceBar);
+                DefaultMappingContext.MapKey(JumpAction, Keys.Gamepad_FaceButton_Bottom);
 
-                LoadedAsset = StaticLoadObject<UObject>("/Game/Input/Actions/IA_Jump.IA_Jump");
-                JumpAction = LoadedAsset as UInputAction;
+                // Move — per-key modifiers matching IMC asset
+                {
+                    UInputModifierSwizzleAxis SwizzleToY = NewObject<UInputModifierSwizzleAxis>();
+                    SwizzleToY.Order = EInputAxisSwizzle.YXZ;
 
-                LoadedAsset = StaticLoadObject<UObject>("/Game/Input/Actions/IA_Move.IA_Move");
-                MoveAction = LoadedAsset as UInputAction;
+                    UInputModifierNegate NegX = NewObject<UInputModifierNegate>();
+                    UInputModifierNegate NegY = NewObject<UInputModifierNegate>();
 
-                LoadedAsset = StaticLoadObject<UObject>("/Game/Input/Actions/IA_Look.IA_Look");
-                LookAction = LoadedAsset as UInputAction;
+                    // W: Y=+1 (swizzle X→Y)
+                    DefaultMappingContext.MapKey(MoveAction, Keys.W).Modifiers.Add(SwizzleToY);
+                    // S: Y=-1 (swizzle X→Y + negate)
+                    DefaultMappingContext.MapKey(MoveAction, Keys.S).Modifiers.Add(SwizzleToY);
+                    DefaultMappingContext.MapKey(MoveAction, Keys.S).Modifiers.Add(NegY);
+                    // A: X=-1 (negate X)
+                    DefaultMappingContext.MapKey(MoveAction, Keys.A).Modifiers.Add(NegX);
+                    // D: X=+1 (no modifier)
+                    DefaultMappingContext.MapKey(MoveAction, Keys.D);
+                }
+                // Gamepad: 2D axis already provides correct X/Y
+                DefaultMappingContext.MapKey(MoveAction, Keys.Gamepad_Left2D);
+                DefaultMappingContext.MapKey(MoveAction, new FKey("Touch 1"));
 
-
+                // Look
+                DefaultMappingContext.MapKey(LookAction, Keys.MouseX);
+                DefaultMappingContext.MapKey(LookAction, Keys.MouseY);
+                DefaultMappingContext.MapKey(LookAction, Keys.Gamepad_Right2D);
+                DefaultMappingContext.MapKey(LookAction, new FKey("Touch 2"));
             }
 
             //avatar mesh
