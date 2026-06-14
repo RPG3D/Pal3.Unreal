@@ -27,4 +27,7 @@ echo === Copy to Android ===
 xcopy /E /Y "Content\Managed\Win64\*" "Content\Managed\Android\" >nul
 copy /Y "Binaries\Managed\net10.0\UserCode.LoadOrder.json" "Content\Managed\Android\" >nul
 
+echo === Merge solutions ===
+dotnet run --project "tools\MergeScriptSln\MergeScriptSln.csproj" -- "SharpDemo.sln" >nul
+
 echo OK: Content\Managed\Win64 + Content\Managed\Android ready.

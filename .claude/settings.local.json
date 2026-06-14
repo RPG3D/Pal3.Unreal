@@ -54,7 +54,9 @@
       "Bash(cat)",
       "Bash(mv tmp.bat CopySDKFromSrc.bat)",
       "Bash(git ls-remote *)",
-      "Bash(awk '{print $1}')"
+      "Bash(awk '{print $1}')",
+      "Bash(dotnet run *)",
+      "Bash(git commit -m 'feat: add MergeScriptSln tool — merge UE + Script solutions *)"
     ]
   }
 }

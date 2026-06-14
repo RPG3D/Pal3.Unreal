@@ -24,6 +24,13 @@ namespace ManagedSharpDemo
 
         }
 
-    }
+        override public void Init()
+        {
+            base.Init();
+
+            Console.WriteLine("UScriptGameInstance Init");
+        }
+
+}
 }
 
