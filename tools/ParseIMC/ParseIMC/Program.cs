@@ -2,74 +2,72 @@ using UAssetAPI;
 using UAssetAPI.ExportTypes;
 using UAssetAPI.PropertyTypes.Objects;
 using UAssetAPI.PropertyTypes.Structs;
+using UAssetAPI.JSON;
+using Newtonsoft.Json;
 
-IMCParser.Run();
+string assetPath = @"E:\UEProject\SharpDemo\Content\Input\IMC_Default.uasset";
+UAsset asset = new UAsset(assetPath);
 
-class IMCParser
+// Dump the modifier exports specifically
+for (int i = 0; i < asset.Exports.Count; i++)
 {
-    public static void Run()
+    var export = asset.Exports[i];
+    if (export is NormalExport normal)
     {
-        string assetPath = @"E:\UEProject\SharpDemo\Content\Input\IMC_Default.uasset";
-        UAsset asset = new UAsset(assetPath);
-
-        foreach (var export in asset.Exports)
+        Console.WriteLine($"=== [{i}] {export.ObjectName} ===");
+        if (normal.Data != null && normal.Data.Count > 0)
         {
-            Console.WriteLine($"=== [{asset.Exports.IndexOf(export)}] {export.ObjectName} ===");
-            if (export is NormalExport normal)
+            foreach (var prop in normal.Data)
             {
-                foreach (var prop in normal.Data)
-                    PrintProp(prop, 0);
+                DumpProp(prop, 0);
             }
         }
-    }
-
-    static void PrintProp(PropertyData prop, int indent)
-    {
-        string pad = new string(' ', indent * 2);
-        switch (prop)
+        else
         {
-            case ArrayPropertyData arr:
-                Console.WriteLine($"{pad}{prop.Name} [{arr.Value.Length} items]");
-                foreach (var item in arr.Value)
-                {
-                    if (item is StructPropertyData stItem)
-                    {
-                        Console.WriteLine($"{pad}  ---");
-                        foreach (var sp in stItem.Value)
-                            PrintProp(sp, indent + 2);
-                    }
-                    else PrintProp(item, indent + 1);
-                }
-                break;
-            case StructPropertyData st:
-                Console.WriteLine($"{pad}{prop.Name}:");
-                foreach (var sp in st.Value)
-                    PrintProp(sp, indent + 1);
-                break;
-            case ObjectPropertyData obj:
-                Console.WriteLine($"{pad}{prop.Name} = {obj.Value}");
-                break;
-            case NamePropertyData name:
-                Console.WriteLine($"{pad}{prop.Name} = {name.Value}");
-                break;
-            case EnumPropertyData enm:
-                Console.WriteLine($"{pad}{prop.Name} = {enm.Value}");
-                break;
-            case BytePropertyData bt:
-                Console.WriteLine($"{pad}{prop.Name} = {bt.Value}");
-                break;
-            case BoolPropertyData bl:
-                Console.WriteLine($"{pad}{prop.Name} = {bl.Value}");
-                break;
-            case FloatPropertyData flt:
-                Console.WriteLine($"{pad}{prop.Name} = {flt.Value}");
-                break;
-            case IntPropertyData it:
-                Console.WriteLine($"{pad}{prop.Name} = {it.Value}");
-                break;
-            default:
-                Console.WriteLine($"{pad}{prop.Name} ({prop.PropertyType})");
-                break;
+            Console.WriteLine("  (empty)");
         }
+    }
+}
+
+void DumpProp(PropertyData prop, int indent)
+{
+    string pad = new string(' ', indent * 2 + 2);
+    switch (prop)
+    {
+        case ArrayPropertyData arr:
+            Console.WriteLine($"{pad}{prop.Name} [{arr.Value.Length}]");
+            foreach (var v in arr.Value) DumpProp(v, indent + 1);
+            break;
+        case StructPropertyData st:
+            Console.WriteLine($"{pad}{prop.Name}");
+            foreach (var v in st.Value) DumpProp(v, indent + 1);
+            break;
+        case EnumPropertyData e:
+            Console.WriteLine($"{pad}{prop.Name} = {e.Value} (enum)");
+            break;
+        case BytePropertyData b:
+            Console.WriteLine($"{pad}{prop.Name} = {b.Value}");
+            break;
+        case BoolPropertyData bl:
+            Console.WriteLine($"{pad}{prop.Name} = {bl.Value}");
+            break;
+        case FloatPropertyData f:
+            Console.WriteLine($"{pad}{prop.Name} = {f.Value}");
+            break;
+        case IntPropertyData it:
+            Console.WriteLine($"{pad}{prop.Name} = {it.Value}");
+            break;
+        case NamePropertyData n:
+            Console.WriteLine($"{pad}{prop.Name} = {n.Value}");
+            break;
+        case ObjectPropertyData o:
+            Console.WriteLine($"{pad}{prop.Name} = {o.Value}");
+            break;
+        case RawStructPropertyData rs:
+            Console.WriteLine($"{pad}{prop.Name} (raw struct, {rs.StructType})");
+            break;
+        default:
+            Console.WriteLine($"{pad}{prop.Name} ({prop.PropertyType})");
+            break;
     }
 }

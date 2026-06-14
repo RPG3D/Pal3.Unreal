@@ -7,5 +7,8 @@
   <Import Project="..\..\Plugins\UnrealSharp\UnrealSharp.Shared.props" />
   <ItemGroup>
     <ProjectReference Include="..\SharpDemo.Glue\SharpDemo.Glue.csproj" />
+    <Reference Include="SharpDemo">
+      <HintPath>..\..\Intermediate\UnrealSharp\UHT\Editor\SharpDemo\bin\Release\net10.0\SharpDemo.dll</HintPath>
+    </Reference>
   </ItemGroup>
 </Project>

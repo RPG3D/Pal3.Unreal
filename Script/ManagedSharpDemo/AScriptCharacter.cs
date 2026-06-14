@@ -11,6 +11,7 @@ using UnrealSharp.CoreUObject;
 using UnrealSharp.Engine;
 using UnrealSharp.EnhancedInput;
 using UnrealSharp.InputCore;
+using UnrealSharp.SharpDemo;
 
 namespace ManagedSharpDemo
 {
@@ -45,46 +46,28 @@ namespace ManagedSharpDemo
 
             //input config — dynamically created (no binary asset dependency)
             {
-                // Create Input Mapping Context
                 DefaultMappingContext = NewObject<UInputMappingContext>();
-
-                // Create Input Actions (ValueType defaults to Axis2D in UE)
                 JumpAction = NewObject<UInputAction>();
-                MoveAction = NewObject<UInputAction>();
-                LookAction = NewObject<UInputAction>();
+                MoveAction = NewObject<UInputAction>(); MoveAction.ValueType = EInputActionValueType.Axis2D;
+                LookAction = NewObject<UInputAction>(); LookAction.ValueType = EInputActionValueType.Axis2D;
 
-                // Map keys: keyboard + gamepad + touch
-                // Jump
-                DefaultMappingContext.MapKey(JumpAction, Keys.SpaceBar);
-                DefaultMappingContext.MapKey(JumpAction, Keys.Gamepad_FaceButton_Bottom);
+                var SwizzleToY = NewObject<UInputModifierSwizzleAxis>(); SwizzleToY.Order = EInputAxisSwizzle.YXZ;
+                var Negate = NewObject<UInputModifierNegate>();
 
-                // Move — per-key modifiers matching IMC asset
-                {
-                    UInputModifierSwizzleAxis SwizzleToY = NewObject<UInputModifierSwizzleAxis>();
-                    SwizzleToY.Order = EInputAxisSwizzle.YXZ;
+                USharpInputHelper.MapKey(DefaultMappingContext, JumpAction, Keys.SpaceBar);
+                USharpInputHelper.MapKey(DefaultMappingContext, JumpAction, Keys.Gamepad_FaceButton_Bottom);
 
-                    UInputModifierNegate NegX = NewObject<UInputModifierNegate>();
-                    UInputModifierNegate NegY = NewObject<UInputModifierNegate>();
+                USharpInputHelper.MapKeyWithModifiers(DefaultMappingContext, MoveAction, Keys.W, new UInputModifier[] { SwizzleToY });
+                USharpInputHelper.MapKeyWithModifiers(DefaultMappingContext, MoveAction, Keys.S, new UInputModifier[] { SwizzleToY, Negate });
+                USharpInputHelper.MapKeyWithModifiers(DefaultMappingContext, MoveAction, Keys.A, new UInputModifier[] { Negate });
+                USharpInputHelper.MapKey(DefaultMappingContext, MoveAction, Keys.D);
+                USharpInputHelper.MapKey(DefaultMappingContext, MoveAction, Keys.Gamepad_Left2D);
+                USharpInputHelper.MapKey(DefaultMappingContext, MoveAction, new FKey("Touch 1"));
 
-                    // W: Y=+1 (swizzle X→Y)
-                    DefaultMappingContext.MapKey(MoveAction, Keys.W).Modifiers.Add(SwizzleToY);
-                    // S: Y=-1 (swizzle X→Y + negate)
-                    DefaultMappingContext.MapKey(MoveAction, Keys.S).Modifiers.Add(SwizzleToY);
-                    DefaultMappingContext.MapKey(MoveAction, Keys.S).Modifiers.Add(NegY);
-                    // A: X=-1 (negate X)
-                    DefaultMappingContext.MapKey(MoveAction, Keys.A).Modifiers.Add(NegX);
-                    // D: X=+1 (no modifier)
-                    DefaultMappingContext.MapKey(MoveAction, Keys.D);
-                }
-                // Gamepad: 2D axis already provides correct X/Y
-                DefaultMappingContext.MapKey(MoveAction, Keys.Gamepad_Left2D);
-                DefaultMappingContext.MapKey(MoveAction, new FKey("Touch 1"));
-
-                // Look
-                DefaultMappingContext.MapKey(LookAction, Keys.MouseX);
-                DefaultMappingContext.MapKey(LookAction, Keys.MouseY);
-                DefaultMappingContext.MapKey(LookAction, Keys.Gamepad_Right2D);
-                DefaultMappingContext.MapKey(LookAction, new FKey("Touch 2"));
+                USharpInputHelper.MapKey(DefaultMappingContext, LookAction, Keys.MouseX);
+                USharpInputHelper.MapKeyWithModifiers(DefaultMappingContext, LookAction, Keys.MouseY, new UInputModifier[] { SwizzleToY, Negate });
+                USharpInputHelper.MapKey(DefaultMappingContext, LookAction, Keys.Gamepad_Right2D);
+                USharpInputHelper.MapKey(DefaultMappingContext, LookAction, new FKey("Touch 2"));
             }
 
             //avatar mesh
@@ -158,33 +141,23 @@ namespace ManagedSharpDemo
         }
 
         [UFunction]
-        protected void HandleMoveAction(FInputActionValue InValue, float DeltaTime, float WorldDeltaTime, UInputAction InputAction)
+        protected void HandleMoveAction(FInputActionValue Value, float DeltaTime, float WorldDeltaTime, UInputAction InputAction)
         {
-            FVector2D MovementVector = InValue.GetAxis2D();
-
-            if (Controller != null)
-            {
-                //find out which way is forward
-                FRotator Rot = Controller.ControlRotation;
-
-                //get forward
-                FVector Forward = MathLibrary.RotateAngleAxis(FVector.Forward, (float)Rot.Yaw, FVector.Up);
-                FVector Right = MathLibrary.RotateAngleAxis(FVector.Right, (float)Rot.Yaw, FVector.Up);
-
-                AddMovementInput(Forward, (float)MovementVector.Y);
-                AddMovementInput(Right, (float)MovementVector.X);
-            }
+            if (Controller == null) return;
+            var mv = Value.GetAxis2D();
+            FRotator Rot = Controller.ControlRotation;
+            var Fwd = MathLibrary.RotateAngleAxis(FVector.Forward, (float)Rot.Yaw, FVector.Up);
+            var Rgt = MathLibrary.RotateAngleAxis(FVector.Right, (float)Rot.Yaw, FVector.Up);
+            AddMovementInput(Fwd, (float)mv.Y);
+            AddMovementInput(Rgt, (float)mv.X);
         }
 
         [UFunction]
-        protected void HandleLookAction(FInputActionValue InValue, float DeltaTime, float WorldDeltaTime, UInputAction InputAction)
+        protected void HandleLookAction(FInputActionValue Value, float DeltaTime, float WorldDeltaTime, UInputAction InputAction)
         {
-            FVector2D LookAxisVector = InValue.GetAxis2D();
-            if (Controller != null)
-            {
-                AddControllerYawInput((float)LookAxisVector.X);
-                AddControllerPitchInput((float)LookAxisVector.Y);
-            }
+            var lk = Value.GetAxis2D();
+            AddControllerYawInput((float)lk.X);
+            AddControllerPitchInput((float)lk.Y);
         }
 
     }
