@@ -11,10 +11,10 @@ mkdir "Content\Managed\Win64"
 mkdir "Content\Managed\Android"
 
 echo === Publish UnrealSharp ===
-dotnet publish "Plugins\UnrealSharp\Managed\UnrealSharp\UnrealSharp.sln" -c Release -p:UseMonoRuntime=true --no-self-contained -p:PublishDir="%CD%\Content\Managed\Win64" -p:UseDefaultOutputPath=true -p:UETargetType=Game -p:UEBuildConfig=Shipping
+dotnet publish "Plugins\UnrealSharp\Managed\UnrealSharp\UnrealSharp.sln" -c Release --no-self-contained -p:PublishDir="%CD%\Content\Managed\Win64" -p:UseDefaultOutputPath=true -p:UETargetType=Game -p:UEBuildConfig=Shipping -p:DisableWithEditor=true
 
 echo === Publish user scripts ===
-dotnet publish "Script\ManagedSharpDemo.sln" -c Release -p:UseMonoRuntime=true --no-self-contained -p:PublishDir="%CD%\Content\Managed\Win64" -p:UETargetType=Game -p:UEBuildConfig=Shipping
+dotnet publish "Script\ManagedSharpDemo.sln" -c Release --no-self-contained -p:PublishDir="%CD%\Content\Managed\Win64" -p:UETargetType=Game -p:UEBuildConfig=Shipping -p:DisableWithEditor=true
 
 echo === Verify ===
 set MISSING=0

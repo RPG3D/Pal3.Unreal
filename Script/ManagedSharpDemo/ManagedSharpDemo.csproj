@@ -1,14 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <Import Project="..\..\Plugins\UnrealSharp\UnrealSharp.Shared.props" />
   <ItemGroup>
-    <ProjectReference Include="..\SharpDemo.Glue\SharpDemo.Glue.csproj" />
+    <!-- Generated game-module bindings (UnrealSharp.SharpDemo namespace).
+         Emitted by UHT to Binaries/Managed/net10.0/SharpDemo.dll.
+         The legacy "..\SharpDemo.Glue\SharpDemo.Glue.csproj" reference pointed at a
+         hand-written glue project that no longer exists in the current layout. -->
     <Reference Include="SharpDemo">
-      <HintPath>..\..\Intermediate\UnrealSharp\UHT\Editor\SharpDemo\bin\Release\net10.0\SharpDemo.dll</HintPath>
+      <HintPath>..\..\Binaries\Managed\net10.0\SharpDemo.dll</HintPath>
     </Reference>
   </ItemGroup>
 </Project>
