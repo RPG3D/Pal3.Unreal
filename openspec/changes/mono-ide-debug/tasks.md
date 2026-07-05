@@ -2,27 +2,28 @@
 
 ## Phase 1: Core Debugger Agent ✅
 
-- [x] 1.1 Add `EMonoDebuggerIDE` enum and debugger settings to `CSUnrealSharpSettings`
-- [x] 1.2 Create `FMonoProfilerListener` (fake TCP listener for VSTU compatibility)
-- [x] 1.3 Implement `InitMonoDebugger()` in `CSMonoRuntime` with dual-agent support
-- [x] 1.4 Implement `EnableVisualStudioToolsForUnitySupport()` (Win64 VSTU artifacts)
-- [x] 1.5 Guard AOT mode section with `!GMonoDebuggerActive` in `InitializeMonoRuntime`
-- [x] 1.6 Wire `InitMonoDebugger()` + wait-for-debugger into `InitializeMonoHost`
-- [x] 1.7 Add `Sockets`, `Networking` module dependencies to Build.cs
-- [x] 1.8 Verify INTERP_ONLY vs JIT mode — confirmed JIT required for `GetFunctionPointer()`
-- [x] 1.9 Code review: fix TEMP comment, LogTemp→LogUnrealSharp, Rider suspend=n doc, string lifetime
-- [x] 1.10 Update `README_MONO.md` with IDE Debugging documentation
+- [x] 1.1 Add debugger settings (`MonoDebuggerPort`, `bMonoWaitDebugger`, etc.) to `CSUnrealSharpSettings`
+- [x] 1.2 Implement `InitMonoDebugger()` — single agent, JIT mode, port validation
+- [x] 1.3 Add `IsMonoDebuggerActive()` accessor for wait-for-debugger guard
+- [x] 1.4 Guard AOT mode section with `!GMonoDebuggerActive` in `InitializeMonoRuntime`
+- [x] 1.5 Wire `InitMonoDebugger()` + wait-for-debugger into `InitializeMonoHost`
+- [x] 1.6 Code review & fixes: zombie comments, duplicate headers, port validation, embedding docs
+- [x] 1.7 Verify JIT mode required for `GetFunctionPointer()` (INTERP_ONLY breaks BP method handles)
+- [x] 1.8 Verify VS 2026 and Rider both connect to single `MonoDebuggerPort=56000`
+- [x] 1.9 Update `README_MONO.md` with simplified IDE Debugging docs + JIT/soft-breakpoint rationale
+- [x] 1.10 Update OpenSpec artifacts (design.md, spec.md, proposal.md)
 
-## Phase 2: Crash Fix — Variable Expansion ❌
+## Phase 2: Polish
 
-- [ ] 2.1 Investigate root cause: why expanding C# stack variables triggers native calls
-- [ ] 2.2 Determine if fix is on C# side (UnmanagedCallbacks) or native side (debugger params)
-- [ ] 2.3 Implement and verify fix
-- [ ] 2.4 Test with both VS 2022 and Rider
+- [x] 2.1 Simplify from dual-agent to single-agent architecture (VS/Rider share port)
+- [x] 2.2 Remove VSTU compatibility hacks (EnableVisualStudioToolsForUnitySupport, FMonoProfilerListener)
+- [x] 2.3 Remove `Sockets`/`Networking` deps from Build.cs
+- [x] 2.4 Remove `EMonoDebuggerIDE` enum — single port serves both IDEs
+- [ ] 2.5 Test with packaged Development build (non-Shipping, debugger enabled)
+- [ ] 2.6 Merge to `mono202606` and upstream `main`
 
-## Phase 3: Polish
+## Notes
 
-- [ ] 3.1 Test with `MonoDebuggerIDE=2` (VS+Rider concurrent)
-- [ ] 3.2 Verify packaged Development build (non-Shipping, debugger enabled)
-- [ ] 3.3 Document known limitations (variable expansion crash, etc.)
-- [ ] 3.4 Clean up and commit
+- Variable expansion crash resolved by using JIT mode instead of INTERP_ONLY.
+- Mono's soft breakpoints work with JIT-compiled code — the debugger patches native code at breakpoint locations.
+- `GetFunctionPointer()` requires JIT (no native pointer in INTERP mode).
