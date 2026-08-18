@@ -84,7 +84,7 @@ namespace ManagedSharpDemo
                 FTransform RelativeTransform = Mesh.RelativeTransform;
                 RelativeTransform.Location.Z = -99.0f;
                 // Rotation is an FQuat — must go through FRotator to avoid breaking normalization
-                FRotator Rot = RelativeTransform.Rotation.ToRotator();
+                FRotator Rot = RelativeTransform.Rotation.ToRotator;
                 Rot.Yaw = -90;
                 RelativeTransform.Rotation = Rot.ToQuaternion;
 

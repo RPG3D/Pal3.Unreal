@@ -98,3 +98,22 @@ Content/ParagonShinbi/
 /ArchivedBuilds/
 /Content/Managed/
 /MergeScriptSln.exe
+
+# Pal3 port / local tooling
+.vscode/
+*.bak*
+*.pdb
+*.log
+/build_*.log
+/uat_android_step3.log
+/talk.txt
+/grab_crash.sh
+/Automation_SharpDemo.sln
+/Automation_SharpDemo.slnx
+/SharpDemo.slnx
+/SharpDemo.code-workspace
+/Script/ManagedSharpDemo.sln.DotSettings.user
+/Script/ManagedSharpDemo.sln.bak
+/Script/*/Content/
+/tools/MergeScriptSln/publish/
+/.claude/projects/

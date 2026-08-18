@@ -13,4 +13,10 @@ public static class GameplayTags
 	public static readonly FGameplayTag InputUserSettings_FailureReasons_NoMatchingMappings = new("InputUserSettings.FailureReasons.NoMatchingMappings");
 	public static readonly FGameplayTag InputUserSettings_Profiles = new("InputUserSettings.Profiles");
 	public static readonly FGameplayTag InputUserSettings_Profiles_Default = new("InputUserSettings.Profiles.Default");
+	public static readonly FGameplayTag Niagara = new("Niagara");
+	public static readonly FGameplayTag Niagara_ScalabilityProfile = new("Niagara.ScalabilityProfile");
+	public static readonly FGameplayTag Niagara_ScalabilityProfile_Critical = new("Niagara.ScalabilityProfile.Critical");
+	public static readonly FGameplayTag Niagara_ScalabilityProfile_High = new("Niagara.ScalabilityProfile.High");
+	public static readonly FGameplayTag Niagara_ScalabilityProfile_Low = new("Niagara.ScalabilityProfile.Low");
+	public static readonly FGameplayTag Niagara_ScalabilityProfile_Medium = new("Niagara.ScalabilityProfile.Medium");
 }

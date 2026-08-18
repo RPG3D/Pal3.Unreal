@@ -9,6 +9,12 @@ public enum ETraceChannel
 
 public enum EObjectChannel
 {
+	WorldStatic_ObjectTypeQuery1 = 0,
+	WorldDynamic_ObjectTypeQuery2 = 1,
+	Pawn_ObjectTypeQuery3 = 2,
+	PhysicsBody_ObjectTypeQuery4 = 3,
+	Vehicle_ObjectTypeQuery5 = 4,
+	Destructible_ObjectTypeQuery6 = 5,
 }
 
 public static class CollisionProfiles
@@ -31,6 +37,7 @@ public static class CollisionProfiles
 	public static readonly FName Ragdoll = new("Ragdoll");
 	public static readonly FName Vehicle = new("Vehicle");
 	public static readonly FName UI = new("UI");
+	public static readonly FName WaterBodyCollision = new("WaterBodyCollision");
 }
 
 public static class QueryChannelConverter
