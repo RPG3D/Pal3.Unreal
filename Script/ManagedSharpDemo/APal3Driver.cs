@@ -27,6 +27,7 @@ namespace ManagedSharpDemo
             base.BeginPlay();
             UnityEngine.Debug.Log("[APal3Driver] BeginPlay - starting managed runtime smoke probe");
             Pal3Boot.RunSmokeProbe();
+            Pal3Boot.RunFullBoot();
         }
 
         public override void Tick(float deltaTime)

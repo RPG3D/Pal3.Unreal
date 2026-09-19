@@ -23,13 +23,25 @@ namespace UnityEngine
         public void Destroy() { }
 
         /// <summary>
-        /// Unity-compatible Instantiate. For now returns the original (no deep copy);
-        /// real UE spawning is wired through GameEntityFactory.
+        /// Optional instantiation hook installed by the game layer (Pal3.Game).
+        /// Lets stub prefabs carrying script types (see
+        /// <see cref="GameObject.PrefabScriptTypes"/>) spawn real managed entities
+        /// when cloned, replacing Unity's prefab-instantiate behavior. Returning
+        /// null falls back to the default "return the original" semantics.
         /// </summary>
-        public static T Instantiate<T>(T original) where T : Object => original;
-        public static Object Instantiate(Object original) => original;
-        public static T Instantiate<T>(T original, UnityEngine.Transform parent) where T : Object => original;
-        public static T Instantiate<T>(T original, UnityEngine.Transform parent, bool worldPositionStays) where T : Object => original;
+        public static System.Func<Object, Object?>? InstantiateHook;
+
+        private static Object InstantiateCore(Object original)
+            => InstantiateHook?.Invoke(original) ?? original;
+
+        /// <summary>
+        /// Unity-compatible Instantiate. Without a hook this returns the original
+        /// (no deep copy); real UE spawning is wired through GameEntityFactory.
+        /// </summary>
+        public static T Instantiate<T>(T original) where T : Object => (T)InstantiateCore(original);
+        public static Object Instantiate(Object original) => InstantiateCore(original);
+        public static T Instantiate<T>(T original, UnityEngine.Transform parent) where T : Object => (T)InstantiateCore(original);
+        public static T Instantiate<T>(T original, UnityEngine.Transform parent, bool worldPositionStays) where T : Object => (T)InstantiateCore(original);
 
         public static bool operator ==(Object? a, Object? b) => ReferenceEquals(a, b);
         public static bool operator !=(Object? a, Object? b) => !ReferenceEquals(a, b);

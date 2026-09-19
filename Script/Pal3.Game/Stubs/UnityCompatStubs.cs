@@ -889,10 +889,11 @@ namespace Engine.Core.Implementation
 
         /// <summary>
         /// Lowercase UnityEngine-style transform. Returns a stub UnityEngine.Transform so
-        /// `foreach (Transform child in transform)` compiles; child enumeration is deferred.
+        /// `foreach (Transform child in transform)` compiles; child enumeration is empty.
         /// Use <see cref="Transform"/> for real ITransform access.
         /// </summary>
-        public UnityEngine.Transform transform => null!;
+        public UnityEngine.Transform transform => _stubTransform ??= new UnityEngine.Transform();
+        private UnityEngine.Transform? _stubTransform;
 
         /// <summary>
         /// The wrapped game entity itself (UnityEngine.GameObject analog).
@@ -1006,10 +1007,11 @@ namespace IngameDebugConsole
 
     public class DebugLogManager
     {
-        public static DebugLogManager Instance => null!;
+        private static readonly DebugLogManager _instance = new();
+        public static DebugLogManager Instance => _instance;
         public event Action? OnLogWindowShown;
         public event Action? OnLogWindowHidden;
-        public UnityEngine.GameObject gameObject => null!;
+        public UnityEngine.GameObject gameObject => new();
     }
 }
 
@@ -1178,6 +1180,13 @@ namespace Pal3.Game.Settings
     /// </summary>
     public sealed class PlayerPrefsStore : Pal3.Core.Utilities.ITransactionalKeyValueStore
     {
+        // Process-wide seed values consulted when an instance has no value for a
+        // key. Lets the bootstrapper (Pal3Boot.RunFullBoot) supply the PAL3 game
+        // data folder path before GameResourceInitializer creates its own store.
+        private static readonly Dictionary<string, object> _seed = new();
+
+        public static void SetSeed<T>(string key, T value) => _seed[key] = value!;
+
         private readonly Dictionary<string, object> _values = new();
 
         public void Set<T>(string key, T value) => _values[key] = value!;
@@ -1187,6 +1196,11 @@ namespace Pal3.Game.Settings
             if (_values.TryGetValue(key, out object? stored) && stored is T typed)
             {
                 value = typed;
+                return true;
+            }
+            if (_seed.TryGetValue(key, out object? seeded) && seeded is T seededTyped)
+            {
+                value = seededTyped;
                 return true;
             }
             value = default!;

@@ -27,7 +27,11 @@ set "PROJ_FILE=%PROJ_DIR%\SharpDemo.uproject"
 rem Ensure dotnet is found even when this script is launched from Git Bash,
 rem which rewrites PATH entries without the trailing backslash that
 rem UnrealSharp's GetDotNetDirectory() matches against ("Program Files\dotnet\").
-set "PATH=C:\Program Files\dotnet\;%PATH%"
+rem .NET 11 SDK (net11.0 managed): prefer the local RC SDK, fall back to
+rem machine-wide (Program Files) once .NET 11 is installed there.
+set "DOTNET11_SDK_DIR=D:\Code\DotNet11Sdk"
+if not exist "%DOTNET11_SDK_DIR%\dotnet.exe" set "DOTNET11_SDK_DIR="
+set "PATH=%DOTNET11_SDK_DIR%;C:\Program Files\dotnet\;%PATH%"
 rem Avoid VBCSCompiler/MSBuild-server locking obj state files during the -m:1 publish.
 set "DOTNET_DISABLE_BUILD_SERVERS=1"
 set "PLUGIN_DIR=%PROJ_DIR%\Plugins\UnrealSharp"
@@ -103,10 +107,10 @@ if %ERRORLEVEL% neq 0 (
 echo [ OK ] Step 2 complete.
 
 rem ============================================================================
-rem Step 2.5 - Build Editor (fill flat Binaries/Managed/net10.0/)
+rem Step 2.5 - Build Editor (fill flat Binaries/Managed/net11.0/)
 rem ============================================================================
 if "%SKIP_EDITOR%"=="1" (
-    echo [SKIP] Step 2.5 - Editor build skipped (--skip-editor)
+    echo [SKIP] Step 2.5 - Editor build skipped via --skip-editor
     goto :step3
 )
 

@@ -9,14 +9,37 @@ namespace UnityEngine
     /// </summary>
     public class Component : Object
     {
-        public GameObject gameObject => null!;
-        public Transform transform => null!;
+        private GameObject? _gameObject;
+        public GameObject gameObject => _gameObject ??= new GameObject();
+        private Transform? _transform;
+        public Transform transform => _transform ??= new Transform();
         public bool enabled = true;
 
-        public T GetComponent<T>() where T : class => null!;
-        public T GetComponentInChildren<T>() where T : class => null!;
-        public T[] GetComponentsInChildren<T>() where T : class => Array.Empty<T>();
-        public T GetOrAddComponent<T>() where T : class => null!;
+        // Lazily-created attached stub components (GetComponent<T> analog). In
+        // Unity these would be wired up in the editor; here they are created on
+        // demand so UI/layout code paths keep working on stub objects.
+        private readonly System.Collections.Generic.Dictionary<Type, object> _stubComponents = new();
+
+        public T GetComponent<T>() where T : class
+        {
+            Type type = typeof(T);
+            if (_stubComponents.TryGetValue(type, out object? existing)) return (T)existing;
+            if (type.IsAbstract || type.IsInterface) return null!;
+            try
+            {
+                T created = (T)Activator.CreateInstance(type)!;
+                _stubComponents[type] = created;
+                return created;
+            }
+            catch (MissingMethodException)
+            {
+                return null!; // no parameterless ctor - caller decides what to do
+            }
+        }
+
+        public T GetComponentInChildren<T>() where T : class => GetComponent<T>();
+        public T[] GetComponentsInChildren<T>() where T : class => new[] { GetComponent<T>() };
+        public T GetOrAddComponent<T>() where T : class => GetComponent<T>();
     }
 
     public class Transform : Component
@@ -45,6 +68,14 @@ namespace UnityEngine
         public GameObject(string n) { name = n; }
         public bool activeInHierarchy => true;
         public bool activeSelf => true;
+
+        /// <summary>
+        /// Script types attached to this stub prefab. Consumed by the game layer's
+        /// Object.InstantiateHook to spawn real managed entities when the prefab
+        /// is cloned (Unity prefab-instantiate analog for the boot chain).
+        /// </summary>
+        public readonly System.Collections.Generic.List<System.Type> PrefabScriptTypes = new();
+
         public new T AddComponent<T>() where T : new() => new();
         public void SetActive(bool value) { }
     }

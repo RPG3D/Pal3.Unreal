@@ -62,15 +62,79 @@ public sealed class GameEntity : IGameEntity
     public object NativeObject => (object?)_gameObject ?? this;
     public bool IsNativeObjectDisposed => false;
 
-    public void Destroy() { }
+    // Managed script components attached to this entity (MonoBehaviour analog).
+    private readonly List<Engine.Core.Implementation.GameEntityScript> _scripts = new();
+
+    public void Destroy()
+    {
+        foreach (Engine.Core.Implementation.GameEntityScript script in _scripts.ToArray())
+        {
+            Engine.Core.Implementation.GameEntityScriptRuntime.Deactivate(script);
+        }
+        _scripts.Clear();
+    }
 
     public void SetParent(IGameEntity parent, bool worldPositionStays) { }
-    public T AddComponent<T>() where T : class => null!;
-    public object AddComponent(Type type) => null!;
-    public T GetComponent<T>() where T : class => null!;
-    public T GetComponentInChildren<T>() where T : class => null!;
-    public T[] GetComponentsInChildren<T>() where T : class => Array.Empty<T>();
-    public T GetOrAddComponent<T>() where T : class => null!;
+
+    /// <summary>
+    /// Unity AddComponent analog: managed GameEntityScript-derived components are
+    /// instantiated, bound to this entity and activated (lifecycle dispatch +
+    /// coroutine scheduling via GameEntityScriptRuntime). Other types are deferred.
+    /// </summary>
+    public T AddComponent<T>() where T : class
+    {
+        if (typeof(Engine.Core.Implementation.GameEntityScript).IsAssignableFrom(typeof(T)))
+        {
+            return (T)(object)AttachScript(typeof(T));
+        }
+        return null!;
+    }
+
+    public object AddComponent(Type type)
+    {
+        if (typeof(Engine.Core.Implementation.GameEntityScript).IsAssignableFrom(type))
+        {
+            return AttachScript(type);
+        }
+        return null!;
+    }
+
+    private Engine.Core.Implementation.GameEntityScript AttachScript(Type type)
+    {
+        var script = (Engine.Core.Implementation.GameEntityScript)Activator.CreateInstance(type)!;
+        script.GameEntity = this;
+        _scripts.Add(script);
+        Engine.Core.Implementation.GameEntityScriptRuntime.Activate(script);
+        return script;
+    }
+
+    public T GetComponent<T>() where T : class
+    {
+        foreach (Engine.Core.Implementation.GameEntityScript script in _scripts)
+        {
+            if (typeof(T).IsAssignableFrom(script.GetType())) return (T)(object)script;
+        }
+        return null!;
+    }
+
+    public T GetComponentInChildren<T>() where T : class => GetComponent<T>();
+
+    public T[] GetComponentsInChildren<T>() where T : class
+    {
+        List<T> result = new();
+        foreach (Engine.Core.Implementation.GameEntityScript script in _scripts)
+        {
+            if (typeof(T).IsAssignableFrom(script.GetType())) result.Add((T)(object)script);
+        }
+        return result.ToArray();
+    }
+
+    public T GetOrAddComponent<T>() where T : class
+    {
+        T existing = GetComponent<T>();
+        if (existing != null) return existing;
+        return AddComponent<T>();
+    }
     public IGameEntity FindChild(string name) => null!;
 }
 

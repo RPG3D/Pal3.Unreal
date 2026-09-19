@@ -182,17 +182,19 @@ namespace Engine.Core.Implementation
     }
 
     /// <summary>
-    /// Unity-MonoBehaviour-style lifecycle dispatcher for <see cref="GameEntityScript"/>.
-    /// Ported scripts keep their original Unity magic methods (private void Awake/OnEnable/
-    /// Start/Update/LateUpdate/OnDisable); those are located via a per-type reflection
-    /// cache and invoked here. The port's renamed virtuals (Init, OnUpdateGameEntity, ...)
-    /// are dispatched as well.
+    /// Unity-MonoBehaviour-style lifecycle dispatcher. Primary target is
+    /// <see cref="GameEntityScript"/>, but arbitrary "component" objects that keep
+    /// the Unity magic methods (private Awake/OnEnable/Start/Update/LateUpdate/
+    /// OnDisable - e.g. Pal3Game, which derives from Singleton instead of
+    /// GameEntityScript) are dispatched the same way. Methods are located via a
+    /// per-type reflection cache; the port's renamed virtuals (Init,
+    /// OnUpdateGameEntity, ...) are dispatched as well on GameEntityScript types.
     /// </summary>
     public static class GameEntityScriptRuntime
     {
         private sealed class ScriptInfo
         {
-            public GameEntityScript Script = null!;
+            public object Script = null!;
             public MethodInfo? Awake;
             public MethodInfo? OnEnable;
             public MethodInfo? Start;
@@ -214,10 +216,11 @@ namespace Engine.Core.Implementation
         private const BindingFlags LifecycleFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
 
         /// <summary>
-        /// Registers a script and runs its Unity-style startup lifecycle:
-        /// Awake -> OnEnable -> Start (a coroutine Start is fed to the scheduler).
+        /// Registers a script/component and runs its Unity-style startup lifecycle:
+        /// AutoFillStubFields -> Awake -> OnEnable -> Start (a coroutine Start is
+        /// fed to the scheduler).
         /// </summary>
-        public static void Activate(GameEntityScript script)
+        public static void Activate(object script)
         {
             if (script == null) throw new ArgumentNullException(nameof(script));
 
@@ -242,6 +245,7 @@ namespace Engine.Core.Implementation
                 };
                 _active.Add(si);
 
+                AutoFillStubFields(script);
                 InvokeSafe(script, cache.Awake, "Awake");
                 InvokeSafe(script, cache.OnEnable, "OnEnable");
             }
@@ -265,13 +269,13 @@ namespace Engine.Core.Implementation
 
         private static bool MonitorIsHeldByCurrentThread() => System.Threading.Monitor.IsEntered(_gate);
 
-        private static IEnumerator DeferredStart(GameEntityScript script, MethodInfo start)
+        private static IEnumerator DeferredStart(object script, MethodInfo start)
         {
             RunStart(script, start);
             yield break;
         }
 
-        private static void RunStart(GameEntityScript script, MethodInfo start)
+        private static void RunStart(object script, MethodInfo start)
         {
             object? result = InvokeSafe(script, start, "Start");
             if (result is IEnumerator routine)
@@ -303,16 +307,24 @@ namespace Engine.Core.Implementation
                     {
                         ScriptInfo si = _active[i];
 
-                        if (!si.Script.enabled)
+                        // Disabled GameEntityScripts don't tick (Unity semantics);
+                        // plain components always tick.
+                        if (si.Script is GameEntityScript { enabled: false })
                         {
-                            continue; // disabled scripts don't tick (Unity semantics)
+                            continue;
                         }
 
                         InvokeSafe(si.Script, si.Update, "Update");
-                        si.Script.InvokeVirtualOnUpdate(deltaTime);
+                        if (si.Script is GameEntityScript script)
+                        {
+                            script.InvokeVirtualOnUpdate(deltaTime);
+                        }
 
                         InvokeSafe(si.Script, si.LateUpdate, "LateUpdate");
-                        si.Script.InvokeVirtualOnLateUpdate(deltaTime);
+                        if (si.Script is GameEntityScript lateScript)
+                        {
+                            lateScript.InvokeVirtualOnLateUpdate(deltaTime);
+                        }
                     }
                 }
                 finally
@@ -322,8 +334,8 @@ namespace Engine.Core.Implementation
             }
         }
 
-        /// <summary>Runs OnDisable, stops the script's coroutines and unregisters it.</summary>
-        public static void Deactivate(GameEntityScript script)
+        /// <summary>Runs OnDisable, stops the component's coroutines and unregisters it.</summary>
+        public static void Deactivate(object script)
         {
             if (script == null) return;
 
@@ -340,12 +352,12 @@ namespace Engine.Core.Implementation
             }
 
             InvokeSafe(script, GetCache(script.GetType()).OnDisable, "OnDisable");
-            script.InvokeVirtualOnDisable();
+            if (script is GameEntityScript ges) ges.InvokeVirtualOnDisable();
             CoroutineScheduler.StopAll(script);
         }
 
         /// <summary>Returns the method's return value, or null when it threw (error logged).</summary>
-        private static object? InvokeSafe(GameEntityScript script, MethodInfo? method, string name)
+        private static object? InvokeSafe(object script, MethodInfo? method, string name)
         {
             if (method == null) return null;
             try
@@ -394,6 +406,66 @@ namespace Engine.Core.Implementation
             return method != null && method.GetParameters().Length == 0 && !method.IsAbstract
                 ? method
                 : null;
+        }
+
+        /// <summary>
+        /// Namespaces whose types are stub/compat shims. Null fields of these types
+        /// are auto-instantiated before Awake so ported code that assumes a
+        /// Unity-[SerializeField] was wired up in the editor doesn't NRE.
+        /// </summary>
+        private static readonly string[] AutoFillNamespaces =
+        {
+            "UnityEngine",
+            "TMPro",
+            "Engine.UI",
+        };
+
+        /// <summary>
+        /// Reflects over the script's instance fields and news up any null field
+        /// whose type lives in a stub namespace and has a parameterless constructor.
+        /// Real wired components (already non-null) are left untouched.
+        /// </summary>
+        private static void AutoFillStubFields(object script)
+        {
+            Type type = script.GetType();
+            for (Type? t = type; t != null && t != typeof(object); t = t.BaseType)
+            {
+                foreach (FieldInfo field in t.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+                {
+                    if (field.IsInitOnly) continue;
+                    Type fieldType = field.FieldType;
+                    if (!IsAutoFillable(fieldType)) continue;
+
+                    object? current = field.GetValue(script);
+                    if (current != null) continue;
+
+                    try
+                    {
+                        object instance = Activator.CreateInstance(fieldType)!;
+                        field.SetValue(script, instance);
+                    }
+                    catch (Exception)
+                    {
+                        // No parameterless ctor or similar - leave null, code will
+                        // handle it (or the NRE gets logged by InvokeSafe).
+                    }
+                }
+            }
+        }
+
+        private static bool IsAutoFillable(Type type)
+        {
+            if (type.IsPrimitive || type.IsEnum) return false;
+            if (type.IsArray) return false;
+            if (type.IsAbstract || type.IsInterface) return false;
+            if (type.IsGenericType) return false;
+
+            string ns = type.Namespace ?? "";
+            foreach (string allowed in AutoFillNamespaces)
+            {
+                if (ns == allowed || ns.StartsWith(allowed + ".", StringComparison.Ordinal)) return true;
+            }
+            return false;
         }
     }
 }

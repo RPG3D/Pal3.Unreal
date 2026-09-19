@@ -8,6 +8,7 @@
 using System;
 using System.Collections;
 using System.Threading.Tasks;
+using Engine.Core.Abstraction;
 using Engine.Core.Implementation;
 using UnityEngine;
 
@@ -86,6 +87,83 @@ namespace Pal3.Game
                 GameEntityScriptRuntime.Deactivate(_probe);
                 _probe = null;
             }
+        }
+
+        /// <summary>
+        /// Default PAL3 game data location (Steam install). Overridable via the
+        /// PAL3_DATA_PATH environment variable.
+        /// </summary>
+        private const string DefaultDataPath = @"E:\Program Files (x86)\Steam\steamapps\common\PAL3\";
+
+        private static bool _fullBootStarted;
+
+        /// <summary>
+        /// Boots the real game: GameResourceInitializer mounts the CPK file system
+        /// from the PAL3 game data folder, registers engine services and finally
+        /// instantiates the starting component (Pal3Game).
+        /// </summary>
+        public static void RunFullBoot()
+        {
+            if (_fullBootStarted) return;
+            _fullBootStarted = true;
+
+            string dataPath = Environment.GetEnvironmentVariable("PAL3_DATA_PATH");
+            if (string.IsNullOrEmpty(dataPath)) dataPath = DefaultDataPath;
+
+            Debug.Log($"[Pal3Boot] Full boot starting, game data folder: {dataPath}");
+
+            // PAL3 data files use GBK/Big5 text encodings (codepages 936/950), which
+            // are not available in the default .NET encoding provider on this host.
+            System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+
+            Settings.PlayerPrefsStore.SetSeed(nameof(Settings.GameSettings.GameDataFolderPath), dataPath);
+
+            // Install the instantiation hook so cloning the starting-component prefab
+            // spawns real managed entities (Unity prefab-instantiate analog).
+            UnityEngine.Object.InstantiateHook = InstantiateHook;
+
+            IGameEntity entity = GameEntityFactory.Create("GameResourceInitializer");
+            GameResourceInitializer initializer = entity.AddComponent<GameResourceInitializer>();
+
+            // Stand-in for the Unity "starting component" prefab: a stub GameObject
+            // carrying Pal3Game, which GameResourceInitializer instantiates once all
+            // services are registered.
+            GameObject startingPrefab = new("Pal3Game");
+            startingPrefab.PrefabScriptTypes.Add(typeof(Pal3Game));
+            typeof(GameResourceInitializer)
+                .GetField("startingComponent",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.SetValue(initializer, startingPrefab);
+        }
+
+        /// <summary>
+        /// Object.Instantiate hook: cloning a stub prefab GameObject spawns real
+        /// managed components. GameEntityScript-derived types attach to a new
+        /// managed entity; plain component types (e.g. Pal3Game, which derives
+        /// from Singleton instead) are instantiated and activated standalone.
+        /// Non-prefab objects fall back to default (return original).
+        /// </summary>
+        private static UnityEngine.Object? InstantiateHook(UnityEngine.Object original)
+        {
+            if (original is GameObject prefab && prefab.PrefabScriptTypes.Count > 0)
+            {
+                IGameEntity clone = GameEntityFactory.Create(prefab.name);
+                foreach (Type scriptType in prefab.PrefabScriptTypes)
+                {
+                    if (typeof(GameEntityScript).IsAssignableFrom(scriptType))
+                    {
+                        clone.AddComponent(scriptType);
+                    }
+                    else
+                    {
+                        // Singleton-style component: private ctor is allowed.
+                        object component = Activator.CreateInstance(scriptType, nonPublic: true)!;
+                        GameEntityScriptRuntime.Activate(component);
+                    }
+                }
+                return new GameObject(prefab.name);
+            }
+            return null;
         }
     }
 }
