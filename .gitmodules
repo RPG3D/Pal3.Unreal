@@ -1,4 +1,4 @@
 [submodule "Plugins/UnrealSharp"]
 	path = Plugins/UnrealSharp
 	url = git@github.com:RPG3D/UnrealSharp.git
-	branch = Mono202610
+	branch = mono20261010
