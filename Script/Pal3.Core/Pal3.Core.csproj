@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -14,6 +14,9 @@
     </Reference>
     <Reference Include="INIFileParser">
       <HintPath>Libraries\INIFileParser.dll</HintPath>
+    </Reference>
+    <Reference Include="SharpDemo">
+      <HintPath>..\..\Binaries\Managed\net10.0\SharpDemo.dll</HintPath>
     </Reference>
   </ItemGroup>
 </Project>
