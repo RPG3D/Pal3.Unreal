@@ -28,6 +28,7 @@
   | MobileClr202609 | CoreCLR .NET 11（raw coreclr PAK 解压，仅 mobile 定制；桌面=上游 hostfxr） | net11.0 | 11.0.100-rc.1 | `PackageProjectMobile` |
 
 - 两条线的切换 = 插件子模块切分支 + `Script/*.csproj` 的 `<TargetFramework>` 与 `Script/global.json` 同步改（BuildAndroid.bat 靠 `PackageProjectMono.cs` 是否存在自动选 SDK 与打包命令）。运行时选择由 `DefaultEngine.ini [UnrealSharp] bUseMono` 控制，**只允许写在 DefaultEngine.ini**（UBT 读平台层级、UAT 发布只读基础层，平台级覆盖会造成编译/发布撕裂）。
+- **下游分支规范见插件内 `DOWNSTREAM.md` / `PATCHES.md`**：每次同步上游新建 `Mobile<yyyyMMdd>` 快照分支，补丁按关注点原子化重放（不 merge 上游进旧分支），子模块指针单独提交。规划中的合并线为 `Mobile20261021`（Mono + CoreCLR 双运行时），前置条件是 `mono202611`（Mono 升级 .NET 11）单独验证通过。
 - `-game` 不重编译 managed 代码，靠手动拷贝 DLL 到 `Binaries/Managed/<tfm>/`。
 
 ## 4. 打包测试（聚焦 Mobile）
