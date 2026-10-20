@@ -26,6 +26,7 @@ namespace ManagedSharpDemo
         {
             base.BeginPlay();
 
+#if PAL3
             // Spawn the managed-runtime driver actor (Pal3 coroutines + script lifecycle).
             // NOTE: the extension's default TSubclassOf parameter has a zero NativeClass
             // and NREs - the class must be passed explicitly.
@@ -38,6 +39,7 @@ namespace ManagedSharpDemo
             {
                 UnrealSharp.Log.UnrealLogger.LogError("ManagedSharpDemo", "Failed to spawn APal3Driver");
             }
+#endif
         }
     }
 }

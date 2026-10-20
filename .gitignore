@@ -117,3 +117,7 @@ Content/ParagonShinbi/
 /Script/*/Content/
 /tools/MergeScriptSln/publish/
 /.claude/projects/
+
+# Local packaging output and OS metadata
+/Packaged/
+.DS_Store
