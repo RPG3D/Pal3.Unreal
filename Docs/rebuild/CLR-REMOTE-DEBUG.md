@@ -131,3 +131,59 @@ dotnet-trace collect --diagnostic-port "<router 日志里的 socket>,connect" \
 - D2：`dotnet-dump collect` 走同一条链路。
 - D3：netcoredbg attach（同一 socket）。
 - iOS：把 `adb reverse` 换成 `iproxy`，其余流程相同；DAC 已在本地 debug 包中。
+
+## 关键资料（官方）
+
+### 1. 移动端自定义调试器初始化（.NET 11+）
+
+https://learn.microsoft.com/en-us/dotnet/core/unmanaged-api/debugging/initialize-debugger-mobile
+
+核心结论（官方规范，适用于 iOS/Android，不含 NativeAOT）：
+
+- 移动平台不允许调试器独立进程，因此目标侧调试器必须是**加载进 App 进程的 profiler 组件**
+  （导出 `DllGetClassObject`）；
+- 随 App 部署 `libmscordbi` + `libmscordaccore`；
+- 启动前设置（`DOTNET_*` 与 `CORECLR_*` 两种前缀都建议设）：
+
+```
+DOTNET_ENABLE_PROFILING=1
+DOTNET_PROFILER={<CLSID>}
+DOTNET_PROFILER_PATH=<component path>
+```
+
+- 组件内：加载 `libmscordbi` → `CoreCLRCreateCordbObjectEx` → `ICorDebug` →
+  `Initialize` / `SetManagedHandler` / `DebugActiveProcess`；
+- 必须在托管代码开始执行前完成 attach。
+
+本地验证：Android debug 构建的 `libmscordbi.so` 已导出
+`CoreCLRCreateCordbObjectEx` / `CoreCLRCreateCordbObject3`，`libcoreclr.so` 也包含 profiler 加载逻辑。
+因此我们走的是进程内组件路线，不需要把 netcoredbg 作为独立进程移植到 Bionic。
+
+### 2. 上游 tracking issue
+
+https://github.com/dotnet/runtime/issues/124744
+`[clr-ios] Enable debugging on CoreCLR mobile platforms`
+
+DoD：VS Code F5 启动 iOS App、自动 attach、命中断点。任务分三块：
+
+1. 把调试器组件编译并链接进 app bundle（remote debugging on devices）；
+2. VS Code inner developer loop；
+3. 诊断集成：iOS 崩溃报告带托管栈、关联 IL offset 与方法元数据，并与 Android
+   CoreCLR crash diagnostics 对齐。
+
+相关子问题（iOS，说明解释器调试仍在修复中）：
+
+- #125974 Copy post-link assemblies and include DAC/DBI libraries for iOS remote debugger
+- #126020 Interpreter cannot set breakpoints in already-interpreted methods
+- #125975 Debugger shows wrong source file and variables when stopped in interpreted code
+- #125976 PAL CreateThread crashes when initialized with PAL_InitializeDLL
+- #125958 Debugger crashes with SIGSEGV in GetFuncletStartOffsets
+- #125959 FuncEval does not work on iOS because executable memory allocation fails
+- #126955 / #127480 / #126953 异常拦截、断点后解释器上下文、DAC/DBI 栈帧重复
+
+对我们的含义：
+
+- #125974 正是我们已经完成的 DAC/DBI 随包分发；
+- iOS 解释器下的断点/变量/FuncEval 仍有未修复的上游缺陷，D3 应优先在 Android 上验证；
+- 宿主侧 `-clrdebug -clrdebugprofiler=<path>` 与 `-clrdiag [-clrdiagport=]` 已按
+  “调试器 / 诊断”拆分，前者只注入 profiler 变量，后者才开诊断端口。
