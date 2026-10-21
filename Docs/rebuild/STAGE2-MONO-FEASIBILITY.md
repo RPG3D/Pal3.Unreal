@@ -33,9 +33,19 @@ in .NET 11.0 and later. Use the CoreCLR runtime or target .NET 10.0.
 
 检查带有一个内部开关 `_DisableCheckForUnsupportedMonoMobileRuntime=true`，且 dotnet/runtime
 11 的 `src/mono/mono.proj` 仍保留 Android NDK / iOS 交叉编译逻辑，所以源码可能仍然可构建。
-正在用该开关构建 `mono+libs -os android -arch arm64 -configuration Release`，结果待定。
 
-即使构建成功：
+**实测结果（干净重跑）：** 旁路生效——SDK 检查通过，构建进入 `src/mono/mono.proj` 的 Android
+CMake 配置阶段，随后因本机缺少 `ninja` 失败：
+
+```
+CMake Error: CMake was unable to find a build program corresponding to "Ninja".
+mono.proj(559,5): error MSB3073 ...
+```
+
+这是环境前置依赖缺失，不是"源码已删除"的证据。结论是：**旁路下源码层面有构建可能，但未验证成功**；
+若要继续，需要先安装 ninja，之后大概率还会遇到 Android Mono workload 等缺失项。
+
+即使最终构建成功：
 
 - 每个托管构建都必须显式传这个内部属性（打包脚本、`dotnet publish`、UBT 触发的所有 dotnet 调用）；
 - 该组合不受 Microsoft 支持，.NET 12 很可能直接移除；
