@@ -96,3 +96,38 @@ netcoredbg / vsdbg  ──TCP──  dotnet-dsrouter  ──TCP/socket──  Ap
   `coreclr_initialize` 前设置环境变量。
 - 未做真机验证（iPad 在使用、Android 设备未连接）；下一步是 D1 的端到端 attach。
 - DAC 尚未加入 SDK，D3/D4 需要先补构建产物。
+
+## 已验证：Android D1（2026-10-21）
+
+完整链路跑通，产物 `/tmp/android.nettrace`（1.35 MB），App 日志出现
+`[CoreClr] coreclr_initialize => 0x0 (domain 1)`。
+
+```bash
+adb install -r Packaged/Android/SharpDemo-arm64.apk
+mkdir -p /sdcard/Android/data/com.YourCompany.SharpDemo/files/UnrealGame/SharpDemo
+printf -- "-clrdebug -clrdebugport=9100\n" > /tmp/uecmd.txt
+adb push /tmp/uecmd.txt /sdcard/Android/data/com.YourCompany.SharpDemo/files/UnrealGame/SharpDemo/UECommandLine.txt
+
+dotnet-dsrouter server-server -tcps 127.0.0.1:9100 -fp Android
+adb reverse tcp:9100 tcp:9100          # 见下方坑 2
+adb shell monkey -p com.YourCompany.SharpDemo -c android.intent.category.LAUNCHER 1
+
+dotnet-trace collect --diagnostic-port "<router 日志里的 socket>,connect" \
+    --duration 00:00:05 -o out.nettrace
+```
+
+两个必须记住的坑：
+
+1. **宿主 9000 可能被别的进程占用**（本机是 node）。用 `-clrdebugport=9100` 选一个空闲端口，并用 `lsof -iTCP:9100` 确认。
+2. **`dotnet-dsrouter -fp Android` 自动建的是设备 9099 -> 宿主 9100 的映射**，而运行时连的是
+   `127.0.0.1:9100`（设备侧）。必须额外执行 `adb reverse tcp:9100 tcp:9100`，否则 router 永远收不到
+   runtime 连接（表现为一直 suspend，router 日志里只有 `Broken TCP connection`）。
+
+工具版本：`dotnet-dsrouter` / `dotnet-trace` 10.0.750501 与 11.0 rc 运行时可以正常通信；
+但 `dotnet-stack` 10.0 已不支持 `--diagnostic-port`，托管栈请用 trace 的 sample profiler 或 netcoredbg。
+
+## 待办
+
+- D2：`dotnet-dump collect` 走同一条链路。
+- D3：netcoredbg attach（同一 socket）。
+- iOS：把 `adb reverse` 换成 `iproxy`，其余流程相同；DAC 已在本地 debug 包中。
