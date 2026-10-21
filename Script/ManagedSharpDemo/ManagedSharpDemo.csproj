@@ -1,30 +1,23 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <Import Project="..\..\Plugins\UnrealSharp\UnrealSharp.Shared.props" />
   <ItemGroup>
     <!-- Generated game-module bindings (UnrealSharp.SharpDemo namespace).
-         Emitted by UHT to Binaries/Managed/net11.0/SharpDemo.dll.
+         Emitted by UHT to Binaries/Managed/net10.0/SharpDemo.dll.
          The legacy "..\SharpDemo.Glue\SharpDemo.Glue.csproj" reference pointed at a
          hand-written glue project that no longer exists in the current layout. -->
     <Reference Include="SharpDemo">
-      <HintPath>..\..\Binaries\Managed\net11.0\SharpDemo.dll</HintPath>
+      <HintPath>..\..\Binaries\Managed\net10.0\SharpDemo.dll</HintPath>
     </Reference>
     <!-- Managed Pal3 port projects (loaded by UnrealSharp in LoadOrder.json;
-         referenced here so APal3Driver can bridge UE tick into the runtime).
-         Controlled by EnablePal3 in Script/Directory.Build.props. -->
-    <ProjectReference Include="..\UnityEngine\UnityEngine.csproj" Condition="'$(EnablePal3)' == 'true'" />
-    <ProjectReference Include="..\Pal3.Core\Pal3.Core.csproj" Condition="'$(EnablePal3)' == 'true'" />
-    <ProjectReference Include="..\Engine\Engine.csproj" Condition="'$(EnablePal3)' == 'true'" />
-    <ProjectReference Include="..\Pal3.Game\Pal3.Game.csproj" Condition="'$(EnablePal3)' == 'true'" />
-  </ItemGroup>
-  <PropertyGroup Condition="'$(EnablePal3)' == 'true'">
-    <DefineConstants>$(DefineConstants);PAL3</DefineConstants>
-  </PropertyGroup>
-  <ItemGroup Condition="'$(EnablePal3)' != 'true'">
-    <Compile Remove="APal3Driver.cs" />
+         referenced here so APal3Driver can bridge UE tick into the runtime). -->
+    <ProjectReference Include="..\UnityEngine\UnityEngine.csproj" />
+    <ProjectReference Include="..\Pal3.Core\Pal3.Core.csproj" />
+    <ProjectReference Include="..\Engine\Engine.csproj" />
+    <ProjectReference Include="..\Pal3.Game\Pal3.Game.csproj" />
   </ItemGroup>
 </Project>
