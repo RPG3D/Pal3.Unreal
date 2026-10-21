@@ -1,5 +1,8 @@
 # PR: Route native callbacks through an ABI twin so interpreted `calli` works
 
+> Background and source-level proof: see `PR-01-MECHANISM.md` (JIT vs interpreter,
+> .NET 10 vs .NET 11, with file/line citations and a local experiment).
+
 ## Summary
 
 `NativeCallbacksWrapperGenerator` binds managed function pointers to native

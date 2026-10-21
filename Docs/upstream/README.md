@@ -74,6 +74,7 @@ git push origin pr/calli-abi-twin
 
 | 文件 | 内容 | 语言 |
 | --- | --- | --- |
+| `PR-01-MECHANISM.md` | **为什么必须改生成器**：JIT vs 解释器、.NET 10 vs 11 的源码级机制与实验证据 | English |
 | `PR-01-calli-abi-twin.md` | 生成器 ABI twin（string/ref-out/bool）PR 草稿 | English |
 | `PR-02-hostfxr-path-separators.md` | hostfxr Windows 路径分隔符 PR 草稿 | English |
 | `PR-03-ios-private-pch.md` | iOS 私有 PCH PR 草稿 | English |
@@ -87,3 +88,23 @@ git push origin pr/calli-abi-twin
 - [ ] 决定 `PR-01` 是先开 issue 还是直接发 PR
 - [ ] 若上游接受 `PR-04`，把本地 `mobileclr202609` 对应提交 rebase 掉
 - [ ] 上游迁到 .NET 11 后，删除本分支的 TFM 升级提交
+
+## 8. 机制分析的复现方式
+
+`PR-01-MECHANISM.md` 的结论来自两份 dotnet/runtime 源码对照和一个本机实验：
+
+- `.NET 11` 源码：`/Users/admin/Documents/Code/DotNet`（`release/11.0`）
+- `.NET 10` 源码：`/Users/admin/Documents/Code/DotNet10`
+  （`git clone --filter=blob:none --sparse --depth 1 --branch release/10.0`，
+  sparse checkout `src/coreclr/{vm,interpreter,inc,jit}`）
+- 实验：任意 `net10.0`/`net11.0` 控制台程序，`AllowUnsafeBlocks=true`，调用
+  `libSystem` 的 `strlen`：
+
+  ```csharp
+  IntPtr lib = NativeLibrary.Load("/usr/lib/libSystem.B.dylib");
+  IntPtr strlen = NativeLibrary.GetExport(lib, "strlen");
+  var f = (delegate* unmanaged[Cdecl]<string, nuint>)strlen;
+  Console.WriteLine(f("hello"));   // 5 => JIT 自动 marshal
+  ```
+
+  两个版本都输出 5，证明 JIT 路径由运行时插入 marshalling stub；解释器路径则没有。
