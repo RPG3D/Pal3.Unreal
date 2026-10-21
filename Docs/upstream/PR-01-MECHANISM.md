@@ -193,6 +193,12 @@ defaults off for `ios`/`tvos`, and `eeconfig.cpp:467-469` enables the interprete
 unconditionally), which is why the calli rejection below is reachable there by
 default.
 
+**Decision:** we deliberately did not build a .NET 10 iOS SDK to validate this on
+device. The interpreter being off by default for iOS Release in .NET 10 — while
+.NET 11 turns it on for Apple mobile — already shows that combination was not a
+supported production configuration. The source analysis above is the evidence we
+present; the device experiment runs on .NET 11 only.
+
 ## 5. Matrix
 
 | Target / build | Engine | `string` calli | `ref`/`out` calli | `bool` calli | Result with the old generator |
