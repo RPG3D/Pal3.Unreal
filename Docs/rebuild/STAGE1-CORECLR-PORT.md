@@ -52,6 +52,26 @@
 | iOS `PackageProjectMobile` + `BuildCookRun` | `SharpDemo.app`，含签名后的 `CoreCLR.framework` |
 | 真机运行 | **待做**：Android 设备未连接；iPad 正在使用 |
 
+## 桌面（Mac）打包补记
+
+`BuildCookRun` 本身只产出 `SharpDemo.app`，不包含 UnrealSharp 的托管负载。桌面端还需要一次
+`PackageProject`，把自包含发布目录写进 **app 内部** 的项目目录：
+
+```bash
+AutomationTool.dll PackageProject \
+  -ArchiveDirectory=<Packaged/Mac/SharpDemo.app/Contents/UE/SharpDemo> \
+  -UETargetType=Game -UEBuildConfig=Development \
+  -TargetPlatform=Mac -TargetArchitecture=x64
+# 写入 .../Contents/UE/SharpDemo/Binaries/Managed/net11.0（249 个文件，含 hostfxr）
+```
+
+产物里带 `UnrealSharpBuild.flag`，运行时 `IsUnrealSharpInstalled()` 才会从 app 内的
+`Binaries/Managed/net11.0` 取程序集。追加文件会使 UE 的签名失效，本地验证时用
+`codesign --force --deep -s -` 重新 ad-hoc 签名。
+
+实测（`-nullrhi -unattended`）：`SharpDemo.dll`、`ManagedSharpDemo.dll` 等从 app 包内加载，
+地图 `LV_OpenWorld` 运行，世界里出现 `ScriptCharacter_C`，无 `Fatal`/`InvalidProgram`/`DllNotFound`。
+
 ## 环境备注
 
 - `Script/Pal3.Core/Libraries` 的两个 DLL 是 gitignore 的本地依赖；缺失时解决方案 publish 会失败。
@@ -60,6 +80,6 @@
 
 ## 阶段二入口条件
 
-1. 本阶段两个平台的真机运行通过（Android + iPad）。
+1. 本阶段两个移动平台的真机运行通过（Android + iPad）；Mac 桌面已实测通过。
 2. MonoSDK 能产出 .NET 11 的 Android/iOS 产物（iOS AOT 是关键风险）。
 3. 届时在 `mobile20261021` 上以纯增量方式加入 Mono flavor，不重构现有 CoreCLR 路径。
