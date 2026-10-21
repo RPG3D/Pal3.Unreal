@@ -199,6 +199,14 @@ device. The interpreter being off by default for iOS Release in .NET 10 — whil
 supported production configuration. The source analysis above is the evidence we
 present; the device experiment runs on .NET 11 only.
 
+**Follow-up (low priority):** the same failure can be reproduced on **desktop**
+without iOS hardware. Desktop Debug/Checked builds already compile the interpreter
+(`clrfeatures.cmake:81-92` in .NET 11), so a Debug build of dotnet/runtime plus
+`DOTNET_Interpreter=1` turns any `string` calli into the same `BADCODE` rejection.
+Building one Debug runtime and running the demo harness against it would let the
+upstream author verify the mechanism locally, which is a stronger argument than
+"trust our device logs". Recorded as a later item; it does not block the PR.
+
 ## 5. Matrix
 
 | Target / build | Engine | `string` calli | `ref`/`out` calli | `bool` calli | Result with the old generator |
