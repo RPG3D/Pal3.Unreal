@@ -162,6 +162,37 @@ On an iOS device the process cannot allocate executable memory for a JIT, so the
 interpreter is the only engine that can run IL. This is not a signing detail:
 the default iOS build already compiles out dynamic code.
 
+### Version note: .NET 10 and the iOS interpreter
+
+The interpreter code itself is platform-neutral (no `TARGET_APPLE`/`TARGET_IOS`
+guards in `src/coreclr/interpreter/`), so .NET 10 can run on iOS with it, but
+three things differ from .NET 11 and all of them must be arranged explicitly:
+
+1. **Not enabled by default.** `src/coreclr/clrfeatures.cmake:37-49` defaults
+   `FEATURE_INTERPRETER` to 1 only for arm64/amd64 Debug/Checked; a Release
+   ios-arm64 build gets 0. `src/coreclr/clr.featuredefines.props:26-32` also has
+   no Apple-mobile rule in .NET 10 (the rule was added in 11 at `:60-63`).
+2. **The MSBuild property does not reach CMake.** .NET 10's
+   `src/coreclr/runtime.proj` has no `FeatureInterpreter -> -DFEATURE_INTERPRETER=1`
+   mapping (11 added it at `runtime.proj:59`), so a Release build needs
+   `-cmakeargs "-DFEATURE_INTERPRETER=1"` explicitly.
+3. **Built as a shared library, opt-in at run time.** .NET 10 defines
+   `FEATURE_JIT` for every non-WASM target (`clrfeatures.cmake:1-3`), including
+   iOS, so `src/coreclr/interpreter/CMakeLists.txt:44-50` picks `SHARED` and
+   produces `libclrinterpreter.dylib`. `src/coreclr/vm/jitinterface.cpp:13324-13338`
+   then loads it only when `DOTNET_Interpreter` (or `InterpMode`) is set; without
+   the switch the runtime uses the JIT, which cannot work on device.
+   `src/coreclr/vm/codeman.cpp:3782-3794` dlopens the library from the directory
+   of the coreclr image (`ExecutionManager::GetInterpreterName()` at
+   `codeman.cpp:5450-5466` defaults to `libclrinterpreter.dylib`).
+
+So on .NET 10 an iOS app needs **both** an SDK built with
+`-DFEATURE_INTERPRETER=1` **and** `DOTNET_Interpreter=1` at run time. .NET 11
+removes both requirements (Apple mobile forces the feature on, dynamic code
+defaults off for `ios`/`tvos`, and `eeconfig.cpp:467-469` enables the interpreter
+unconditionally), which is why the calli rejection below is reachable there by
+default.
+
 ## 5. Matrix
 
 | Target / build | Engine | `string` calli | `ref`/`out` calli | `bool` calli | Result with the old generator |
