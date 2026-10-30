@@ -68,14 +68,17 @@ Mono 载荷数百 MB、CoreCLR 百 MB 级，合成单一 release 只会拖慢 CI
 ## 2. 统一方案（B 阶段）结构
 
 ```
-Source/ThirdParty/DotNetRuntimeSDK/
-├── DotNetRuntimeSDK.Build.cs   # 唯一入口：resolver + staging + 链接
-├── RuntimeBackend.cs           # UnrealSharpRuntimeSelection（从 MonoSDK.Build.cs 迁出）
-├── RuntimeVersions.cs          # (backend, platform) -> tag 的唯一表
-├── Mono/<Platform>/<arch>/     # 载荷（git-ignored）
-├── CoreCLR/<Platform>/<arch>/  # 载荷（git-ignored）
-├── FetchRuntimeSDK.sh          # 单入口拉取（按 backend+platform+tag）
-└── *.APL.xml                   # Android 侧 APL（每个 backend 一份）
+<PluginRoot>/                          # UnrealSharp 插件根
+├── Source/ThirdParty/DotNetRuntimeSDK/
+│   ├── DotNetRuntimeSDK.Build.cs     # 唯一 External 模块：resolver 调用 + staging + 链接 + framework
+│   ├── RuntimeBackend.cs             # UnrealSharpRuntimeSelection（从 MonoSDK.Build.cs 迁出；含 ExternalDependencies）
+│   ├── DotNetRuntime.version         # v2：backend 前缀键（MONO_*/CORECLR_*），CI 与本地构建共同消费
+│   ├── FetchRuntimeSDK.sh            # GitHub-Releases 单入口（backend+platform+arch）
+│   ├── MonoSDK_APL.xml               # 原样迁入（每个 backend 一份）
+│   └── CoreClrSDK_APL.xml
+└── Vendor/                           # 载荷 submodule（Source/ 之外，UBT 不扫描）
+    ├── MonoSDK/<Platform>/<arch>/    # 载荷 + BuildMonoSDK.sh + CI（仓库不动，§1.3）
+    └── CoreClrSDK/<Platform>/<arch>/ # 载荷 + BuildCoreClrSDK.sh/CopySDKFromSrc.sh + CI
 ```
 
 要点：
@@ -84,6 +87,80 @@ Source/ThirdParty/DotNetRuntimeSDK/
 2. **staging 只有一份实现**。BCL → `Content/Managed/<Platform>`、项目 DLL/PDB/JSON、APL/receipt 挂接，全走同一组函数。今天两个 `Build.cs` 各写一遍路径拼装，直接用出了事故：`CoreClrSDK.Build.cs` 在 layout 改成 `<Platform>/<arch>/` 后仍引用 `Android/lib`，导致 `libcoreclr.so` 从未进入链接行（`e6b3be0` 修复）。
 3. **过渡期用薄壳**。新模块先接管 resolver + staging，`MonoSDK` / `CoreClrSDK` 退化为只声明库路径的 shim；六组合回归通过后再删壳。
 4. **iOS CoreCLR 在 C 落地前不产出载荷**，避免一份跑不起来的 SDK 被误用。
+
+### 2.5 合并可行性论证（2026-10-31）
+
+**结论：可行，收益明确，风险有界。预估 2~2.5 天，用薄壳过渡 + 六组合回归做门禁。**
+
+#### 范围：合什么、不合什么
+
+| 项 | 处置 | 依据 |
+| --- | --- | --- |
+| `MonoSDK.Build.cs`(764 行) + `CoreClrSDK.Build.cs`(431 行) | **合并**为 `DotNetRuntimeSDK.Build.cs` 单入口 | 1195 行里装配逻辑（staging/链接/framework/APL 挂接）两份同构 |
+| `UnrealSharpRuntimeSelection`（寄生在 MonoSDK） | **迁出**为独立 `RuntimeBackend.cs` | CoreClrSDK 反向引用它，依赖方向倒挂 |
+| `DotNetRuntime.version` | **升级 v2**：backend 前缀键（`MONO_SOURCE_TAG` / `CORECLR_SOURCE_TAG` / 各 TFM / `BUILD_SUBSET_MONO`…） | 文本文件 CI 可直接 grep（workflow 已在这么用）；Mono 侧今天没有版本文件（TFM 硬编码在 BuildMonoSDK.sh、tag 在 CI env）——正好收编 |
+| 签名三件套 + 缓存（~200 行 × 2 份） | **去重**成一份 | 两份逐行相同，本次对齐双因子就是手工复制 |
+| `FetchCoreClrSDK.sh` / fetch 入口 | 统一为一个按 backend+platform 分派 | GitHub-Releases-only 策略两边一致 |
+| 两个 APL（`MonoSDK_APL.xml` / `CoreClrSDK_APL.xml`） | **保留两份**，随模块迁址 | 内容本质不同（libmonosgen-2.0.so vs libcoreclr.so），backend gate 已保证互斥 |
+| 运行时宿主（`CSDotNetRuntimeHost_Mono/Mobile/Desktop`） | **不合** | mono embedding API vs 裸 coreclr/hostfxr 是本质不同的实现层，属"运行时适配"不属"SDK 装配" |
+| 两个载荷仓库（RPG3D/MonoSDK、RPG3D/CoreClrSDK）及其 CI | **不动**（§1.3 既定） | CI 刚完成 tag 钉定（v10.0.14 / rc.3），别一次动两个系统；Build*SDK.sh 是 CI 财产留在原仓库 |
+
+#### 证据一：职责重叠清单（合并 = 纯去重）
+
+- 签名：`SignEmbeddedFrameworkZip` / `FindCodeSigningIdentity` / `GetConfiguredSigningTeam` / 缓存四件，两份逐行等价。
+- BCL staging：Mono 侧 4 个平台分支（Win64/Mac/Linux/Android/IOS）各写一遍「枚举 runtime/*.dll → `Content/Managed/<Platform>` UFS」，CoreClr 侧一份同样的循环；目的地、PDB/JSON 处理完全同构。
+- 宏：`UNREALSHARP_MONO=1` 在 MonoSDK 的每个平台分支里重复 `PublicDefinitions.Add`（5 处），下游 13 个文件消费——合并后一处定义。
+- 依赖：`UnrealSharpCore.Build.cs` 同时依赖两个 SDK 模块只为拿 include 与宏；合并后单一依赖。
+
+#### 证据二：最近事故全部是"同一改动、两处落地"漏一处
+
+1. `e6b3be0`：CoreClrSDK 载荷改 `<arch>` 层，Build.cs 没跟上 → `libcoreclr.so` 从未进链接行，B/D 组合链接期才炸。
+2. `8a78366`/`dbe5d3b`：mono BCL 的 ios/iossimulator 目录拆分要改两处路径逻辑。
+3. 本轮：`build-coreclr-sdk.yml` 的 build 子集 vs 版本文件 `BUILD_SUBSET` 漂移（`clr.tools+clr.packages` 纯浪费且掩盖了子集变更）；三个 workflow 的 runtime ref 各自漂（v10.0.12 / rc.1 / rc.1 对 11.0.0）。
+4. 本轮：iossimulator 补丁门只开 `ios`（设备补了、模拟器漏了）→ CI 红。
+5. 双因子签名缓存升级 = 手工把 MonoSDK 的实现复制到 CoreClrSDK。
+
+每一条在单一模块里都不可能发生。
+
+#### 证据三：本轮工作已经把最难的耦合拆掉了
+
+- 托管层统一（无双 backend 宏的托管 DLL 集），双胞胎生成器与 backend 无关；
+- CoreLib/probe 契约两平台同构（同一条规则、同一份代码路径）；
+- 签名机制两边逐行等价（刚对齐完）；
+- 版本钉定模式在 CoreClrSDK 成型（SOURCE_TAG + 守卫 + stamp），Mono 纳入是机械活；
+- 打包矩阵脚本（`build-android/ios-mac.sh`）由 ini 驱动、与模块内部结构解耦。
+
+#### 结构决策：payload 仓库移出 UBT 扫描路径（唯一需要拍板的点）
+
+UBT 会扫描 `Source/**` 的所有 `*.Build.cs`。合并后的新模块放在 `Source/ThirdParty/DotNetRuntimeSDK/`，而两个 submodule 里的旧 Build.cs 仍会被扫描编译——它们不能继续做事，也不能删（CI 要用）。两个方案：
+
+- **甲（推荐）**：`git mv` 两个 submodule 到**插件根**下的 `Vendor/MonoSDK`、`Vendor/CoreClrSDK`（在 `Source/` 之外）。UBT 只递归扫描 `Source/`，移出即脱离模块发现，gitlink 历史保留，submodule 彻底退化为「载荷 + CI 脚本仓」。
+- **乙**：留在原地，旧 Build.cs 顶部加早退空壳（保留文件维持 CI 一致性），一次极小的跨仓提交。缺点：空壳仍是"第三份装配代码"，违背合并初衷。
+
+无论甲乙，`RuntimeVersions`、宏、include/link/staging 全在新模块；两个 submodule 的 Build.cs 从「被消费的实现」退为「CI 复现手册」。
+
+#### 风险与对策
+
+| 风险 | 对策 |
+| --- | --- |
+| UBT makefile 缓存不因 ini 变化失效 | `ExternalDependencies` 随 resolver 迁移（模式已验证，`30ca4cc`） |
+| submodule 移动断 CI/本地脚本 | 脚本内部全用相对自身路径（现状即是）；模块侧路径收敛为常量 |
+| 中间态两套并存太久 | 薄壳与删除放同一条 PR 链，不留过夜中间态 |
+| Mono 载荷无版本戳，守卫没法像 CLR 一样核对 | 守卫按 backend 分派：CLR 维持 major 校验；Mono 先只查目录存在（BuildMonoSDK 无 stamp），v2 版本文件加 `MONO_PAYLOAD_MIN_FILES` 之类的存在性门 |
+| 回归成本 | 六组合矩阵脚本就绪，全绿即门禁 |
+
+#### 工作量与顺序
+
+1. `RuntimeBackend.cs` 抽取 + `ExternalDependencies`（0.5h）
+2. `DotNetRuntimeSDK.Build.cs` 骨架 + platform×backend 派发（0.5 天；先接 Mono 全平台，量最大）
+3. CoreCLR 接入（mobile link/framework/APL；desktop = hostfxr no-op）（0.5 天）
+4. 签名去重 + 版本文件 v2 + Mono 载荷存在性门（0.5 天）
+5. submodule 移位（甲/乙）+ 旧 Build.cs 退役（0.5 天）
+6. 六组合回归 + 文档（0.5~1 天）
+
+#### 对"先不动"的反驳
+
+稳定窗口恰是重构窗口：回归矩阵已脚本化、每个组合都有真机基线，此时合并的验证成本最低；反之每加一个平台/后端，维护面按 2× 增长，而漂移事故（证据二）全部发生在"双份维护"期间。B 阶段的产出物就是这个合并本身——不存在"等 B 之后再合"的顺序。
 
 ## 3. 阶段与判定标准
 
