@@ -34,24 +34,34 @@ sed -i '' -e "s/^DotNetRuntimeEditor=.*/DotNetRuntimeEditor=$EDITOR_RT/" \
     "$PROJ/Config/DefaultEngine.ini"
 grep -n "DotNetRuntimeEditor" "$PROJ/Config/DefaultEngine.ini"
 
-# Target runtime for iOS lives in the platform config layer.
+# Target runtime for iOS lives in the platform config layer. Rewrite the section
+# idempotently: appending on every CoreCLR run used to leave dozens of duplicates.
 IOSINI="$PROJ/Config/IOS/IOSEngine.ini"
-if [ "$TARGET_RT" = "CoreCLR" ]; then
-  printf '\n[UnrealSharp]\nDotNetRuntime=CoreCLR\n' >> "$IOSINI"
-else
-  python3 - "$IOSINI" <<'PY'
+python3 - "$IOSINI" "$TARGET_RT" <<'PY'
 import sys, re
-p = sys.argv[1]
-s = open(p).read()
-s = re.sub(r'\n\[UnrealSharp\]\nDotNetRuntime=[^\n]*\n', '\n', s)
-open(p, 'w').write(s)
+path, target = sys.argv[1], sys.argv[2]
+text = open(path).read()
+text = re.sub(r'\n\[UnrealSharp\]\nDotNetRuntime=[^\n]*\n', '\n', text).rstrip('\n') + '\n'
+if target == 'CoreCLR':
+    text += '\n[UnrealSharp]\nDotNetRuntime=CoreCLR\n'
+open(path, 'w').write(text)
 PY
-fi
 grep -A2 "^\[UnrealSharp\]" "$IOSINI" || echo "(IOSEngine.ini: default Mono)"
 
 # UBT caches Build.cs evaluation per makefile; force re-evaluation.
 touch "$PROJ/Plugins/UnrealSharp/Source/ThirdParty/MonoSDK/MonoSDK.Build.cs" \
       "$PROJ/Plugins/UnrealSharp/Source/ThirdParty/CoreClrSDK/CoreClrSDK.Build.cs"
+
+# ---- Step 1.5: ABI gate -------------------------------------------------------
+# CoreCLR's interpreter rejects calli that need P/Invoke marshalling (string/ref/
+# out/bool), and the constraint is identical on 10 and 11. Fail before packaging
+# instead of discovering it on device.
+if [ -x "$PROJ/Plugins/UnrealSharp/Tools/verify-calli-abi.py" ]; then
+  log "Step 1.5: calli ABI gate"
+  "$PROJ/Plugins/UnrealSharp/Tools/verify-calli-abi.py" > "$LOGS/calli-gate.log" 2>&1 \
+    || { echo "FAIL calli ABI gate (see $LOGS/calli-gate.log)"; tail -20 "$LOGS/calli-gate.log"; exit 1; }
+  log "Step 1.5 OK"
+fi
 
 # ---- Step 2: Game-target UBT build -------------------------------------------
 log "Step 2: Game-target UBT build"
@@ -73,6 +83,11 @@ log "Step 4: Editor UBT build"
 log "Step 4 OK"
 
 # ---- Step 5: BuildCookRun -> .app ----------------------------------------------
+# UBT never prunes staged frameworks, so a previous run's Mono.framework (or
+# CoreCLR.framework) survives into the next bundle. Wipe the staging tree so the
+# packaged .app only contains the framework its backend actually needs.
+rm -rf "$PROJ/Binaries/IOS" "$PROJ/Saved/StagedBuilds/IOS"
+
 ARCHIVE="$PROJ/Packaged/IOS-$EDITOR_RT-$TARGET_RT"
 rm -rf "$ARCHIVE"; mkdir -p "$ARCHIVE"
 log "Step 5: BuildCookRun -> $ARCHIVE"

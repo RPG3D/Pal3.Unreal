@@ -121,3 +121,7 @@ Content/ParagonShinbi/
 # Local packaging output and OS metadata
 /Packaged/
 .DS_Store
+
+# Per-combo scratch state written by build-android-mac.sh
+Config/Android/AndroidEngine.ini
+SharpDemo.uproject.DotSettings.user

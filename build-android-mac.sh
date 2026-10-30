@@ -64,6 +64,17 @@ grep -n "DotNetRuntimeEditor" "$PROJ/Config/DefaultEngine.ini"
 touch "$PROJ/Plugins/UnrealSharp/Source/ThirdParty/MonoSDK/MonoSDK.Build.cs" \
       "$PROJ/Plugins/UnrealSharp/Source/ThirdParty/CoreClrSDK/CoreClrSDK.Build.cs"
 
+# ---- Step 1.5: ABI gate -------------------------------------------------------
+# CoreCLR's interpreter rejects calli that need P/Invoke marshalling (string/ref/
+# out/bool), and the constraint is identical on 10 and 11. Fail before packaging
+# instead of discovering it on device.
+if [ -x "$PROJ/Plugins/UnrealSharp/Tools/verify-calli-abi.py" ]; then
+  log "Step 1.5: calli ABI gate"
+  "$PROJ/Plugins/UnrealSharp/Tools/verify-calli-abi.py" > "$LOGS/calli-gate.log" 2>&1 \
+    || { echo "FAIL calli ABI gate (see $LOGS/calli-gate.log)"; tail -20 "$LOGS/calli-gate.log"; exit 1; }
+  log "Step 1.5 OK"
+fi
+
 # ---- Step 2: Game-target UBT build (UHT/Game glue) ---------------------------
 log "Step 2: Game-target UBT build"
 "$BUILD" SharpDemo Mac Development -project="$UPROJECT" \
@@ -84,6 +95,10 @@ log "Step 4: Editor UBT build"
 log "Step 4 OK"
 
 # ---- Step 5: BuildCookRun -> APK ---------------------------------------------
+# UBT never prunes stale staged/native outputs; wipe them so a package never
+# inherits the previous combo's binaries.
+rm -rf "$PROJ/Binaries/Android" "$PROJ/Saved/StagedBuilds/Android"
+
 ARCHIVE="$PROJ/Packaged/Android-$COMBO"
 rm -rf "$ARCHIVE"; mkdir -p "$ARCHIVE"
 log "Step 5: BuildCookRun -> $ARCHIVE"
