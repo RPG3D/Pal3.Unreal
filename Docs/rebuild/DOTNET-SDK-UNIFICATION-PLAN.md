@@ -44,9 +44,9 @@ dyld: Library not loaded: @rpath/libclrinterpreter.dylib
 
 原因已定位：`CoreCLR.framework/CoreCLR` 的 `LC_RPATH` 只有构建机绝对路径（`.../ios.arm64.Release/interpreter`），而 `libclrinterpreter.dylib` 的 install name 是 `@rpath/CoreCLR.framework/libclrinterpreter.dylib`。`MakeCoreClrFramework.sh` 目前只改 `install_name`，不写 `LC_RPATH`（11 的官方产物自带 `@loader_path`，所以历史上没暴露）。**该问题随「iOS CoreCLR 只用 11」的绑定一起作废**，`MakeCoreClrFramework.sh` 不再需要处理 rpath。
 
-### 1.3 二进制仓库暂不合并
+### 1.3 二进制仓库合并（2026-10-31 修订：合并，见 §2.5）
 
-Mono 载荷数百 MB、CoreCLR 百 MB 级，合成单一 release 只会拖慢 CI 与下载；维护成本大头在插件侧代码，不在仓库结构。统一的是「客户端代码 + 版本表」。
+~~暂不合并~~。原论据（载荷数百 MB 拖慢 CI/下载）在「载荷 git-ignored + 按平台/后端取用」模型下不成立：仓库本身只有脚本与版本文件，Release 按平台出资产，消费端只下载需要的一两份。合并后反而修掉现有不对称——Mono 载荷 git-ignored 且无 fetch 脚本（换机全靠手工搬），只有 CLR 有 Releases 拉取。
 
 ### 1.4 calli ABI：必须双胞胎，不能改解释器（2026-10-28 静态评估）
 
@@ -130,14 +130,42 @@ Mono 载荷数百 MB、CoreCLR 百 MB 级，合成单一 release 只会拖慢 CI
 - 版本钉定模式在 CoreClrSDK 成型（SOURCE_TAG + 守卫 + stamp），Mono 纳入是机械活；
 - 打包矩阵脚本（`build-android/ios-mac.sh`）由 ini 驱动、与模块内部结构解耦。
 
-#### 结构决策：payload 仓库移出 UBT 扫描路径（唯一需要拍板的点）
+#### 结构决策（2026-10-31 用户拍板）：新建单一子仓库，Mono+CLR 载荷与构建同仓
 
-UBT 会扫描 `Source/**` 的所有 `*.Build.cs`。合并后的新模块放在 `Source/ThirdParty/DotNetRuntimeSDK/`，而两个 submodule 里的旧 Build.cs 仍会被扫描编译——它们不能继续做事，也不能删（CI 要用）。两个方案：
+用户方案：**新建一个子仓库（submodule）**，同时容纳 Mono 与 CoreCLR 的载荷目录、构建脚本、版本文件与 `Build.cs`；`Build.cs` 内部按 (backend, platform) 条件选择 lib/头文件；GH Action **10 个平台 leg 并发**（Mono 7：win64/linux/mac-x64/mac-arm64/android/ios/iossim + CoreCLR 3：android/ios/iossim）。
 
-- **甲（推荐）**：`git mv` 两个 submodule 到**插件根**下的 `Vendor/MonoSDK`、`Vendor/CoreClrSDK`（在 `Source/` 之外）。UBT 只递归扫描 `Source/`，移出即脱离模块发现，gitlink 历史保留，submodule 彻底退化为「载荷 + CI 脚本仓」。
-- **乙**：留在原地，旧 Build.cs 顶部加早退空壳（保留文件维持 CI 一致性），一次极小的跨仓提交。缺点：空壳仍是"第三份装配代码"，违背合并初衷。
+评估结论：**采纳，优于本节此前的 Vendor 双 submodule 方案**。理由：
 
-无论甲乙，`RuntimeVersions`、宏、include/link/staging 全在新模块；两个 submodule 的 Build.cs 从「被消费的实现」退为「CI 复现手册」。
+1. **天然解决 UBT 扫描问题**——一个 submodule 一份 Build.cs，不存在"旧 Build.cs 仍被扫描"的尴尬，§2.5 的 Vendor 搬家与空壳两个方案都不需要了。
+2. **修掉载荷分发的现有不对称**：Mono 载荷 git-ignored 且无 fetch 脚本（换机/新克隆全靠手工搬）；统一后 `FetchRuntimeSDK.sh` 按 backend+platform 从单一 Release 拉取。
+3. **一次 watchtower**：10 leg 并发，wall time = 最慢 leg（≈25 min），与今天两个仓库各自跑无差；分钟账单不变（同样的 leg 集合），注意 macOS 计费 10× 是既有大头。
+4. **版本原子性**：一次发布同时携带 mono@v10.0.14 + clr@rc.3，`DotNetRuntime.version` 是唯一事实源；"统一更新 tag" = 改一行 + 重跑 workflow + 切 Release。
+
+目标形态：
+
+```
+<PluginRoot>/Source/ThirdParty/DotNetRuntimeSDK/   # 新子仓库（submodule）
+├── DotNetRuntimeSDK.Build.cs      # 唯一 External 模块：条件选择 lib/头文件 + staging + framework
+├── RuntimeBackend.cs              # resolver（从 MonoSDK.Build.cs 迁出；含 ExternalDependencies）
+├── DotNetRuntime.version          # v2：MONO_SOURCE_TAG / CORECLR_SOURCE_TAG / *_TFM / BUILD_SUBSET_*
+├── Mono/<Platform>/<arch>/        # 载荷（git-ignored；mono 7 平台）
+├── CoreCLR/<Platform>/<arch>/     # 载荷（git-ignored；clr 3 移动平台；desktop=hostfxr 无载荷）
+├── BuildMonoSDK.sh|.bat / MakeMonoFramework.sh / CopySDKFromSrc.mono.sh
+├── BuildCoreClrSDK.sh / CopySDKFromSrc.clr.sh / MakeCoreClrFramework.sh
+├── FetchRuntimeSDK.sh             # GitHub-Releases 单入口（backend+platform+arch）
+├── MonoSDK_APL.xml / CoreClrSDK_APL.xml
+└── .github/workflows/build-all.yml（10 leg，leg 级可单独 dispatch）+ package-release.yml
+```
+
+要点与约束：
+
+- **Build.cs 放子仓库内**（与今天 CoreClrSDK 同构：仓库兼任"生产者脚本"与"消费者模块"），resolver 一并迁入；插件侧 `UnrealSharpCore/Utilities` 的依赖从两个模块改为一个。
+- **leg 级独立 dispatch**：mono 与 clr 升级节奏不同（10.0.x servicing vs 11 GA），改 CLR 不应强制重编 Mono——workflow inputs 支持按 leg 开关（当前 build-all 已具备雏形）。
+- **Release 资产按 platform 分文件**（`MonoSDK-Mac-arm64.zip`、`CoreClrSDK-IOS-arm64.zip`…），消费端按需取；不做单一巨型 zip（§1.3 原顾虑仅对此成立）。
+- **迁移期产物**：旧两仓 archive 保留（脚本历史），新仓脚本以拷贝入驻（`FetchCoreClrSDK.sh` 的 REPO 常量改指新仓）；插件移除旧 gitlink、挂新 submodule。
+- **回归门禁不变**：六组合矩阵全绿。
+
+风险对照（与 §2.5 风险表合并看）：新增一条——`UNREALSHARP_MONO` 宏与 include 路径的传播链要从「MonoSDK→Core→Editor」改为「DotNetRuntimeSDK→Core→Editor」，属机械改动但必须全绿验证；另 `CopySDKFromSrc.sh` 拆成 mono/clr 两份同名入仓时注意 CI 调用路径。
 
 #### 风险与对策
 
@@ -157,6 +185,8 @@ UBT 会扫描 `Source/**` 的所有 `*.Build.cs`。合并后的新模块放在 `
 4. 签名去重 + 版本文件 v2 + Mono 载荷存在性门（0.5 天）
 5. submodule 移位（甲/乙）+ 旧 Build.cs 退役（0.5 天）
 6. 六组合回归 + 文档（0.5~1 天）
+7. 新子仓库组装（脚本拷贝/更名、workflow 合并 10 leg、Release 政策）+ 插件换 gitlink（0.5 天）——用户拍板后并入
+
 
 #### 对"先不动"的反驳
 
