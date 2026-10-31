@@ -49,8 +49,7 @@ PY
 grep -A2 "^\[UnrealSharp\]" "$IOSINI" || echo "(IOSEngine.ini: default Mono)"
 
 # UBT caches Build.cs evaluation per makefile; force re-evaluation.
-touch "$PROJ/Plugins/UnrealSharp/Source/ThirdParty/MonoSDK/MonoSDK.Build.cs" \
-      "$PROJ/Plugins/UnrealSharp/Source/ThirdParty/CoreClrSDK/CoreClrSDK.Build.cs"
+touch "$PROJ/Plugins/UnrealSharp/Source/ThirdParty/DotNetRuntimeSDK/DotNetRuntimeSDK.Build.cs"
 
 # ---- Step 1.5: ABI gate -------------------------------------------------------
 # CoreCLR's interpreter rejects calli that need P/Invoke marshalling (string/ref/

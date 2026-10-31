@@ -61,8 +61,7 @@ grep -n "DotNetRuntimeEditor" "$PROJ/Config/DefaultEngine.ini"
 # UBT caches Build.cs evaluation results per makefile; ini-only changes don't
 # invalidate them. Touch both SDK Build.cs files so the runtime-selection gate
 # (ShouldUseMono) is re-evaluated with the new ini state.
-touch "$PROJ/Plugins/UnrealSharp/Source/ThirdParty/MonoSDK/MonoSDK.Build.cs" \
-      "$PROJ/Plugins/UnrealSharp/Source/ThirdParty/CoreClrSDK/CoreClrSDK.Build.cs"
+touch "$PROJ/Plugins/UnrealSharp/Source/ThirdParty/DotNetRuntimeSDK/DotNetRuntimeSDK.Build.cs"
 
 # ---- Step 1.5: ABI gate -------------------------------------------------------
 # CoreCLR's interpreter rejects calli that need P/Invoke marshalling (string/ref/
