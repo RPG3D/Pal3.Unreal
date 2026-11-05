@@ -80,7 +80,9 @@ shift & goto :parse_args
 
 rem -- Engine path (from registry, matches .uproject EngineAssociation) --
 :find_engine
-set "ENGINE_GUID={8A76C2A2-4968-00D2-732B-03A4200B8146}"
+set "ENGINE_GUID="
+for /f "tokens=2 delims=:, " %%A in ('findstr /i "EngineAssociation" "%PROJ_FILE%"') do set "ENGINE_GUID=%%~A"
+if "%ENGINE_GUID%"=="" set "ENGINE_GUID={8A76C2A2-4968-00D2-732B-03A4200B8146}"
 for /f "tokens=2,*" %%a in ('reg query "HKCU\Software\Epic Games\Unreal Engine\Builds" /v "%ENGINE_GUID%" 2^>nul ^| C:\Windows\System32\find.exe "REG_SZ"') do set "ENGINE=%%b"
 if "%ENGINE%"=="" (
     echo [ERROR] Cannot find UE5 engine for GUID %ENGINE_GUID%

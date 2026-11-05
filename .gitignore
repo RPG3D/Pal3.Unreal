@@ -125,3 +125,7 @@ Content/ParagonShinbi/
 # Per-combo scratch state written by build-android-mac.sh
 Config/Android/AndroidEngine.ini
 SharpDemo.uproject.DotSettings.user
+
+# build/script artifacts (local)
+Archives/
+Script/ManagedSharpDemo/pre.xml
