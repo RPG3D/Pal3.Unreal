@@ -1,16 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
 using UnrealSharp;
 using UnrealSharp.Attributes;
-using UnrealSharp.Core;
 using UnrealSharp.CoreUObject;
 using UnrealSharp.Engine;
-using UnrealSharp.EnhancedInput;
-
 
 namespace ManagedSharpDemo
 {
@@ -19,11 +11,7 @@ namespace ManagedSharpDemo
     {
         public AScriptGameMode()
         {
-            // The Shinbi sample character is a placeholder; spawning it loads a
-            // skeletal mesh on every launch. Default to a lightweight spectator pawn
-            // (PAL3 drives its own camera) and keep the sample pawn behind a switch.
-            bool bSamplePawn = Environment.GetEnvironmentVariable("SHARP_SAMPLE_PAWN") == "1";
-            DefaultPawnClass = bSamplePawn ? typeof(AScriptCharacter) : typeof(ASpectatorPawn);
+            DefaultPawnClass = typeof(ASpectatorPawn);
         }
 
         public override void BeginPlay()
@@ -39,8 +27,10 @@ namespace ManagedSharpDemo
             UnrealSharp.Log.UnrealLogger.LogWarning("ManagedSharpDemo",
                 "[PIE-Diag] GameMode BeginPlay done (driver spawn deferred to next tick)");
             UnrealSharp.Engine.SystemLibrary.SetTimerForNextTick(this, "SpawnPal3DriverNextTick");
+#endif
         }
 
+#if PAL3
         [UFunction]
         public void SpawnPal3DriverNextTick()
         {
