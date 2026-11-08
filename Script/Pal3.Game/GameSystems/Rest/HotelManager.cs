@@ -38,12 +38,15 @@ namespace Pal3.Game.GameSystems.Rest
             CommandExecutorRegistry<ICommand>.Instance.UnRegister(this);
         }
 
-        private void Rest(string sceneCityName, string sceneName, uint afterRestTalkScript)
+        private void Rest(string sceneCityName, string sceneName, uint afterRestTalkScript, Action? afterRest = null)
         {
-            _sceneManager.LoadScene(sceneCityName, sceneName);
-            Pal3Game.Instance.Execute(new GameStateChangeRequest(GameState.Cutscene));
-            Pal3Game.Instance.Execute(new CameraFadeInCommand());
-            _scriptManager.AddScript(afterRestTalkScript);
+            _sceneManager.BeginLoadScene(sceneCityName, sceneName, () =>
+            {
+                Pal3Game.Instance.Execute(new GameStateChangeRequest(GameState.Cutscene));
+                Pal3Game.Instance.Execute(new CameraFadeInCommand());
+                _scriptManager.AddScript(afterRestTalkScript);
+                afterRest?.Invoke();
+            });
         }
 
         public void Execute(UIShowHotelMenuCommand command)
@@ -59,8 +62,8 @@ namespace Pal3.Game.GameSystems.Rest
                      _userVariableStore.Get(ScriptConstants.MainStoryVariableId) == 120301)
             {
                 _userVariableStore.Set(ScriptConstants.MainStoryVariableId, 120302);
-                Rest("Q13", "n06", (uint)command.AfterRestScriptId);
-                Pal3Game.Instance.Execute(new CameraSetDefaultTransformCommand(2));
+                Rest("Q13", "n06", (uint)command.AfterRestScriptId,
+                    () => Pal3Game.Instance.Execute(new CameraSetDefaultTransformCommand(2)));
             }
             else
             {

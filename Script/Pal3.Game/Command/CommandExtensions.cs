@@ -6,8 +6,10 @@
 namespace Pal3.Game.Command
 {
     using System;
+    using System.Globalization;
     using System.Reflection;
     using System.Text;
+    using System.Text.Json;
     using Core.Command;
 
     public static class CommandExtensions
@@ -22,7 +24,15 @@ namespace Pal3.Game.Command
 
             foreach (PropertyInfo propertyInfo in type.GetProperties())
             {
-                builder.Append(propertyInfo.GetValue(command));
+                object value = propertyInfo.GetValue(command);
+                string text = value switch
+                {
+                    string s when s.Length == 0 || s.IndexOfAny(new[] { ' ', '\t', '\r', '\n', '"' }) >= 0
+                        => JsonSerializer.Serialize(s),
+                    IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
+                    _ => value?.ToString() ?? ""
+                };
+                builder.Append(text);
                 builder.Append(' ');
             }
 

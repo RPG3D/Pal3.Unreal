@@ -12,10 +12,16 @@ using Engine.Core.Abstraction;
 using Engine.Core.Implementation;
 using Engine.Services;
 using Pal3.Core.Contract.Constants;
+using Pal3.Core.DataReader.Scn;
+using Pal3.Core.DataReader.Sce;
 using Pal3.Core.Command.SceCommands;
 using Pal3.Game.Command.Extensions;
+using Pal3.Game.Command;
 using Pal3.Game.Dev;
+using Pal3.Game.Data;
+using Pal3.Game.GamePlay;
 using Pal3.Game.GameSystems.Team;
+using Pal3.Game.Scene;
 using Pal3.Game.Script;
 using Pal3.Game.State;
 using UnityEngine;
@@ -78,8 +84,9 @@ namespace Pal3.Game
             _summaryLogged = false;
             _fullBootStarted = false;
             s_InputActions = null;
-            s_AutoDialogueTimer = 0f;
             WaitingForMenuStart = false;
+            IsGameReady = false;
+            AutoDialogueEnabled = false;
             CameraActor = null;
 
             // Prefab instantiation hook is re-installed by RunFullBoot.
@@ -100,9 +107,10 @@ namespace Pal3.Game
             Pal3.Game.Data.GameResourceProvider.ResetStaticCaches();
             UnityEngine.SceneLighting.Reset();
 
-            // HUD overlay: drop the previous dialogue line / boot menu / RC flags.
+            // Clear managed presentation state from the previous PIE session.
             Engine.Diagnostics.DebugOverlay.ResetForNewSession();
-            Pal3.Game.Dev.DialogueAvatarBridge.Clear();
+            Pal3.Game.Dev.DialoguePresentation.Clear();
+            Pal3.Game.Dev.DialoguePresentation.ClearChoices();
             try { UnrealSharp.SharpDemo.UPal3AudioHelper.StopAllAudio(); }
             catch (Exception) { }
 
@@ -125,11 +133,6 @@ namespace Pal3.Game
             _summaryLogged = false;
         }
 
-        // Dialogue auto-advance is RC-toggleable (UPal3DebugOverlay.SetAutoDialogue):
-        // the boot menu starts with it OFF so scenes can be frozen and inspected;
-        // autostart mode turns it on automatically (verification loop). The input
-        // bridge doesn't exist yet, so without this cutscene dialogue stalls forever.
-        private static float s_AutoDialogueTimer;
         private static Pal3.Game.Input.PlayerInputActions? s_InputActions;
 
         /// <summary>Input actions for the keyboard bridge (null before game init).</summary>
@@ -149,42 +152,6 @@ namespace Pal3.Game
             }
         }
 
-
-        /// <summary>
-        /// Debug driver: with PAL3_AUTODIALOGUE=1 press "continue" every 2.5 s so
-        /// cutscene dialogue advances without any UI/input backend. This is what lets
-        /// the first story segment run end-to-end while those layers are still stubs.
-        /// </summary>
-        public static void TickAutoDialogue(float deltaTime)
-        {
-            // RC single-step: one advance pulse per request (works even with
-            // auto-advance off, so the story can be walked frame-accurately).
-            if (Engine.Diagnostics.DebugOverlay.ConsumeAdvanceDialogueRequest())
-            {
-                PulseDialogueContinue();
-                return;
-            }
-
-            if (!Engine.Diagnostics.DebugOverlay.AutoDialogueEnabled) return;
-            s_AutoDialogueTimer += deltaTime;
-            if (s_AutoDialogueTimer < 2.5f) return;
-            s_AutoDialogueTimer = 0f;
-            PulseDialogueContinue();
-        }
-
-        private static void PulseDialogueContinue()
-        {
-            try
-            {
-                s_InputActions ??= Engine.Services.ServiceLocator.Instance.Get<Pal3.Game.Input.PlayerInputActions>();
-                s_InputActions.Cutscene.Continue.SimulatePerformed();
-            }
-            catch (Exception)
-            {
-                // Input actions not registered yet (early boot) - retry next tick.
-            }
-
-        }
 
         /// <summary>Call every frame after GameEntityScriptRuntime.TickAll; logs the probe verdict.</summary>
         public static void TickSmokeProbe(float deltaTime)
@@ -323,9 +290,9 @@ namespace Pal3.Game
                         object component = TryGetEngineSingleton(scriptType)
                             ?? Activator.CreateInstance(scriptType, nonPublic: true)!;
                         GameEntityScriptRuntime.Activate(component);
-                        if (component is Pal3Game pal3Game)
+                        if (component is Pal3Game)
                         {
-                            OnGameSingletonReady(pal3Game);
+                            OnGameSingletonReady();
                         }
                     }
                 }
@@ -351,35 +318,40 @@ namespace Pal3.Game
         }
 
         /// <summary>
-        /// Dev autostart (<c>PAL3_AUTOSTART=1</c>): skip the (still invisible) main menu
+        /// Dev autostart (<c>PAL3_AUTOSTART=1</c>): skip the JSON start menu
         /// and enter the game exactly like <c>MainMenu.StartNewGame()</c> does. This is
-        /// the headless verifier for the port until the UI backend exists.
+        /// the headless verifier for the port.
         /// </summary>
-        private static void OnGameSingletonReady(Pal3Game game)
+        private static void OnGameSingletonReady()
         {
+            IsGameReady = true;
             // Pal3Game.Update/LateUpdate are dispatched by GameEntityScriptRuntime's
             // active-script loop (Activate registered the singleton); no extra hook.
 
-            if (Environment.GetEnvironmentVariable("PAL3_AUTOSTART") == "1")
+            if (Environment.GetEnvironmentVariable("PAL3_AUTOSTART") == "1" && StartNewGameNow())
             {
-                StartNewGameNow();
-                // Verification loop: auto-advance dialogue from the start. Menu mode
-                // leaves it OFF until RC toggles it (UPal3DebugOverlay.SetAutoDialogue).
-                Engine.Diagnostics.DebugOverlay.AutoDialogueEnabled = true;
+                AutoDialogueEnabled = true;
                 return;
             }
 
-            // Minimal start menu (referencing upstream MainMenu.StartNewGame):
-            // without PAL3_AUTOSTART the story waits for an explicit Enter press so
-            // the script start can be timed precisely during verification. The hint
-            // shows up in the C++ debug overlay; APal3Driver polls the key and calls
-            // TryStartFromMenu().
+            // APal3Driver presents the JSON UMG start menu when boot is ready.
             WaitingForMenuStart = true;
-            Debug.PushDebug("PAL3 - 按 Enter 开始游戏 / press Enter to start");
         }
 
         /// <summary>Set while the minimal start menu is waiting for input.</summary>
         public static bool WaitingForMenuStart { get; private set; }
+        public static bool IsGameReady { get; private set; }
+        public static bool AutoDialogueEnabled { get; set; }
+
+        public static bool HasPlayerControl()
+        {
+            if (!IsGameReady || WaitingForMenuStart) return false;
+            var services = ServiceLocator.Instance;
+            var player = services.Get<PlayerActorManager>();
+            return services.Get<GameStateManager>().GetCurrentState() == GameState.Gameplay &&
+                !services.Get<SceneManager>().IsLoading &&
+                player.IsPlayerInputEnabled() && player.IsPlayerActorControlEnabled();
+        }
 
         /// <summary>
         /// Same sequence as upstream MainMenu's "新的游戏" button: ResetGameStateCommand
@@ -387,7 +359,7 @@ namespace Pal3.Game
         /// (77,77,77) parking spot), then main story var reset, init script, team actor,
         /// Cutscene state.
         /// </summary>
-        public static void StartNewGameNow()
+        public static bool StartNewGameNow()
         {
             try
             {
@@ -411,20 +383,109 @@ namespace Pal3.Game
                     .TryGoToState(GameState.Cutscene);
                 Debug.Log($"[Pal3Boot] start: reset + main story var + init script {ScriptConstants.InitScriptId} "
                           + $"+ team actor 0 -> Cutscene: {ok}");
+                return ok;
             }
             catch (Exception e)
             {
                 Debug.LogError("[Pal3Boot] start failed: " + e);
+                return false;
             }
         }
 
-        /// <summary>Called by APal3Driver when the menu's Enter key is pressed.</summary>
-        public static void TryStartFromMenu()
+        public static void StartFromMenu()
         {
-            if (!WaitingForMenuStart) return;
+            if (!StartNewGameNow())
+            {
+                throw new InvalidOperationException("无法启动开场剧情，请查看 PAL3 日志。");
+            }
             WaitingForMenuStart = false;
-            Debug.PushDebug("PAL3 - 游戏开始 / story started");
-            StartNewGameNow();
+        }
+
+        public static void StartFromCheckpoint(string name)
+        {
+            var commands = CommandText.Parse(DevCommands.StoryJumpPoints[name]);
+            foreach (var command in commands)
+            {
+                if (command is SceneLoadCommand scene)
+                {
+                    CheckSceneResources(scene.SceneCityName, scene.SceneName);
+                }
+            }
+
+            var services = ServiceLocator.Instance;
+            services.Get<MainMenu>().HideMenu();
+            services.Get<SaveManager>().IsAutoSaveEnabled = false;
+            Pal3Game.Instance.Execute(new CameraFollowPlayerCommand(0));
+            Pal3Game.Instance.Execute(new ResetGameStateCommand());
+            services.Get<GameStateManager>().TryGoToState(GameState.Cutscene);
+            services.Get<SceneManager>().RunSceneCommands(commands);
+            WaitingForMenuStart = false;
+        }
+
+        public static void SwitchScene(string city, string scene, int tileX, int tileY)
+        {
+            CheckSceneResources(city, scene);
+            var game = Pal3Game.Instance;
+            if (WaitingForMenuStart)
+            {
+                ServiceLocator.Instance.Get<MainMenu>().HideMenu();
+                game.Execute(new CameraFollowPlayerCommand(0));
+                game.Execute(new ResetGameStateCommand());
+                ServiceLocator.Instance.Get<TeamManager>().AddActor(0);
+            }
+            game.Execute(new PlayerEnableInputCommand(0));
+            ServiceLocator.Instance.Get<SceneManager>().RunSceneCommands(
+            [
+                new SceneLoadCommand(city, scene),
+                new ActorActivateCommand(-1, 1),
+                new ActorSetNavLayerCommand(-1, 0),
+                new ActorSetTilePositionCommand(-1, tileX, tileY),
+                new ActorEnablePlayerControlCommand(-1),
+                new CameraFollowPlayerCommand(1),
+                new CameraFadeInCommand(),
+                new PlayerEnableInputCommand(1)
+            ]);
+            WaitingForMenuStart = false;
+        }
+
+        public static void LoadFromSlot(int slot)
+        {
+            var services = ServiceLocator.Instance;
+            var saves = services.Get<SaveManager>();
+            string data = saves.LoadFromSaveSlot(slot)
+                ?? throw new InvalidOperationException($"存档 {slot} 为空。");
+            saves.Restore(data, () =>
+            {
+                services.Get<MainMenu>().HideMenu();
+                Pal3Game.Instance.Execute(new CameraFollowPlayerCommand(0));
+            });
+            WaitingForMenuStart = false;
+        }
+
+        public static void SaveToSlot(int slot)
+        {
+            if (slot is < 1 or > SaveManager.ManualSlotCount)
+                throw new ArgumentOutOfRangeException(nameof(slot));
+            var services = ServiceLocator.Instance;
+            var player = services.Get<Pal3.Game.GamePlay.PlayerActorManager>();
+            if (services.Get<GameStateManager>().GetCurrentState() != GameState.Gameplay ||
+                services.Get<ScriptManager>().GetNumberOfRunningScripts() != 0 ||
+                !player.IsPlayerInputEnabled() || !player.IsPlayerActorControlEnabled())
+            {
+                throw new InvalidOperationException("只能在可操作状态存档。");
+            }
+            var saves = services.Get<SaveManager>();
+            var commands = saves.ConvertCurrentGameStateToCommands(SaveLevel.Full)
+                ?? throw new InvalidOperationException("当前没有可存档的 PAL3 场景。");
+            if (!saves.SaveGameStateToSlot(slot, commands))
+                throw new System.IO.IOException($"写入存档 {slot} 失败。");
+        }
+
+        internal static void CheckSceneResources(string city, string scene)
+        {
+            var resources = ServiceLocator.Instance.Get<GameResourceProvider>();
+            resources.GetGameResourceFile<ScnFile>(FileConstants.GetScnFileVirtualPath(city, scene));
+            resources.GetGameResourceFile<SceFile>(FileConstants.GetSceneSceFileVirtualPath(city));
         }
     }
 }

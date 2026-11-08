@@ -34,6 +34,7 @@ namespace Pal3.Game.State
     using GameSystems.Team;
     using Scene;
     using Script;
+    using UI;
 
     #if PAL3A
     using GameSystems.Task;
@@ -53,7 +54,10 @@ namespace Pal3.Game.State
         ICommandExecutor<GameSwitchToMainMenuCommand>
     {
         public const int AutoSaveSlotIndex = 0;
+        public const int ManualSlotCount = 5;
         public bool IsAutoSaveEnabled { get; set; } = false;
+        public bool IsRestoring => _restore != null;
+        public string? LastLoadError { get; private set; }
 
         private const string SAVE_FILE_FORMAT = "slot_{0}_v1.txt";
         private const string SAVE_FOLDER_NAME = "Saves";
@@ -76,6 +80,9 @@ namespace Pal3.Game.State
         private readonly PostProcessManager _postProcessManager;
 
         private double _lastAutoSaveTime = -AUTO_SAVE_MIN_DURATION;
+        private readonly string _saveFolder;
+        private sealed record PendingRestore(SceneLoadCommand Scene, ICommand[] Deferred, Guid GameplayLock);
+        private PendingRestore? _restore;
 
         public SaveManager(SceneManager sceneManager,
             PlayerActorManager playerActorManager,
@@ -109,11 +116,12 @@ namespace Pal3.Game.State
             _audioManager = Requires.IsNotNull(audioManager, nameof(audioManager));
             _postProcessManager = Requires.IsNotNull(postProcessManager, nameof(postProcessManager));
 
-            string saveFolder = GetSaveFolderPath();
-            if (!Directory.Exists(saveFolder))
-            {
-                Directory.CreateDirectory(saveFolder);
-            }
+            string? overridePath = Environment.GetEnvironmentVariable("PAL3_SAVE_DIR");
+            _saveFolder = string.IsNullOrWhiteSpace(overridePath)
+                ? Path.Combine(UnrealSharp.Engine.Paths.ConvertRelativePathToFull(
+                    UnrealSharp.Engine.Paths.ProjectSavedDir(), ""), SAVE_FOLDER_NAME)
+                : Path.GetFullPath(overridePath);
+            Directory.CreateDirectory(_saveFolder);
 
             CommandExecutorRegistry<ICommand>.Instance.Register(this);
         }
@@ -123,14 +131,13 @@ namespace Pal3.Game.State
             CommandExecutorRegistry<ICommand>.Instance.UnRegister(this);
         }
 
-        private string GetSaveFolderPath()
-        {
-            return UnityEngine.Application.persistentDataPath + Path.DirectorySeparatorChar + SAVE_FOLDER_NAME;
-        }
-
         private string GetSaveFilePath(int slotIndex)
         {
-            return GetSaveFolderPath() + Path.DirectorySeparatorChar + string.Format(SAVE_FILE_FORMAT, slotIndex);
+            if (slotIndex < AutoSaveSlotIndex || slotIndex > ManualSlotCount)
+            {
+                throw new ArgumentOutOfRangeException(nameof(slotIndex));
+            }
+            return Path.Combine(_saveFolder, string.Format(SAVE_FILE_FORMAT, slotIndex));
         }
 
         public bool SaveSlotExists(int slotIndex)
@@ -146,9 +153,11 @@ namespace Pal3.Game.State
         public bool SaveGameStateToSlot(int slotIndex, IList<ICommand> stateCommands)
         {
             string saveFilePath = GetSaveFilePath(slotIndex);
+            string temporaryPath = saveFilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try
             {
-                File.WriteAllText(saveFilePath, string.Join('\n', stateCommands.Select(CommandExtensions.ToString).ToList()));
+                File.WriteAllText(temporaryPath, string.Join('\n', stateCommands.Select(CommandExtensions.ToString)));
+                File.Move(temporaryPath, saveFilePath, overwrite: true);
                 EngineLogger.Log($"Game state saved to: {saveFilePath}");
                 return true;
             }
@@ -157,11 +166,107 @@ namespace Pal3.Game.State
                 EngineLogger.LogException(ex);
                 return false;
             }
+            finally
+            {
+                try { File.Delete(temporaryPath); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
         }
 
         public string LoadFromSaveSlot(int slotIndex)
         {
             return SaveSlotExists(slotIndex) ? File.ReadAllText(GetSaveFilePath(slotIndex)) : null;
+        }
+
+        public void Restore(string content, Action beforeRestore)
+        {
+            if (IsRestoring) throw new InvalidOperationException("A PAL3 save is already loading.");
+            var commands = CommandText.Parse(content);
+            if (commands.Length == 0 || commands[0] is not ResetGameStateCommand ||
+                commands.Skip(1).Any(command => command is ResetGameStateCommand))
+            {
+                throw new FormatException("The save must begin with one ResetGameState command.");
+            }
+
+            var scenes = commands.OfType<SceneLoadCommand>().ToArray();
+            if (scenes.Length != 1 || commands.LastOrDefault(command => command is PlayerEnableInputCommand)
+                    is not PlayerEnableInputCommand { Enable: 1 })
+            {
+                throw new FormatException("The save must identify one PAL3 scene and restore player input.");
+            }
+            var scene = scenes[0];
+            Pal3Boot.CheckSceneResources(scene.SceneCityName, scene.SceneName);
+
+            var services = ServiceLocator.Instance;
+            var state = services.Get<GameStateManager>();
+            var information = services.Get<InformationManager>();
+            var game = Pal3Game.Instance;
+            beforeRestore();
+            LastLoadError = null;
+            IsAutoSaveEnabled = false;
+            information.EnableNoteDisplay(false);
+            try
+            {
+                game.Execute(commands[0]);
+                _restore = new PendingRestore(scene, commands.Where(DeferUntilSceneReady).ToArray(), Guid.NewGuid());
+                state.AddGamePlayStateLocker(_restore.GameplayLock);
+                game.Execute(new PlayerEnableInputCommand(0));
+                _sceneManager.RunSceneCommands(commands.Skip(1).Where(command => !DeferUntilSceneReady(command)).ToArray(),
+                    CancelRestore);
+                CompleteRestoreIfReady();
+            }
+            catch (Exception e)
+            {
+                CancelRestore(e);
+                throw;
+            }
+        }
+
+        private static bool DeferUntilSceneReady(ICommand command) =>
+            command is ActorActivateCommand or ActorSetNavLayerCommand or ActorSetWorldPositionCommand or
+                ActorSetYPositionCommand or ActorSetFacingCommand or ActorSetScriptCommand or CameraFadeInCommand or
+                PlayerEnableInputCommand;
+
+        internal void CompleteRestoreIfReady()
+        {
+            if (_restore is not { } restore || _sceneManager.IsLoading || _scriptManager.GetNumberOfRunningScripts() > 0) return;
+            try
+            {
+                if (_sceneManager.GetCurrentScene() is not { } current ||
+                    !current.GetSceneInfo().Is(restore.Scene.SceneCityName, restore.Scene.SceneName))
+                {
+                    throw new InvalidOperationException("The scene entry script left the saved scene.");
+                }
+
+                var game = Pal3Game.Instance;
+                foreach (ICommand command in restore.Deferred.Where(command => command is not PlayerEnableInputCommand))
+                {
+                    game.Execute(command);
+                }
+                ServiceLocator.Instance.Get<GameStateManager>().RemoveGamePlayStateLocker(restore.GameplayLock);
+                ServiceLocator.Instance.Get<InformationManager>().EnableNoteDisplay(true);
+                _restore = null;
+                game.Execute(new PlayerEnableInputCommand(1));
+                IsAutoSaveEnabled = true;
+                EngineLogger.Log($"Restored PAL3 save in {restore.Scene.SceneCityName}/{restore.Scene.SceneName}");
+            }
+            catch (Exception e)
+            {
+                CancelRestore(e);
+            }
+        }
+
+        private void CancelRestore(Exception error)
+        {
+            if (_restore is { } restore)
+            {
+                ServiceLocator.Instance.Get<GameStateManager>().RemoveGamePlayStateLocker(restore.GameplayLock);
+            }
+            _restore = null;
+            LastLoadError = error.GetBaseException().Message;
+            ServiceLocator.Instance.Get<InformationManager>().EnableNoteDisplay(true);
+            EngineLogger.LogException(error);
         }
 
         public List<ICommand> ConvertCurrentGameStateToCommands(SaveLevel saveLevel)
@@ -390,7 +495,7 @@ namespace Pal3.Game.State
 
         public void Execute(GameStateChangedNotification command)
         {
-            if (!IsAutoSaveEnabled) return;
+            if (!IsAutoSaveEnabled || IsRestoring) return;
 
             // Auto save game state in auto-save slot when entering gameplay state
             // and no script is running

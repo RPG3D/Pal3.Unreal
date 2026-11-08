@@ -46,6 +46,10 @@ namespace Pal3.Game.Script
         public uint ScriptId { get; }
         public PalScriptType ScriptType { get; }
         public string ScriptDescription { get; }
+        internal string? LastCommand { get; private set; }
+        internal long? LastCommandOffset { get; private set; }
+        internal string? CurrentWaiter => _waiters.TryPeek(out var waiter) ? waiter.GetType().Name : null;
+        internal bool IsDisposed => _isDisposed;
 
         private readonly ISceCommandParser _sceCommandParser;
         private readonly IPalScriptPatcher _scriptPatcher;
@@ -113,6 +117,8 @@ namespace Pal3.Game.Script
 
         public bool Update(float deltaTime)
         {
+            if (_isDisposed) return false;
+
             var canExecute = true;
 
             if (_waiters.Count > 0)
@@ -139,6 +145,14 @@ namespace Pal3.Game.Script
             }
         }
 
+        private bool _pauseForSceneLoad;
+
+        internal void WaitForSceneLoad(WaitUntilCanceled waiter)
+        {
+            _waiters.Push(waiter);
+            _pauseForSceneLoad = true;
+        }
+
         private bool Execute()
         {
             if (_isDisposed) return false;
@@ -154,6 +168,11 @@ namespace Pal3.Game.Script
                    _scriptDataReader.Position < _scriptDataReader.Length)
             {
                 ExecuteNextCommand();
+                if (_pauseForSceneLoad)
+                {
+                    _pauseForSceneLoad = false;
+                    break;
+                }
                 if (_executionMode == ScriptExecutionMode.Asynchronous) break;
             }
 
@@ -180,6 +199,8 @@ namespace Pal3.Game.Script
                 command = fixedCommand;
             }
 
+            LastCommand = command.GetType().Name;
+            LastCommandOffset = cmdPosition;
             EngineLogger.Log($"{ScriptType} Script " +
                       $"[{ScriptId} {ScriptDescription} [{cmdPosition}]: " +
                       $"{command.GetType().Name.Replace("Command", "")} [{commandId}] " +

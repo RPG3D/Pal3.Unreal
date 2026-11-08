@@ -53,9 +53,7 @@ namespace Pal3.Game.Audio
         private string _currentScriptMusic = string.Empty;
         private readonly List<string> _playingSfxSourceNames = new ();
 
-        // TODO: Maybe it is better to control movement sfx
-        // by the player gameplay controller instead of AudioManager?
-        private bool _playerMovementSfxInProgress;
+        private uint _playerMovementSfxVersion;
 
         private CancellationTokenSource _sceneAudioCts = new ();
 
@@ -151,7 +149,7 @@ namespace Pal3.Game.Audio
             }
             else if (loopCount == -1 && interval > 0f)
             {
-                while (!cancellationToken.IsCancellationRequested && audioSource != null)
+                while (!cancellationToken.IsCancellationRequested && audioSource != null && audioSource.enabled)
                 {
                     audioSource.PlayOneShot(audioClip, volume);
                     yield return CoroutineYieldInstruction.WaitForSeconds(audioClip.length + interval);
@@ -159,7 +157,7 @@ namespace Pal3.Game.Audio
             }
             else
             {
-                while (--loopCount >= 0 && !cancellationToken.IsCancellationRequested && audioSource != null)
+                while (--loopCount >= 0 && !cancellationToken.IsCancellationRequested && audioSource != null && audioSource.enabled)
                 {
                     audioSource.PlayOneShot(audioClip, volume);
                     yield return CoroutineYieldInstruction.WaitForSeconds(audioClip.length);
@@ -174,7 +172,8 @@ namespace Pal3.Game.Audio
             int loopCount,
             float volume,
             float interval = 0f,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            uint? movementSfxVersion = null)
         {
             if (parent.IsNullOrDisposed() || cancellationToken.IsCancellationRequested) yield break;
 
@@ -187,11 +186,9 @@ namespace Pal3.Game.Audio
                 cancellationToken.IsCancellationRequested ||
                 sfxAudioClip == null) yield break;
 
-            if (parent.NativeObject != _cameraEntity.NativeObject &&
-                audioSourceName == AudioConstants.PlayerActorMovementSfxAudioSourceName &&
-                _playerMovementSfxInProgress == false)
+            if (movementSfxVersion is { } version && version != _playerMovementSfxVersion)
             {
-                yield break; // Means movement sfx is already stopped before it started due to the delay of the coroutine
+                yield break;
             }
 
             if (parent.NativeObject == _cameraEntity.NativeObject &&
@@ -348,10 +345,8 @@ namespace Pal3.Game.Audio
 
         public void Execute(AttachSfxToGameEntityRequest request)
         {
-            if (request.AudioSourceName == AudioConstants.PlayerActorMovementSfxAudioSourceName)
-            {
-                _playerMovementSfxInProgress = true;
-            }
+            uint? movementSfxVersion = request.AudioSourceName == AudioConstants.PlayerActorMovementSfxAudioSourceName
+                ? ++_playerMovementSfxVersion : null;
 
             string sfxFilePath = _resourceProvider.GetSfxFilePath(request.SfxName);
             CancellationToken cancellationToken = _sceneAudioCts.Token;
@@ -362,7 +357,8 @@ namespace Pal3.Game.Audio
                     request.LoopCount,
                     request.Volume,
                     request.Interval,
-                    cancellationToken),
+                    cancellationToken,
+                    movementSfxVersion),
                 cancellationToken));
         }
 
@@ -370,7 +366,7 @@ namespace Pal3.Game.Audio
         {
             if (command.AudioSourceName == AudioConstants.PlayerActorMovementSfxAudioSourceName)
             {
-                _playerMovementSfxInProgress = false;
+                ++_playerMovementSfxVersion;
             }
 
             if (command.Parent == null || command.Parent.IsNativeObjectDisposed) return;

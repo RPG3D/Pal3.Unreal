@@ -1,5 +1,7 @@
 # PAL3 上游代码跨引擎化改造建议
 
+> 这是一份 2026-11-06 的架构提案，文中的统计、工期和清理清单属于当时的估算。当前优先交付可用的 UE 移植，再减少与 PAL3.Unity 的差异。玩家与 NPC 已共用上游移动逻辑，朝向在 wrapper 处理。当前入口和待办见[项目 README](../README.md)。
+
 > 目标：让 `Pal3.Core` + `Pal3.Game` 的游戏逻辑**不依赖任何引擎**，同一份代码既能在 Unity（上游）里跑，也能在 UnrealSharp/UE 里跑。
 > 本文只做设计与清单，不含代码改动。
 > 依据：对上游 `D:\Code\PAL3.Unity\Assets\Scripts` 与移植侧 `D:\UEProject\SharpDemo\Script` 的实测统计（2026-11-06）。
@@ -307,3 +309,7 @@ Pal3.Core 读文件：File.ReadAllBytes → ICpkFileSystem / IMv3Model / ICvdMod
 | `Pal3.Game/Stubs/Pal3Boot.cs` | 169 | `AutoFillStubFields`/`InstantiateHook` 反射段删除，改为 `GameViewConfig` 装配 |
 
 预期最终 `Script/Stubs` 总量 < 400 行，且**全部是真实行为**，没有"编译可行、运行无效"的假实现。
+
+## 后续评估 · MonoBehaviour 兼容
+
+- TODO：在现有 `APal3Driver.Tick → GameEntityScriptRuntime` 上评估轻量 MonoBehaviour 兼容层。先挑一个真实的上游玩法组件验证挂载、`Awake`、首次 `Start`、禁用与重启、销毁和协程清理。生命周期仍由同一个帧入口驱动。

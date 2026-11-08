@@ -3,12 +3,17 @@
 #include "JsonButton.h"
 
 #include "Blueprint/WidgetTree.h"
+#include "Blueprint/SlateBlueprintLibrary.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
 #include "Components/Border.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
+#include "Components/Image.h"
 #include "Components/ProgressBar.h"
 #include "Components/TextBlock.h"
+#include "Components/WidgetSwitcher.h"
 #include "Dom/JsonObject.h"
+#include "Engine/Texture2D.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Styling/SlateBrush.h"
@@ -20,6 +25,23 @@
 
 namespace
 {
+	bool IsActiveButton(const UWidget* Button)
+	{
+		for (const UWidget* Widget = Button; Widget; Widget = Widget->GetParent())
+		{
+			if (!Widget->IsVisible() || Widget->GetVisibility() == ESlateVisibility::HitTestInvisible ||
+				!Widget->GetIsEnabled())
+			{
+				return false;
+			}
+			if (const UWidgetSwitcher* Switcher = Cast<UWidgetSwitcher>(Widget->GetParent()))
+			{
+				if (Switcher->GetActiveWidget() != Widget) return false;
+			}
+		}
+		return true;
+	}
+
 	FString GetString(const TSharedPtr<FJsonObject>& Object, const TCHAR* Field, const FString& Default = TEXT(""))
 	{
 		FString Value;
@@ -124,6 +146,21 @@ namespace
 				Slot->SetAnchors(FAnchors(0.5f, 1.0f));
 				Slot->SetAlignment(FVector2D(0.5f, 1.0f));
 			}
+			else if (Anchor.Equals(TEXT("bottom_left"), ESearchCase::IgnoreCase))
+			{
+				Slot->SetAnchors(FAnchors(0.0f, 1.0f));
+				Slot->SetAlignment(FVector2D(0.0f, 1.0f));
+			}
+			else if (Anchor.Equals(TEXT("top_right"), ESearchCase::IgnoreCase))
+			{
+				Slot->SetAnchors(FAnchors(1.0f, 0.0f));
+				Slot->SetAlignment(FVector2D(1.0f, 0.0f));
+			}
+			else if (Anchor.Equals(TEXT("bottom_right"), ESearchCase::IgnoreCase))
+			{
+				Slot->SetAnchors(FAnchors(1.0f, 1.0f));
+				Slot->SetAlignment(FVector2D(1.0f, 1.0f));
+			}
 			else
 			{
 				Slot->SetAnchors(FAnchors(0.0f, 0.0f));
@@ -152,6 +189,9 @@ namespace
 		UTextBlock* Text = Tree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		const FString Content = GetString(Element, TEXT("text"), DefaultText);
 		Text->SetText(FText::FromString(Content));
+		bool bWrap = false;
+		Element->TryGetBoolField(TEXT("wrap"), bWrap);
+		Text->SetAutoWrapText(bWrap);
 
 		FSlateFontInfo Font = Text->GetFont();
 		Font.Size = (int32)GetNumber(Element, TEXT("fontSize"), Font.Size);
@@ -210,6 +250,22 @@ bool URuntimeJsonWidget::BuildFromJson(const FString& Json)
 
 	WidgetTree->RootWidget = nullptr;
 	ElementsById.Reset();
+	LastClickedId.Reset();
+	LastNotifiedId.Reset();
+	KeyActions.Reset();
+	const TSharedPtr<FJsonObject>* KeyActionsObject = nullptr;
+	if (Document->TryGetObjectField(TEXT("keyActions"), KeyActionsObject) && KeyActionsObject && KeyActionsObject->IsValid())
+	{
+		for (const auto& Pair : (*KeyActionsObject)->Values)
+		{
+			FString Action;
+			if (Pair.Value.IsValid() && Pair.Value->TryGetString(Action) && !Action.IsEmpty())
+			{
+				KeyActions.Add(FName(*Pair.Key), MoveTemp(Action));
+			}
+		}
+	}
+	SetIsFocusable(!KeyActions.IsEmpty());
 
 	UWidget* RootWidget = BuildElement(RootElement, WidgetTree);
 	if (RootWidget == nullptr)
@@ -219,6 +275,16 @@ bool URuntimeJsonWidget::BuildFromJson(const FString& Json)
 
 	WidgetTree->RootWidget = RootWidget;
 	return true;
+}
+
+FReply URuntimeJsonWidget::NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+	if (const FString* Action = KeyActions.Find(InKeyEvent.GetKey().GetFName()))
+	{
+		if (!InKeyEvent.IsRepeat()) NotifyButtonClicked(*Action);
+		return FReply::Handled();
+	}
+	return Super::NativeOnPreviewKeyDown(InGeometry, InKeyEvent);
 }
 
 void URuntimeJsonWidget::NotifyButtonClicked(const FString& ElementId)
@@ -240,37 +306,21 @@ void URuntimeJsonWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
-	// Slate input does not reach widgets added to the PIE game viewport in this
-	// embedded-editor setup, so buttons are hit-tested against the player
-	// controller's mouse position (the same path the HUD boot menu uses).
+	// Fallback for embedded PIE when Slate does not deliver the button event.
+	// Cached Slate geometry already includes layout anchors and DPI scaling.
 	APlayerController* PC = GetOwningPlayer();
-	if (PC == nullptr || ButtonRects.Num() == 0)
+	if (PC == nullptr || !PC->WasInputKeyJustPressed(EKeys::LeftMouseButton) ||
+		!FSlateApplication::IsInitialized() || GetVisibility() == ESlateVisibility::HitTestInvisible)
 	{
 		return;
 	}
 
-	float MouseX = 0.0f, MouseY = 0.0f;
-	const bool bHasMouse = PC->GetMousePosition(MouseX, MouseY);
-	const bool bPressed = PC->WasInputKeyJustPressed(EKeys::LeftMouseButton);
-	if (!bHasMouse || !bPressed)
+	const FVector2D CursorPosition = FSlateApplication::Get().GetCursorPos();
+	for (const TPair<FString, TObjectPtr<UWidget>>& Pair : ElementsById)
 	{
-		return;
-	}
-
-	int32 ViewX = 0, ViewY = 0;
-	PC->GetViewportSize(ViewX, ViewY);
-	const FVector2D Local = MyGeometry.GetLocalSize();
-	if (Local.X <= 0.0f || Local.Y <= 0.0f || ViewX <= 0 || ViewY <= 0)
-	{
-		return;
-	}
-
-	const FVector2D Scale(ViewX / Local.X, ViewY / Local.Y);
-	const FVector2D LocalPoint(MouseX / Scale.X, MouseY / Scale.Y);
-
-	for (const TPair<FString, FBox2D>& Pair : ButtonRects)
-	{
-		if (Pair.Value.IsInside(LocalPoint))
+		const UButton* Button = Cast<UButton>(Pair.Value.Get());
+		if (Button && IsActiveButton(Button) &&
+			Button->GetCachedGeometry().IsUnderLocation(CursorPosition))
 		{
 			NotifyButtonClicked(Pair.Key);
 			break;
@@ -278,19 +328,124 @@ void URuntimeJsonWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 	}
 }
 
-bool URuntimeJsonWidget::ConsumeClickedButton(FString& OutElementId)
+bool URuntimeJsonWidget::ConsumeClickedButton(FName& OutElementId)
 {
+	OutElementId = NAME_None;
 	if (LastClickedId.IsEmpty())
 	{
 		return false;
 	}
-	OutElementId = LastClickedId;
+	OutElementId = FName(*LastClickedId);
 	LastClickedId.Reset();
 	return true;
 }
 
-UWidget* URuntimeJsonWidget::BuildElement(const TSharedPtr<FJsonObject>& Element, UWidgetTree* Tree,
-	const FVector2D& ParentOffset)
+bool URuntimeJsonWidget::SetElementText(const FString& ElementId, const FString& Text)
+{
+	UWidget* Element = ElementsById.FindRef(ElementId).Get();
+	if (UButton* Button = Cast<UButton>(Element))
+	{
+		Element = Button->GetContent();
+	}
+	if (UTextBlock* TextBlock = Cast<UTextBlock>(Element))
+	{
+		TextBlock->SetText(FText::FromString(Text));
+		return true;
+	}
+	return false;
+}
+
+bool URuntimeJsonWidget::SetElementProgress(const FString& ElementId, float Percent)
+{
+	if (UProgressBar* Bar = Cast<UProgressBar>(ElementsById.FindRef(ElementId).Get()))
+	{
+		Bar->SetPercent(FMath::Clamp(Percent, 0.0f, 1.0f));
+		return true;
+	}
+	return false;
+}
+
+bool URuntimeJsonWidget::TryGetElementViewportRect(const FString& ElementId,
+	FVector2D& Origin, FVector2D& Size) const
+{
+	Origin = FVector2D::ZeroVector;
+	Size = FVector2D::ZeroVector;
+	const UWidget* Element = ElementsById.FindRef(ElementId).Get();
+	if (Element == nullptr)
+	{
+		return false;
+	}
+
+	const FGeometry& Geometry = Element->GetCachedGeometry();
+	FVector2D End, ViewportPosition;
+	USlateBlueprintLibrary::LocalToViewport(this, Geometry, FVector2D::ZeroVector, Origin, ViewportPosition);
+	USlateBlueprintLibrary::LocalToViewport(this, Geometry, Geometry.GetLocalSize(), End, ViewportPosition);
+	Size = End - Origin;
+	return Size.X > 0 && Size.Y > 0 && !Size.ContainsNaN() && !Origin.ContainsNaN();
+}
+
+bool URuntimeJsonWidget::SetElementRenderTranslation(const FString& ElementId, FVector2D Translation)
+{
+	if (UWidget* Element = ElementsById.FindRef(ElementId).Get())
+	{
+		Element->SetRenderTranslation(Translation);
+		return true;
+	}
+	return false;
+}
+
+bool URuntimeJsonWidget::SetSwitcherPage(const FString& SwitcherId, const FString& PageId)
+{
+	UWidgetSwitcher* Switcher = Cast<UWidgetSwitcher>(ElementsById.FindRef(SwitcherId).Get());
+	UWidget* Page = ElementsById.FindRef(PageId).Get();
+	if (!Switcher || !Page || Page->GetParent() != Switcher)
+	{
+		return false;
+	}
+	if (Switcher->GetActiveWidget() != Page)
+	{
+		Switcher->SetActiveWidget(Page);
+		LastClickedId.Reset();
+		LastNotifiedId.Reset();
+	}
+	return true;
+}
+
+bool URuntimeJsonWidget::SetElementVisible(const FString& ElementId, bool bVisible)
+{
+	if (UWidget* Element = ElementsById.FindRef(ElementId).Get())
+	{
+		Element->SetVisibility(bVisible
+			? (Element->IsA<UButton>() ? ESlateVisibility::Visible : ESlateVisibility::SelfHitTestInvisible)
+			: ESlateVisibility::Collapsed);
+		return true;
+	}
+	return false;
+}
+
+bool URuntimeJsonWidget::SetElementImage(const FString& ElementId, UTexture2D* Texture,
+	float U0, float V0, float U1, float V1)
+{
+	if (UImage* Image = Cast<UImage>(ElementsById.FindRef(ElementId).Get()))
+	{
+		FSlateBrush Brush;
+		if (Texture != nullptr)
+		{
+			Brush.SetResourceObject(Texture);
+			Brush.DrawAs = ESlateBrushDrawType::Image;
+			Brush.SetUVRegion(FBox2f(FVector2f(U0, V0), FVector2f(U1, V1)));
+		}
+		else
+		{
+			Brush.DrawAs = ESlateBrushDrawType::NoDrawType;
+		}
+		Image->SetBrush(Brush);
+		return true;
+	}
+	return false;
+}
+
+UWidget* URuntimeJsonWidget::BuildElement(const TSharedPtr<FJsonObject>& Element, UWidgetTree* Tree)
 {
 	if (!Element.IsValid() || Tree == nullptr)
 	{
@@ -313,12 +468,7 @@ UWidget* URuntimeJsonWidget::BuildElement(const TSharedPtr<FJsonObject>& Element
 			for (const TSharedPtr<FJsonValue>& ChildValue : *Children)
 			{
 				const TSharedPtr<FJsonObject> ChildObject = ChildValue.IsValid() ? ChildValue->AsObject() : nullptr;
-				FVector2D ChildPos(0.0, 0.0);
-				if (ChildObject.IsValid())
-				{
-					GetVector2(ChildObject, TEXT("position"), ChildPos);
-				}
-				if (UWidget* Child = BuildElement(ChildObject, Tree, ParentOffset + ChildPos))
+				if (UWidget* Child = BuildElement(ChildObject, Tree))
 				{
 					ApplyCanvasSlot(Canvas, Child, ChildObject);
 				}
@@ -329,27 +479,54 @@ UWidget* URuntimeJsonWidget::BuildElement(const TSharedPtr<FJsonObject>& Element
 	{
 		UBorder* Border = Tree->ConstructWidget<UBorder>(UBorder::StaticClass());
 		FLinearColor Color(0.05f, 0.06f, 0.09f, 0.85f);
+		const double CornerRadius = GetNumber(Element, TEXT("cornerRadius"), 0.0);
+		if (CornerRadius > 0)
+		{
+			Border->SetBrush(FSlateRoundedBoxBrush(FLinearColor::White, static_cast<float>(CornerRadius)));
+		}
 		if (GetColor(Element, TEXT("color"), Color))
 		{
 			Border->SetBrushColor(Color);
 		}
 		Border->SetPadding(ParsePadding(Element, TEXT("padding"), FMargin(0.0f)));
 
-		const FMargin BorderPadding = ParsePadding(Element, TEXT("padding"), FMargin(0.0f));
 		const TSharedPtr<FJsonObject>* ChildField = nullptr;
 		if (Element->TryGetObjectField(TEXT("child"), ChildField) && ChildField != nullptr)
 		{
-			if (UWidget* Child = BuildElement(*ChildField, Tree,
-					ParentOffset + FVector2D(BorderPadding.Left, BorderPadding.Top)))
+			if (UWidget* Child = BuildElement(*ChildField, Tree))
 			{
 				Border->SetContent(Child);
 			}
 		}
 		Result = Border;
 	}
+	else if (Type.Equals(TEXT("switcher"), ESearchCase::IgnoreCase))
+	{
+		UWidgetSwitcher* Switcher = Tree->ConstructWidget<UWidgetSwitcher>(UWidgetSwitcher::StaticClass());
+		const TArray<TSharedPtr<FJsonValue>>* Children = nullptr;
+		if (Element->TryGetArrayField(TEXT("children"), Children) && Children)
+		{
+			for (const TSharedPtr<FJsonValue>& ChildValue : *Children)
+			{
+				if (ChildValue.IsValid() && ChildValue->Type == EJson::Object)
+				{
+					if (UWidget* Child = BuildElement(ChildValue->AsObject(), Tree))
+					{
+						Switcher->AddChild(Child);
+					}
+				}
+			}
+		}
+		Switcher->SetActiveWidgetIndex(0);
+		Result = Switcher;
+	}
 	else if (Type.Equals(TEXT("text"), ESearchCase::IgnoreCase))
 	{
 		Result = MakeText(Tree, Element, TEXT(""));
+	}
+	else if (Type.Equals(TEXT("image"), ESearchCase::IgnoreCase))
+	{
+		Result = Tree->ConstructWidget<UImage>(UImage::StaticClass());
 	}
 	else if (Type.Equals(TEXT("button"), ESearchCase::IgnoreCase))
 	{
@@ -371,12 +548,6 @@ UWidget* URuntimeJsonWidget::BuildElement(const TSharedPtr<FJsonObject>& Element
 		UTextBlock* Label = MakeText(Tree, Element, TEXT("Button"));
 		Button->AddChild(Label);
 
-		FVector2D ButtonSize(200.0, 48.0);
-		GetVector2(Element, TEXT("size"), ButtonSize);
-		if (!Id.IsEmpty())
-		{
-			ButtonRects.Add(Id, FBox2D(ParentOffset, ParentOffset + ButtonSize));
-		}
 		Result = Button;
 	}
 	else if (Type.Equals(TEXT("progressbar"), ESearchCase::IgnoreCase))
@@ -404,7 +575,7 @@ UWidget* URuntimeJsonWidget::BuildElement(const TSharedPtr<FJsonObject>& Element
 			ElementsById.Add(Id, Result);
 		}
 		// Buttons must stay hit-testable; canvases pass clicks through to children.
-		if (Type.Equals(TEXT("canvas"), ESearchCase::IgnoreCase))
+		if (Type.Equals(TEXT("canvas"), ESearchCase::IgnoreCase) || Type.Equals(TEXT("switcher"), ESearchCase::IgnoreCase))
 		{
 			Result->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 		}

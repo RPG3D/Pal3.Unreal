@@ -9,7 +9,6 @@ namespace Pal3.Game.GameSystems.Dialogue
     using System.Collections;
     using System.Collections.Generic;
     using System.Diagnostics;
-    using System.Linq;
     using System.Threading;
     using Command;
     using Command.Extensions;
@@ -31,9 +30,7 @@ namespace Pal3.Game.GameSystems.Dialogue
     using TMPro;
     using UI;
     using UnityEngine;
-    using UnityEngine.EventSystems;
     using UnityEngine.InputSystem;
-    using UnityEngine.InputSystem.DualShock;
     using UnityEngine.UI;
 
     public sealed class DialogueManager : IDisposable,
@@ -53,13 +50,9 @@ namespace Pal3.Game.GameSystems.Dialogue
         private readonly GameResourceProvider _resourceProvider;
         private readonly GameStateManager _gameStateManager;
         private readonly SceneManager _sceneManager;
-        private readonly InputManager _inputManager;
         private readonly PlayerInputActions _inputActions;
 
-        private readonly EventSystem _eventSystem;
         private readonly CanvasGroup _dialogueCanvasGroup;
-        private readonly Canvas _dialogueSelectionButtonsCanvas;
-        private readonly GameObject _dialogueSelectionButtonPrefab;
         private readonly Image _dialogueBackgroundImage;
         private readonly RoundedFrostedGlassImage _backgroundFrostedGlassImage;
 
@@ -75,7 +68,8 @@ namespace Pal3.Game.GameSystems.Dialogue
         private bool _isDialogueRenderingAnimationInProgress;
 
         private int _lastSelectedButtonIndex;
-        private readonly List<GameObject> _selectionButtons = new();
+        private WaitUntilCanceled _selectionWaiter;
+        private GameState _selectionReturnState;
         private double _totalTimeUsedBeforeSkippingTheLastDialogue;
         private readonly Stopwatch _reactionTimer = new ();
         private CancellationTokenSource _flashingAnimationCts = new ();
@@ -87,22 +81,17 @@ namespace Pal3.Game.GameSystems.Dialogue
             GameStateManager gameStateManager,
             SceneManager sceneManager,
             InputManager inputManager,
-            EventSystem eventSystem,
             CanvasGroup dialogueCanvasGroup,
             Image dialogueBackgroundImage,
             Image avatarImageLeft,
             Image avatarImageRight,
             TextMeshProUGUI textLeft,
             TextMeshProUGUI textRight,
-            TextMeshProUGUI textDefault,
-            Canvas dialogueSelectionButtonsCanvas,
-            GameObject dialogueSelectionButtonPrefab)
+            TextMeshProUGUI textDefault)
         {
             _resourceProvider = Requires.IsNotNull(resourceProvider, nameof(resourceProvider));
             _gameStateManager = Requires.IsNotNull(gameStateManager, nameof(gameStateManager));
             _sceneManager = Requires.IsNotNull(sceneManager, nameof(sceneManager));
-            _inputManager = Requires.IsNotNull(inputManager, nameof(inputManager));
-            _eventSystem = Requires.IsNotNull(eventSystem, nameof(eventSystem));
 
             _dialogueCanvasGroup = Requires.IsNotNull(dialogueCanvasGroup, nameof(dialogueCanvasGroup));
             _dialogueBackgroundImage = Requires.IsNotNull(dialogueBackgroundImage, nameof(dialogueBackgroundImage));
@@ -116,8 +105,6 @@ namespace Pal3.Game.GameSystems.Dialogue
             _dialogueTextRight = Requires.IsNotNull(textRight, nameof(textRight));
             _dialogueTextDefault = Requires.IsNotNull(textDefault, nameof(textDefault));
 
-            _dialogueSelectionButtonsCanvas = Requires.IsNotNull(dialogueSelectionButtonsCanvas, nameof(dialogueSelectionButtonsCanvas));
-            _dialogueSelectionButtonPrefab = Requires.IsNotNull(dialogueSelectionButtonPrefab, nameof(dialogueSelectionButtonPrefab));
 
             _avatarImageLeft.preserveAspect = true;
             _avatarImageRight.preserveAspect = true;
@@ -226,9 +213,8 @@ namespace Pal3.Game.GameSystems.Dialogue
             bool isRightAligned = true;
             bool isAvatarPresented = false;
 
-            // Native HUD dialogue bar: clear the previous portrait, then show this
-            // line's avatar if the script supplied one.
-            Dev.DialogueAvatarBridge.Clear();
+            // Publish the page and portrait to the managed UI presenter.
+            Dev.DialoguePresentation.Clear();
 
             if (avatarCommand != null &&
                 _sceneManager.GetCurrentScene().GetActor(avatarCommand.ActorId) is { } actor &&
@@ -247,7 +233,7 @@ namespace Pal3.Game.GameSystems.Dialogue
                     _avatarImageLeft.sprite = avatarSprite.NativeObject as Sprite;
                 }
 
-                Dev.DialogueAvatarBridge.Show(avatarSprite, isRightAligned);
+                Dev.DialoguePresentation.ShowAvatar(avatarSprite, isRightAligned);
 
                 isAvatarPresented = true;
             }
@@ -278,18 +264,19 @@ namespace Pal3.Game.GameSystems.Dialogue
             // Render dialogue text typing animation
             foreach (string dialogue in DialogueTextProcessor.GetSubDialoguesAsync(text))
             {
+                Dev.DialoguePresentation.ShowText(dialogue);
                 IEnumerator renderDialogue = RenderDialogueTextWithAnimationAsync(dialogueTextUI, dialogue);
 
                 Pal3Game.Instance.StartCoroutine(renderDialogue);
 
-                yield return SkipDialogueRequestedAsync();
+                yield return WaitForDialoguePageAsync();
 
                 if (_isDialogueRenderingAnimationInProgress)
                 {
                     _isDialogueRenderingAnimationInProgress = false;
                     Pal3Game.Instance.StopCoroutine(renderDialogue);
                     dialogueTextUI.text = dialogue;
-                    yield return SkipDialogueRequestedAsync();
+                    yield return WaitForDialoguePageAsync();
                 }
             }
 
@@ -390,29 +377,36 @@ namespace Pal3.Game.GameSystems.Dialogue
             _avatarImageLeft.sprite = null;
             _avatarImageRight.sprite = null;
 
-            // Native HUD: portrait and text box disappear with the dialogue UI.
-            Dev.DialogueAvatarBridge.Clear();
-            Engine.Diagnostics.DebugOverlay.ClearDialogue();
-
-            _dialogueSelectionButtonsCanvas.enabled = false;
-
-            foreach (GameObject button in _selectionButtons)
-            {
-                button.GetComponentInChildren<Button>().onClick.RemoveAllListeners();
-                button.Destroy();
-            }
-            _selectionButtons.Clear();
+            Dev.DialoguePresentation.Clear();
         }
 
-        private IEnumerator SkipDialogueRequestedAsync()
+        private IEnumerator WaitForDialoguePageAsync()
         {
-            yield return CoroutineYieldInstruction.WaitUntil(() => _isSkipDialogueRequested);
+            const float autoAdvanceDelay = 2.5f;
+            float elapsed = 0f;
+            while (!_isSkipDialogueRequested)
+            {
+                yield return null;
+                if (_isSkipDialogueRequested) break;
+
+                if (_isDialogueRenderingAnimationInProgress || !Pal3Boot.AutoDialogueEnabled)
+                {
+                    elapsed = 0f;
+                    continue;
+                }
+
+                elapsed += Time.deltaTime;
+                if (elapsed >= autoAdvanceDelay) break;
+            }
             _isSkipDialogueRequested = false;
         }
 
         private void SkipDialoguePerformed(InputAction.CallbackContext _)
+            => RequestContinue();
+
+        public void RequestContinue()
         {
-            if (_dialogueSelectionButtonsCanvas.enabled) return;
+            if (_selectionWaiter != null) return;
             _isSkipDialogueRequested = true;
         }
 
@@ -451,79 +445,48 @@ namespace Pal3.Game.GameSystems.Dialogue
 
         public void Execute(DialogueAddSelectionsCommand command)
         {
+            if (command.Selections.Length == 0) return;
+            if (_selectionWaiter != null)
+            {
+                EngineLogger.LogWarning("Ignoring a second dialogue choice while a choice is pending.");
+                return;
+            }
+
+            string[] choices = new string[command.Selections.Length];
+            for (int i = 0; i < choices.Length; i++)
+            {
+                choices[i] = DialogueTextProcessor.GetSelectionDisplayText((string)command.Selections[i]);
+            }
+
+            _selectionReturnState = _gameStateManager.GetCurrentState();
             _gameStateManager.TryGoToState(GameState.UI);
-
-            WaitUntilCanceled waiter = new ();
-            Pal3Game.Instance.Execute(new ScriptRunnerAddWaiterRequest(waiter));
-
-            Transform canvasTransform = _dialogueSelectionButtonsCanvas.transform;
-            for (int i = 0; i < command.Selections.Length; i++)
-            {
-                GameObject selectionButton = UnityEngine.Object.Instantiate(_dialogueSelectionButtonPrefab, canvasTransform);
-                TextMeshProUGUI buttonTextUI = selectionButton.GetComponentInChildren<TextMeshProUGUI>();
-                buttonTextUI.text = DialogueTextProcessor.GetSelectionDisplayText((string)command.Selections[i]);
-                int buttonIndex = i;
-                Button button = selectionButton.GetComponentInChildren<Button>();
-                button.colors = UITheme.GetButtonColors();
-                button.onClick
-                    .AddListener(delegate
-                    {
-                        SelectionButtonClicked(buttonIndex);
-                        waiter.CancelWait();
-                        _gameStateManager.GoToPreviousState();
-                    });
-                _selectionButtons.Add(selectionButton);
-            }
-
-            // Setup button navigation
-            void ConfigureButtonNavigation(Button button, int index, int count)
-            {
-                Navigation buttonNavigation = button.navigation;
-                buttonNavigation.mode = Navigation.Mode.Explicit;
-
-                int upIndex = index == 0 ? count - 1 : index - 1;
-                int downIndex = index == count - 1 ? 0 : index + 1;
-
-                buttonNavigation.selectOnUp = _selectionButtons[upIndex].GetComponentInChildren<Button>();
-                buttonNavigation.selectOnDown = _selectionButtons[downIndex].GetComponentInChildren<Button>();
-
-                button.navigation = buttonNavigation;
-            }
-
-            for (int i = 0; i < command.Selections.Length; i++)
-            {
-                Button button = _selectionButtons[i].GetComponentInChildren<Button>();
-                ConfigureButtonNavigation(button, i, command.Selections.Length);
-            }
-
-            Button firstButton = _selectionButtons.First().GetComponentInChildren<Button>();
-
-            InputDevice lastActiveInputDevice = _inputManager.GetLastActiveInputDevice();
-            if (lastActiveInputDevice == Keyboard.current ||
-                lastActiveInputDevice == Gamepad.current ||
-                lastActiveInputDevice == DualShockGamepad.current)
-            {
-                _eventSystem.firstSelectedGameObject = firstButton.gameObject;
-                firstButton.Select();
-            }
-            else
-            {
-                _eventSystem.firstSelectedGameObject = null;
-            }
-
-            _dialogueCanvasGroup.alpha = 1f;
-            _dialogueCanvasGroup.enabled = true;
-            _dialogueSelectionButtonsCanvas.enabled = true;
+            _selectionWaiter = new WaitUntilCanceled();
+            Pal3Game.Instance.Execute(new ScriptRunnerAddWaiterRequest(_selectionWaiter));
+            Dev.DialoguePresentation.ShowChoices(choices);
         }
 
-        private void SelectionButtonClicked(int index)
+        public bool TryChoose(int index)
         {
+            if (_selectionWaiter == null || (uint)index >= Dev.DialoguePresentation.Choices.Count)
+            {
+                return false;
+            }
+
             _lastSelectedButtonIndex = index;
-            ResetUI();
+            _selectionWaiter.CancelWait();
+            _selectionWaiter = null;
+            Dev.DialoguePresentation.ClearChoices();
+            _gameStateManager.TryGoToState(_selectionReturnState);
+            return true;
         }
+
 
         public void Execute(ResetGameStateCommand command)
         {
+            _selectionWaiter?.CancelWait();
+            _selectionWaiter = null;
+            _lastSelectedButtonIndex = 0;
+            Dev.DialoguePresentation.ClearChoices();
             _lastAvatarCommand = null;
             _totalTimeUsedBeforeSkippingTheLastDialogue = 0f;
             _dialogueRenderQueue.Clear();

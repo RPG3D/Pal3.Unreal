@@ -17,7 +17,10 @@ namespace Pal3.Game.Script
     using Core.Utilities;
     using Data;
     using Engine.Logging;
+    using Engine.Services;
     using Patcher;
+    using Scene;
+    using Waiter;
 
     public sealed class ScriptManager : IDisposable,
         ICommandExecutor<ScriptExecuteCommand>,
@@ -35,7 +38,7 @@ namespace Pal3.Game.Script
         private readonly List<PalScriptRunner> _runningScripts = new ();
         private readonly List<PalScriptRunner> _finishedScripts = new ();
 
-        private bool _pendingSceneScriptExecution = false;
+        private bool _waitingForSceneLoad;
 
         public ScriptManager(GameResourceProvider resourceProvider,
             IUserVariableStore<ushort, int> userVariableStore,
@@ -78,64 +81,90 @@ namespace Pal3.Game.Script
 
         public int GetNumberOfRunningScripts()
         {
-            return _pendingScripts.Count + _runningScripts.Count;
+            return _pendingScripts.Count + _runningScripts.Count(script => !script.IsDisposed);
+        }
+
+        public sealed record ScriptStatus(uint Id, string Type, string Description, bool Pending,
+            string? LastCommand, long? LastCommandOffset, string? Waiter);
+
+        public ScriptStatus[] GetScriptStatus()
+        {
+            return _pendingScripts.Where(script => !script.IsDisposed).Select(script => Describe(script, true))
+                .Concat(_runningScripts.Where(script => !script.IsDisposed).Select(script => Describe(script, false)))
+                .ToArray();
+
+            static ScriptStatus Describe(PalScriptRunner script, bool pending) =>
+                new(script.ScriptId, script.ScriptType.ToString(), script.ScriptDescription, pending,
+                    script.LastCommand, script.LastCommandOffset, script.CurrentWaiter);
         }
 
         public bool AddScript(uint scriptId, bool isWorldMapScript = false)
         {
             if (scriptId == ScriptConstants.InvalidScriptId) return false;
 
-            if (_pendingScripts.Any(s => s.ScriptId == scriptId) ||
-                _runningScripts.Any(s => s.ScriptId == scriptId))
+            if (IsScriptScheduled(scriptId))
             {
                 EngineLogger.LogError($"Script is already running: {scriptId}");
                 return false;
             }
 
-            PalScriptRunner scriptRunner;
-            if (isWorldMapScript)
+            var scriptType = isWorldMapScript ? PalScriptType.WorldMap : GetScriptType(scriptId);
+            var sceFile = scriptType switch
             {
-                EngineLogger.Log($"Add WorldMap script id: {scriptId}");
-                scriptRunner = PalScriptRunner.Create(_worldMapSceFile,
-                    PalScriptType.WorldMap,
-                    scriptId,
-                    _userVariableStore,
-                    _sceCommandParser,
-                    _scriptPatcher);
-            }
-            else if (scriptId < ScriptConstants.SystemScriptIdMax)
+                PalScriptType.WorldMap => _worldMapSceFile,
+                PalScriptType.System => _systemSceFile,
+                _ => _currentSceFile
+            };
+            if (sceFile == null || !sceFile.ScriptBlocks.ContainsKey(scriptId))
             {
-                EngineLogger.Log($"Add System script id: {scriptId}");
-                scriptRunner = PalScriptRunner.Create(_systemSceFile,
-                    PalScriptType.System,
-                    scriptId,
-                    _userVariableStore,
-                    _sceCommandParser,
-                    _scriptPatcher);
-            }
-            else
-            {
-                EngineLogger.Log($"Add Scene script id: {scriptId}");
-                scriptRunner = PalScriptRunner.Create(_currentSceFile,
-                    PalScriptType.Scene,
-                    scriptId,
-                    _userVariableStore,
-                    _sceCommandParser,
-                    _scriptPatcher);
+                EngineLogger.LogError($"Missing {scriptType} script: {scriptId}");
+                return false;
             }
 
+            EngineLogger.Log($"Add {scriptType} script id: {scriptId}");
+            var scriptRunner = PalScriptRunner.Create(sceFile, scriptType, scriptId,
+                _userVariableStore, _sceCommandParser, _scriptPatcher);
             scriptRunner.OnCommandExecutionRequested += OnCommandExecutionRequested;
             _pendingScripts.Enqueue(scriptRunner);
             return true;
         }
 
+        internal static PalScriptType GetScriptType(uint scriptId) =>
+            scriptId < ScriptConstants.SystemScriptIdMax ? PalScriptType.System : PalScriptType.Scene;
+
+        private bool IsScriptScheduled(uint scriptId) =>
+            _pendingScripts.Any(script => script.ScriptId == scriptId) ||
+            _runningScripts.Any(script => script.ScriptId == scriptId && !script.IsDisposed);
+
         private void OnCommandExecutionRequested(object sender, ICommand command)
         {
             Pal3Game.Instance.Execute(command);
+            var scenes = ServiceLocator.Instance.Get<SceneManager>();
+            if (scenes.IsLoading && sender is PalScriptRunner runner)
+            {
+                var waiter = new WaitUntilCanceled();
+                scenes.TryWaitForLoad(
+                    () =>
+                    {
+                        _waitingForSceneLoad = false;
+                        waiter.CancelWait();
+                    },
+                    _ =>
+                    {
+                        _waitingForSceneLoad = false;
+                        _runningScripts.Remove(runner);
+                        runner.OnCommandExecutionRequested -= OnCommandExecutionRequested;
+                        runner.Dispose();
+                        Pal3Game.Instance.Execute(new ScriptFailedToRunNotification(runner.ScriptId, runner.ScriptType));
+                    });
+                runner.WaitForSceneLoad(waiter);
+                _waitingForSceneLoad = true;
+            }
         }
 
         public void Update(float deltaTime)
         {
+            if (_waitingForSceneLoad) return;
             while (_pendingScripts.Count > 0)
             {
                 _runningScripts.Insert(0, _pendingScripts.Dequeue());
@@ -149,11 +178,13 @@ namespace Pal3.Game.Script
                 {
                     _finishedScripts.Add(script);
                 }
+                if (_waitingForSceneLoad) break;
             }
 
             foreach (PalScriptRunner finishedScript in _finishedScripts)
             {
                 _runningScripts.Remove(finishedScript);
+                if (finishedScript.IsDisposed) continue;
                 finishedScript.OnCommandExecutionRequested -= OnCommandExecutionRequested;
                 finishedScript.Dispose();
 
@@ -165,14 +196,6 @@ namespace Pal3.Game.Script
             }
 
             _finishedScripts.Clear();
-
-            // Scene script can be added during above script execution.
-            // Call update again to trigger the execution of the scene script.
-            if (_pendingSceneScriptExecution)
-            {
-                _pendingSceneScriptExecution = false;
-                Update(1f);
-            }
         }
 
         public bool TryAddSceneScript(SceFile sceFile, string sceneScriptDescription, out uint sceneScriptId)
@@ -189,9 +212,6 @@ namespace Pal3.Game.Script
             {
                 sceneScriptId = scriptBlock.Key;
                 AddScript(sceneScriptId);
-                _pendingSceneScriptExecution = true;
-                // This is to break the current running script from executing and let scene script to execute first
-                Pal3Game.Instance.Execute(new ScriptRunnerWaitUntilTimeCommand(0f));
                 return true;
             }
 
@@ -200,21 +220,24 @@ namespace Pal3.Game.Script
 
         public void Execute(ScriptExecuteCommand command)
         {
-            if (!AddScript((uint) command.ScriptId))
+            uint scriptId = (uint)command.ScriptId;
+            // A caller waiting on an existing run should receive that run's outcome.
+            if (!IsScriptScheduled(scriptId) && !AddScript(scriptId))
             {
-                Pal3Game.Instance.Execute(new ScriptFailedToRunNotification((uint) command.ScriptId));
+                Pal3Game.Instance.Execute(new ScriptFailedToRunNotification(scriptId, GetScriptType(scriptId)));
             }
         }
 
         public void Execute(ResetGameStateCommand command)
         {
-            _pendingSceneScriptExecution = false;
+            _waitingForSceneLoad = false;
 
             foreach (PalScriptRunner script in _pendingScripts)
             {
                 script.OnCommandExecutionRequested -= OnCommandExecutionRequested;
                 script.Dispose();
             }
+            _pendingScripts.Clear();
 
             foreach (PalScriptRunner script in _runningScripts)
             {

@@ -62,6 +62,7 @@ namespace ManagedSharpDemo
             UnityEngine.Debug.Log("[APal3Driver] BeginPlay - starting managed runtime smoke probe");
             Pal3Boot.RunSmokeProbe();
             Pal3Boot.RunFullBoot();
+            _automation.Start();
         }
 
         private bool _cameraBound;
@@ -108,49 +109,17 @@ namespace ManagedSharpDemo
         {
             base.Tick(deltaTime);
 
-            // Minimal start menu: story begins on an explicit Enter press or an RC
-            // "start game" request (UPal3DebugOverlay.StartGame → consumed here).
-            if (Pal3Boot.WaitingForMenuStart)
+            var pc = UGameplayStatics.GetPlayerController(0);
+            bool menuHasInput = true;
+            if (pc != null)
             {
-                if (!_bootMenuShown)
-                {
-                    _bootMenuShown = true;
-                    Engine.Diagnostics.DebugOverlay.SetBootMenuVisible(true);
-                }
-
-                bool rcStart = Engine.Diagnostics.DebugOverlay.ConsumeStartGameRequest();
-                var pc = UGameplayStatics.GetPlayerController(0);
-                bool enterPressed = pc != null && pc.WasInputKeyJustPressed(UnrealSharp.InputCore.Keys.Enter);
-
-                // Click hit-test on the HUD-drawn button.
-                bool clicked = false;
-                if (pc != null && pc.WasInputKeyJustPressed(UnrealSharp.InputCore.Keys.LeftMouseButton))
-                {
-                    pc.GetMousePosition(out float mx, out float my);
-                    Engine.Diagnostics.DebugOverlay.GetBootMenuButtonRect(
-                        out int bx, out int by, out int bw, out int bh);
-                    if (bw > 0 && mx >= bx && mx <= bx + bw && my >= by && my <= by + bh)
-                    {
-                        clicked = true;
-                    }
-                }
-
-                if (rcStart || enterPressed || clicked)
-                {
-                    Engine.Diagnostics.DebugOverlay.SetBootMenuVisible(false);
-                    Pal3Boot.TryStartFromMenu();
-                    _bootMenuShown = false;
-                }
+                string touchClick = _touchButtons.ConsumeClick();
+                menuHasInput = _startMenu.Tick(pc, touchClick == Pal3TouchButtons.Menu) ||
+                    Pal3.Game.Dev.DialoguePresentation.Choices.Count > 0;
+                _touchButtons.Tick(menuHasInput);
+                PollInput(pc, menuHasInput, touchClick);
             }
 
-            PollKeyboard();
-
-            // RuntimeWidgetLayout demo (RC triggered): JSON -> UMG widget in viewport.
-            if (Engine.Diagnostics.DebugOverlay.ConsumeJsonDemoRequest())
-            {
-                JsonUiDemo.Show();
-                Engine.Diagnostics.DebugOverlay.Info("[JsonUi] demo widget shown");
-            }
             string jsonClick = JsonUiDemo.PollClick();
             if (!string.IsNullOrEmpty(jsonClick))
             {
@@ -161,7 +130,13 @@ namespace ManagedSharpDemo
             GameEntityScriptRuntime.TickAll(deltaTime);
             UnrealSharp.SharpDemo.UPal3AudioHelper.TickAudio();
             Pal3Boot.TickSmokeProbe(deltaTime);
-            Pal3Boot.TickAutoDialogue(deltaTime);
+            _automation.Poll(CloseStartMenu);
+            if (pc != null)
+            {
+                _hud.Tick(deltaTime);
+                _interactionHint.Tick(pc, deltaTime, menuHasInput || Pal3.Game.Dev.DialoguePresentation.Choices.Count > 0);
+                _dialogueChoices.Tick(pc);
+            }
 
             // Runtime probe: proves the ported simulation is actually progressing
             // (entities spawned, scripts/coroutines alive) without any rendering.
@@ -204,6 +179,8 @@ namespace ManagedSharpDemo
                     pawn.SetActorLocation(new UnrealSharp.CoreUObject.FVector(cx, cy, cz));
                     UnrealSharp.Log.UnrealLogger.Log("Pal3", $"[Pal3Driver] pawn respawned into scene at ({cx:F0},{cy:F0},{cz:F0})");
                 }
+                UnrealSharp.SharpDemo.UPal3AudioHelper.GetAudioStats(out int decodedAudio, out int failedAudio,
+                    out int activeAudio, out long activePcmBytes);
                 UnrealSharp.Log.UnrealLogger.Log("Pal3",
                     $"[Pal3Driver] actors={Engine.Core.Implementation.UEGameEntityFactory.CreatedCount}"
                     + $" scripts={GameEntityScriptRuntime.ActiveScriptCount}"
@@ -211,7 +188,7 @@ namespace ManagedSharpDemo
                     + $" meshes={Engine.Renderer.StaticMeshRenderer.UploadCount}"
                     + $" rcalls={Engine.Renderer.StaticMeshRenderer.RenderCalls}"
                     + $" tex={Engine.Diagnostics.DebugOverlay.AssetStats}"
-                    + $" audio={UnrealSharp.SharpDemo.UPal3AudioHelper.AudioStats}"
+                    + $" audio=decoded={decodedAudio} failed={failedAudio} active={activeAudio} pcmBytes={activePcmBytes}"
                     + $" mstat={Pal3.Game.Data.UnityMaterial.SetTextureCalls}/{Pal3.Game.Data.UnityMaterial.BindFailures}"
                     + $" reupl={Engine.Renderer.StaticMeshRenderer.ReuploadCount}"
                     + $" verts={Engine.Renderer.StaticMeshRenderer.TotalVertices}"
@@ -225,45 +202,77 @@ namespace ManagedSharpDemo
             }
         }
 
-        // Keyboard bridge: UE raw keys → stub PlayerInputActions. The real
-        // InputSystem backend doesn't exist yet; this makes the game playable
-        // (WASD/arrows move the player, Space/Enter advance dialogue).
+        // UE keyboard and the on-screen stick feed the same PlayerInputActions.
         private UnityEngine.Vector2 _lastMovement;
-        private bool _bootMenuShown;
+        private readonly Pal3TouchStick _touchStick = new();
+        private readonly Pal3TouchButtons _touchButtons = new();
+        private readonly Pal3InteractionHint _interactionHint = new();
+        private readonly Pal3StartMenu _startMenu = new();
+        private readonly Pal3Automation _automation = new();
+        private readonly Pal3Hud _hud = new();
+        private readonly Pal3DialogueChoices _dialogueChoices = new();
 
-        private void PollKeyboard()
+        [UFunction(FunctionFlags.BlueprintCallable)]
+        public string ExecutePal3Command(string command, string argument)
+            => _automation.ExecuteRemote(command, argument, CloseStartMenu);
+
+        private void CloseStartMenu()
         {
             var pc = UGameplayStatics.GetPlayerController(0);
-            if (pc == null) return;
+            if (pc != null) _startMenu.Close(pc);
+        }
 
-            // F1: show/hide the diagnostics side panel (hidden by default so the
-            // viewport shows the game; the dialogue bar is always drawn).
-            if (pc.WasInputKeyJustPressed(UnrealSharp.InputCore.Keys.F1))
-            {
-                Engine.Diagnostics.DebugOverlay.SetOverlayVisible(
-                    !Engine.Diagnostics.DebugOverlay.IsOverlayVisible);
-            }
+        public override void EndPlay(EEndPlayReason endPlayReason)
+        {
+            _automation.Stop();
+            UnrealSharp.SharpDemo.UPal3AudioHelper.StopAllAudio();
+            _dialogueChoices.Dispose();
+            _touchStick.Dispose();
+            _touchButtons.Dispose();
+            _interactionHint.Dispose();
+            _hud.Dispose();
+            _startMenu.RemoveWidget();
+            JsonUiDemo.Hide();
+            base.EndPlay(endPlayReason);
+        }
 
+        private void PollInput(APlayerController pc, bool menuHasInput, string touchClick)
+        {
+            var touchMovement = _touchStick.Tick(pc, menuHasInput);
             var actions = Pal3Boot.InputActions;
             if (actions == null) return;
 
-            if (pc.WasInputKeyJustPressed(UnrealSharp.InputCore.Keys.SpaceBar) ||
-                pc.WasInputKeyJustPressed(UnrealSharp.InputCore.Keys.Enter))
+            if (!menuHasInput)
             {
-                actions.Cutscene.Continue.SimulatePerformed();
+                if (touchClick == Pal3TouchButtons.Continue ||
+                    pc.WasInputKeyJustPressed(UnrealSharp.InputCore.Keys.SpaceBar) ||
+                    pc.WasInputKeyJustPressed(UnrealSharp.InputCore.Keys.Enter))
+                {
+                    actions.Cutscene.Continue.SimulatePerformed();
+                }
+
+                if ((touchClick == Pal3TouchButtons.Interact && Pal3Boot.HasPlayerControl()) ||
+                    pc.WasInputKeyJustPressed(UnrealSharp.InputCore.Keys.E))
+                {
+                    actions.Gameplay.Interact.SimulatePerformed();
+                }
+
             }
 
             float x = 0f, y = 0f;
-            if (pc.IsInputKeyDown(UnrealSharp.InputCore.Keys.W) ||
-                pc.IsInputKeyDown(UnrealSharp.InputCore.Keys.Up)) y += 1f;
-            if (pc.IsInputKeyDown(UnrealSharp.InputCore.Keys.S) ||
-                pc.IsInputKeyDown(UnrealSharp.InputCore.Keys.Down)) y -= 1f;
-            if (pc.IsInputKeyDown(UnrealSharp.InputCore.Keys.D) ||
-                pc.IsInputKeyDown(UnrealSharp.InputCore.Keys.Right)) x += 1f;
-            if (pc.IsInputKeyDown(UnrealSharp.InputCore.Keys.A) ||
-                pc.IsInputKeyDown(UnrealSharp.InputCore.Keys.Left)) x -= 1f;
+            if (!menuHasInput)
+            {
+                if (pc.IsInputKeyDown(UnrealSharp.InputCore.Keys.W) ||
+                    pc.IsInputKeyDown(UnrealSharp.InputCore.Keys.Up)) y += 1f;
+                if (pc.IsInputKeyDown(UnrealSharp.InputCore.Keys.S) ||
+                    pc.IsInputKeyDown(UnrealSharp.InputCore.Keys.Down)) y -= 1f;
+                if (pc.IsInputKeyDown(UnrealSharp.InputCore.Keys.D) ||
+                    pc.IsInputKeyDown(UnrealSharp.InputCore.Keys.Right)) x += 1f;
+                if (pc.IsInputKeyDown(UnrealSharp.InputCore.Keys.A) ||
+                    pc.IsInputKeyDown(UnrealSharp.InputCore.Keys.Left)) x -= 1f;
+            }
 
-            var movement = new UnityEngine.Vector2(x, y);
+            var movement = x != 0f || y != 0f ? new UnityEngine.Vector2(x, y) : touchMovement;
             if (movement != _lastMovement)
             {
                 actions.Gameplay.Movement.InjectValue(movement);

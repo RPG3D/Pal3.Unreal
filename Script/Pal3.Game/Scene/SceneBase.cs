@@ -53,7 +53,7 @@ namespace Pal3.Game.Scene
         private ISceneObjectFactory _sceneObjectFactory;
         private SceneStateManager _sceneStateManager;
 
-        protected void Init(GameResourceProvider resourceProvider,
+        private protected IEnumerable<SceneLoadStep> LoadDataBatches(GameResourceProvider resourceProvider,
             ScnFile scnFile,
             ISceneObjectFactory sceneObjectFactory,
             SceneStateManager sceneStateManager,
@@ -68,9 +68,12 @@ namespace Pal3.Game.Scene
 
             InitActorMovementMaxYDifferentialValues();
             InitMeshData();
+            yield return new("正在读取场景模型", .20f);
             InitNavData();
+            yield return new("正在读取导航数据", .24f);
             InitSceneObjectData();
             InitActorData();
+            yield return new("正在读取角色与物件数据", .28f);
         }
 
         private void InitActorMovementMaxYDifferentialValues()

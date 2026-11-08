@@ -81,7 +81,14 @@ namespace Engine.Core.Implementation
         public UnityEngine.Vector3 Forward
         {
             get => IsAlive ? UnityUeConvert.ToUnityDirection(_actor.ActorForwardVector) : UnityEngine.Vector3.forward;
-            set { }
+            set
+            {
+                float lengthSquared = value.sqrMagnitude;
+                if (IsAlive && !IsFrozenCamera && float.IsFinite(lengthSquared) && lengthSquared > 1e-10f)
+                {
+                    _actor.SetActorRotation(new FRotator(UnityUeConvert.ToUeDirection(value)));
+                }
+            }
         }
 
         public UnityEngine.Vector3 Right

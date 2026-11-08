@@ -1,0 +1,14 @@
+{
+  "root": {
+    "type": "canvas",
+    "children": [
+      { "type": "border", "id": "target", "position": [-38, -32], "size": [76, 30],
+        "cornerRadius": 8, "color": [0.045, 0.075, 0.11, 0.95],
+        "child": {
+          "type": "text", "id": "prompt", "text": "E  交互", "fontSize": 18, "align": "center",
+          "color": [1, 0.91, 0.68, 1]
+        }
+      }
+    ]
+  }
+}

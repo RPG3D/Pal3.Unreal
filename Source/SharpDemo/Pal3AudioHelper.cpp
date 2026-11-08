@@ -1,11 +1,12 @@
 // Pal3AudioHelper.cpp
 #include "Pal3AudioHelper.h"
+#include "Pal3PcmSound.h"
 
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Components/AudioComponent.h"
 #include "Kismet/GameplayStatics.h"
-#include "Sound/SoundWaveProcedural.h"
+#include "Sound/SoundGenerator.h"
 #include "dr_libs_mp3decoder.h"
 
 // --- decode helpers -------------------------------------------------------------
@@ -191,19 +192,54 @@ namespace
 		return FramesDecoded > 0 && OutPcm.Num() > 0;
 	}
 
-	struct FPal3AudioInstance
+	class FPal3PcmGenerator final : public ISoundGenerator
 	{
-		TStrongObjectPtr<USoundWaveProcedural> Wave;
-		TWeakObjectPtr<UAudioComponent> Component;
-		TArray<uint8> Pcm;
-		int32 SampleRate = 22050;
-		int32 Channels = 2;
-		int32 LoopRemaining = 1; // -1 = infinite
-		float Volume = 1.0f;
-		bool bPlaying = false;
+	public:
+		FPal3PcmGenerator(TSharedRef<const TArray<uint8>, ESPMode::ThreadSafe> InPcm, int32 InChannels, int32 InPlayCount)
+			: Pcm(MoveTemp(InPcm)), Channels(InChannels), PlaysRemaining(InPlayCount)
+		{
+		}
+
+		int32 OnGenerateAudio(float* OutAudio, int32 NumSamples) override
+		{
+			int32 Written = 0;
+			const int32 TotalSamples = Pcm->Num() / sizeof(int16);
+			while (Written < NumSamples && PlaysRemaining != 0)
+			{
+				const int32 Count = FMath::Min(NumSamples - Written, TotalSamples - SampleOffset);
+				for (int32 Index = 0; Index < Count; ++Index)
+				{
+					const uint8* Sample = Pcm->GetData() + (SampleOffset + Index) * sizeof(int16);
+					OutAudio[Written + Index] = static_cast<int16>(ReadU16(Sample)) / 32768.0f;
+				}
+				Written += Count;
+				SampleOffset += Count;
+				if (SampleOffset == TotalSamples)
+				{
+					SampleOffset = 0;
+					if (PlaysRemaining > 0) --PlaysRemaining;
+				}
+			}
+			return Written;
+		}
+
+		bool IsFinished() const override { return PlaysRemaining == 0; }
+		int32 GetNumChannels() const override { return Channels; }
+
+	private:
+		TSharedRef<const TArray<uint8>, ESPMode::ThreadSafe> Pcm;
+		int32 Channels;
+		int32 PlaysRemaining;
+		int32 SampleOffset = 0;
 	};
 
-	TMap<int32, TSharedPtr<FPal3AudioInstance>> GAudioInstances;
+	struct FPal3AudioInstance
+	{
+		TWeakObjectPtr<UAudioComponent> Component;
+		int64 PcmBytes;
+	};
+
+	TMap<int32, FPal3AudioInstance> GAudioInstances;
 	int32 GNextAudioHandle = 1;
 	int32 GDecodedCount = 0;
 	int32 GFailedCount = 0;
@@ -227,28 +263,36 @@ namespace
 		return nullptr;
 	}
 
-	UAudioComponent* SpawnProcedural(FPal3AudioInstance& Instance)
-	{
-		UWorld* World = FindAudioWorld();
-		if (World == nullptr || !Instance.Wave.IsValid())
-		{
-			return nullptr;
-		}
+}
 
-		Instance.Wave->QueueAudio(Instance.Pcm.GetData(), Instance.Pcm.Num());
-		UAudioComponent* Component = UGameplayStatics::SpawnSound2D(World, Instance.Wave.Get(),
-			Instance.Volume, 1.0f, 0.0f, nullptr, false, false);
-		Instance.Component = Component;
-		Instance.bPlaying = Component != nullptr;
-		return Component;
+void UPal3PcmSound::Initialize(TArray<uint8>&& InPcm, int32 InSampleRate, int32 InChannels, int32 InPlayCount)
+{
+	Pcm = MakeShared<TArray<uint8>, ESPMode::ThreadSafe>(MoveTemp(InPcm));
+	PlayCount = InPlayCount;
+	SetSampleRate(InSampleRate);
+	NumChannels = InChannels;
+	bLooping = PlayCount < 0;
+	Duration = bLooping ? INDEFINITELY_LOOPING_DURATION
+		: (static_cast<float>(Pcm->Num()) / (InSampleRate * InChannels * sizeof(int16))) * PlayCount;
+	SoundGroup = SOUNDGROUP_Default;
+}
+
+ISoundGeneratorPtr UPal3PcmSound::CreateSoundGenerator(const FSoundGeneratorInitParams& InParams)
+{
+	if (!Pcm.IsValid())
+	{
+		return nullptr;
 	}
+	return MakeShared<FPal3PcmGenerator, ESPMode::ThreadSafe>(Pcm.ToSharedRef(), NumChannels, PlayCount);
 }
 
 // --- public API -----------------------------------------------------------------
 
-int32 UPal3AudioHelper::PlayAudio(const TArray<uint8>& Data, int32 AudioType, float Volume, int32 LoopCount)
+// Pass the reflected array by value so UnrealSharp releases its native temporary after the call.
+int32 UPal3AudioHelper::PlayAudio(TArray<uint8> Data, int32 AudioType, float Volume, int32 LoopCount)
 {
-	if (Data.Num() < 16)
+	UWorld* World = FindAudioWorld();
+	if (!World || Data.Num() < 16)
 	{
 		++GFailedCount;
 		return 0;
@@ -262,7 +306,7 @@ int32 UPal3AudioHelper::PlayAudio(const TArray<uint8>& Data, int32 AudioType, fl
 		? DecodeMp3(Data, Pcm, SampleRate, Channels)
 		: DecodeWav(Data, Pcm, SampleRate, Channels);
 
-	if (!bOk || Pcm.Num() < 2)
+	if (!bOk || SampleRate <= 0 || Channels <= 0 || Pcm.Num() < Channels * sizeof(int16))
 	{
 		++GFailedCount;
 		UE_LOG(LogTemp, Warning, TEXT("[Pal3Audio] decode failed type=%d bytes=%d"), AudioType, Data.Num());
@@ -271,35 +315,20 @@ int32 UPal3AudioHelper::PlayAudio(const TArray<uint8>& Data, int32 AudioType, fl
 
 	++GDecodedCount;
 
-	TSharedPtr<FPal3AudioInstance> Instance = MakeShared<FPal3AudioInstance>();
-	Instance->Pcm = MoveTemp(Pcm);
-	Instance->SampleRate = SampleRate;
-	Instance->Channels = Channels;
-	Instance->Volume = FMath::Clamp(Volume, 0.0f, 2.0f);
-	Instance->LoopRemaining = LoopCount == 0 ? 1 : LoopCount;
-
-	USoundWaveProcedural* Wave = NewObject<USoundWaveProcedural>(GetTransientPackage());
-	Wave->SetSampleRate(SampleRate);
-	Wave->NumChannels = Channels;
-	Wave->Duration = (float)Instance->Pcm.Num() / (float)FMath::Max(1, SampleRate * Channels * 2);
-	Wave->SoundGroup = SOUNDGROUP_Default;
-	Wave->bLooping = false;
-	Wave->AddToRoot();
-	Instance->Wave = TStrongObjectPtr<USoundWaveProcedural>(Wave);
-
-	if (SpawnProcedural(*Instance) == nullptr)
+	const int64 PcmBytes = Pcm.Num();
+	UPal3PcmSound* Wave = NewObject<UPal3PcmSound>(GetTransientPackage());
+	Wave->Initialize(MoveTemp(Pcm), SampleRate, Channels, LoopCount == 0 ? 1 : LoopCount);
+	// One component per play request. The mixer consumes and loops the PCM without queuing copies.
+	UAudioComponent* Component = UGameplayStatics::SpawnSound2D(World, Wave,
+		FMath::Clamp(Volume, 0.0f, 2.0f), 1.0f, 0.0f, nullptr, false, true);
+	if (!Component)
 	{
-		Wave->RemoveFromRoot();
 		++GFailedCount;
 		return 0;
 	}
 
 	const int32 Handle = GNextAudioHandle++;
-	GAudioInstances.Add(Handle, Instance);
-	if (Instance->LoopRemaining < 0)
-	{
-		--Instance->LoopRemaining; // -2 means "after this play, loop forever"
-	}
+	GAudioInstances.Add(Handle, FPal3AudioInstance{Component, PcmBytes});
 
 	UE_LOG(LogTemp, Display, TEXT("[Pal3Audio] play handle=%d type=%d %.1fkHz x%d loops=%d bytes=%d"),
 		Handle, AudioType, SampleRate / 1000.0f, Channels, LoopCount, Data.Num());
@@ -308,19 +337,18 @@ int32 UPal3AudioHelper::PlayAudio(const TArray<uint8>& Data, int32 AudioType, fl
 
 void UPal3AudioHelper::StopAudio(int32 Handle)
 {
-	TSharedPtr<FPal3AudioInstance> Instance;
-	if (!GAudioInstances.RemoveAndCopyValue(Handle, Instance) || !Instance.IsValid())
+	FPal3AudioInstance Instance;
+	if (GAudioInstances.RemoveAndCopyValue(Handle, Instance))
 	{
-		return;
+		if (UAudioComponent* Component = Instance.Component.Get()) Component->Stop();
 	}
-	if (Instance->Component.IsValid())
-	{
-		Instance->Component->Stop();
-	}
-	if (Instance->Wave.IsValid())
-	{
-		Instance->Wave->RemoveFromRoot();
-	}
+}
+
+bool UPal3AudioHelper::IsAudioPlaying(int32 Handle)
+{
+	const FPal3AudioInstance* Instance = GAudioInstances.Find(Handle);
+	const UAudioComponent* Component = Instance ? Instance->Component.Get() : nullptr;
+	return Component && Component->IsPlaying();
 }
 
 void UPal3AudioHelper::StopAllAudio()
@@ -335,58 +363,35 @@ void UPal3AudioHelper::StopAllAudio()
 
 void UPal3AudioHelper::SetAudioVolume(int32 Handle, float Volume)
 {
-	if (TSharedPtr<FPal3AudioInstance>* Found = GAudioInstances.Find(Handle))
+	if (const FPal3AudioInstance* Found = GAudioInstances.Find(Handle))
 	{
-		(*Found)->Volume = FMath::Clamp(Volume, 0.0f, 2.0f);
-		if ((*Found)->Component.IsValid())
+		if (UAudioComponent* Component = Found->Component.Get())
 		{
-			(*Found)->Component->SetVolumeMultiplier((*Found)->Volume);
+			Component->SetVolumeMultiplier(FMath::Clamp(Volume, 0.0f, 2.0f));
 		}
 	}
 }
 
 void UPal3AudioHelper::TickAudio()
 {
-	TArray<int32> ToRemove;
-
-	for (const TPair<int32, TSharedPtr<FPal3AudioInstance>>& Pair : GAudioInstances)
+	for (auto It = GAudioInstances.CreateIterator(); It; ++It)
 	{
-		FPal3AudioInstance& Instance = *Pair.Value;
-		if (!Instance.bPlaying)
+		const UAudioComponent* Component = It.Value().Component.Get();
+		if (!Component || !Component->IsPlaying())
 		{
-			ToRemove.Add(Pair.Key);
-			continue;
+			It.RemoveCurrent();
 		}
-
-		const bool bStillPlaying = Instance.Component.IsValid() && Instance.Component->IsPlaying();
-		if (bStillPlaying)
-		{
-			continue;
-		}
-
-		if (Instance.LoopRemaining < 0 || Instance.LoopRemaining > 1)
-		{
-			if (Instance.LoopRemaining > 1)
-			{
-				--Instance.LoopRemaining;
-			}
-			if (SpawnProcedural(Instance) != nullptr)
-			{
-				continue;
-			}
-		}
-
-		ToRemove.Add(Pair.Key);
-	}
-
-	for (int32 Handle : ToRemove)
-	{
-		StopAudio(Handle);
 	}
 }
 
-FString UPal3AudioHelper::GetAudioStats()
+void UPal3AudioHelper::GetAudioStats(int32& Decoded, int32& Failed, int32& Active, int64& PcmBytes)
 {
-	return FString::Printf(TEXT("decoded=%d failed=%d active=%d"),
-		GDecodedCount, GFailedCount, GAudioInstances.Num());
+	Decoded = GDecodedCount;
+	Failed = GFailedCount;
+	Active = GAudioInstances.Num();
+	PcmBytes = 0;
+	for (const auto& Pair : GAudioInstances)
+	{
+		PcmBytes += Pair.Value.PcmBytes;
+	}
 }

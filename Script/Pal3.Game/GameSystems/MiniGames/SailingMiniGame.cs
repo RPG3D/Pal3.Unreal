@@ -12,6 +12,8 @@ namespace Pal3.Game.GameSystems.MiniGames
     using Core.Command;
     using Core.Command.SceCommands;
     using Core.Contract.Constants;
+    using Engine.Services;
+    using Scene;
 
     public sealed class SailingMiniGame : IDisposable,
         ICommandExecutor<MiniGameStartSailingCommand>
@@ -28,19 +30,29 @@ namespace Pal3.Game.GameSystems.MiniGames
 
         public void Execute(MiniGameStartSailingCommand command)
         {
-            if (command.StartSegment == 0)
+            var scenes = ServiceLocator.Instance.Get<SceneManager>();
+            switch (command.StartSegment)
             {
-                Pal3Game.Instance.Execute(new SceneLoadCommand("m04", "1"));
-                Pal3Game.Instance.Execute(new ActorActivateCommand(ActorConstants.PlayerActorVirtualID, 0));
-            }
-            else if (command.StartSegment == 1)
-            {
-                Pal3Game.Instance.Execute(new SceneLoadCommand("m05", "1"));
+                case 0:
+                    scenes.BeginLoadScene("m04", "1", () =>
+                    {
+                        Pal3Game.Instance.Execute(new ActorActivateCommand(ActorConstants.PlayerActorVirtualID, 0));
+                        Finish();
+                    });
+                    break;
+                case 1:
+                    scenes.BeginLoadScene("m05", "1", Finish);
+                    break;
+                default:
+                    Finish();
+                    break;
             }
 
-            Pal3Game.Instance.Execute(new ScriptExecuteCommand(command.EndScriptId));
-
-            Pal3Game.Instance.Execute(new UIDisplayNoteCommand("行船小游戏暂未实现，现已跳过"));
+            void Finish()
+            {
+                Pal3Game.Instance.Execute(new ScriptExecuteCommand(command.EndScriptId));
+                Pal3Game.Instance.Execute(new UIDisplayNoteCommand("行船小游戏暂未实现，现已跳过"));
+            }
         }
     }
 }

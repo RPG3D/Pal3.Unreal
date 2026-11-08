@@ -7,7 +7,6 @@ namespace Pal3.Game.Scene
 {
     using System;
     using System.Collections.Generic;
-    using System.Diagnostics;
     using System.Linq;
     using Actor;
     using Actor.Controllers;
@@ -29,10 +28,12 @@ namespace Pal3.Game.Scene
     using Engine.Logging;
     using Engine.Navigation;
     using Engine.Renderer;
+    using Engine.Services;
     using Engine.Utilities;
     using Rendering.Material;
     using Rendering.Renderer;
     using SceneObjects;
+    using Script;
     using State;
     using UnityEngine;
     using Color = Core.Primitives.Color;
@@ -87,7 +88,7 @@ namespace Pal3.Game.Scene
 
             CommandExecutorRegistry<ICommand>.Instance.UnRegister(this);
 
-            _mesh.Destroy();
+            _mesh?.Destroy();
 
             foreach (IGameEntity navMeshEntity in _navMeshEntities)
             {
@@ -128,20 +129,18 @@ namespace Pal3.Game.Scene
             _materialManager = resourceProvider.GetMaterialManager();
         }
 
-        public void Load(ScnFile scnFile, IGameEntity parent)
+        internal IEnumerable<SceneLoadStep> LoadBatches(ScnFile scnFile, IGameEntity parent)
         {
             _parent = parent;
 
-            Stopwatch timer = Stopwatch.StartNew();
-
-            base.Init(_resourceProvider,
+            foreach (var phase in LoadDataBatches(_resourceProvider,
                 scnFile,
                 _sceneObjectFactory,
                 _sceneStateManager,
-                _sceneObjectIdsToNotLoadFromSaveState);
-
-            EngineLogger.Log($"Scene data initialized in {timer.ElapsedMilliseconds} ms");
-            timer.Restart();
+                _sceneObjectIdsToNotLoadFromSaveState))
+            {
+                yield return phase;
+            }
 
             Color actorTintColor = Color.White;
             if (IsNightScene())
@@ -149,10 +148,10 @@ namespace Pal3.Game.Scene
                 actorTintColor = new Color(0.7f, 0.7f, 0.7f, 1f);
             }
 
-            timer.Restart();
-            RenderMesh();
-            EngineLogger.Log($"Mesh initialized in {timer.ElapsedMilliseconds} ms");
-            timer.Restart();
+            foreach (var phase in RenderMesh())
+            {
+                yield return phase;
+            }
 
             RenderSkyBox();
             SetupNavMesh();
@@ -160,15 +159,29 @@ namespace Pal3.Game.Scene
             {
                 SetupEnvironmentLighting();
             }
-            EngineLogger.Log($"SkyBox + NavMesh initialized in {timer.ElapsedMilliseconds} ms");
-            timer.Restart();
+            yield return new("正在布置场景", .80f);
 
-            InitActorObjects(actorTintColor, Tilemap);
-            EngineLogger.Log($"Actors initialized in {timer.ElapsedMilliseconds} ms");
-            timer.Restart();
+            int loadedActors = 0;
+            foreach (GameActor actor in Actors.Values)
+            {
+                CreateActorObject(actor, actorTintColor, Tilemap);
+                yield return new("正在加载角色", .80f + .12f * ++loadedActors / Actors.Count);
+            }
+            foreach (var phase in InitSceneObjects())
+            {
+                yield return phase;
+            }
 
-            InitSceneObjects();
-            EngineLogger.Log($"Objects initialized in {timer.ElapsedMilliseconds} ms");
+            #if PAL3
+            // Restored scene state can leave the teapot inactive while the story
+            // still requires it. At this story point it must be investigable.
+            if (scnFile.SceneInfo.Is("q01", "yn09") &&
+                GetSceneObject(6)?.ObjectInfo.ScriptId == 1901 &&
+                ServiceLocator.Instance.Get<IUserVariableStore<ushort, int>>().Get(ScriptConstants.MainStoryVariableId) == 10201)
+            {
+                ActivateSceneObject(6);
+            }
+            #endif
         }
 
         public ScnSceneInfo GetSceneInfo()
@@ -232,7 +245,7 @@ namespace Pal3.Game.Scene
             return false;
         }
 
-        private void RenderMesh()
+        private IEnumerable<SceneLoadStep> RenderMesh()
         {
             // Render mesh
             _mesh = GameEntityFactory.Create($"Mesh_{ScnFile.SceneInfo.CityName}_{ScnFile.SceneInfo.SceneName}",
@@ -240,12 +253,17 @@ namespace Pal3.Game.Scene
             _mesh.IsStatic = true; // Scene mesh is static
 
             PolyModelRenderer polyMeshRenderer = _mesh.AddComponent<PolyModelRenderer>();
-            polyMeshRenderer.Render(ScenePolyMesh.PolFile,
+            foreach (var batch in polyMeshRenderer.RenderBatches(ScenePolyMesh.PolFile,
                 ScenePolyMesh.TextureProvider,
                 _materialManager,
                 isStaticObject: true, // Scene mesh is static
                 Color.White,
-                IsWaterSurfaceOpaque());
+                IsWaterSurfaceOpaque()))
+            {
+                yield return batch.IsTexture
+                    ? new("正在加载场景纹理", .28f + .22f * batch.Fraction)
+                    : new("正在构建场景网格", .50f + .26f * batch.Fraction);
+            }
 
             if (SceneCvdMesh != null)
             {
@@ -254,6 +272,7 @@ namespace Pal3.Game.Scene
                     SceneCvdMesh.Value.TextureProvider,
                     _materialManager);
                 cvdMeshRenderer.LoopAnimation(SCENE_CVD_ANIMATION_DEFAULT_TIMESCALE);
+                yield return new("正在构建场景动画", .78f);
             }
         }
 
@@ -407,8 +426,9 @@ namespace Pal3.Game.Scene
             }
         }
 
-        private void InitSceneObjects()
+        private IEnumerable<SceneLoadStep> InitSceneObjects()
         {
+            int loadedObjects = 0;
             foreach (SceneObject sceneObject in SceneObjects.Values)
             {
                 if (!_sceneObjectIdsToNotLoadFromSaveState.Contains(sceneObject.ObjectInfo.Id) &&
@@ -426,14 +446,7 @@ namespace Pal3.Game.Scene
                 {
                     ActivateSceneObject(sceneObject.ObjectInfo.Id);
                 }
-            }
-        }
-
-        private void InitActorObjects(Color tintColor, Tilemap tilemap)
-        {
-            foreach (GameActor actorObject in Actors.Values)
-            {
-                CreateActorObject(actorObject, tintColor, tilemap);
+                yield return new("正在加载场景物件", .92f + .07f * ++loadedObjects / SceneObjects.Count);
             }
         }
 

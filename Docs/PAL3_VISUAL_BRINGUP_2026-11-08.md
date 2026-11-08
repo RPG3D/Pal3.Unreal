@@ -1,6 +1,6 @@
 # PAL3 → UE5 画面/角色/对话 UI 移植记录（2026-11-08）
 
-本文记录本轮"画面效果不对"排查中定位到的根因、修复方式与验证数据，供后续接续。
+本文是 2026-11-08 的移植排查记录，保留复现条件和当时的验证数据。当前构建、操作和待办见[项目入口](../README.md)，最新诊断命令见[诊断与回归](DIAGNOSTICS.md)。
 项目路径：`D:\UEProject\SharpDemo`（源码 UE5）、参考实现 `D:\Code\PAL3.Unity`。
 
 ---
@@ -13,7 +13,7 @@
 | 角色全黑 | `Pal3.Game` 程序集里残留 `Engine.DataLoader.TgaTextureLoader` 桩（返回 1x1 白纹理），同程序集同名类型优先于 Engine 程序集的真实解码器（CS0436）→ 所有角色 `.tga` 无 UE 纹理 | 删除桩类 |
 | 对话头像倒立、位置/尺寸不对 | 头像 TGA 为 bottom-left origin（descriptor byte17 bit5=0），解码后未翻转；且贴图带大量透明边 | 解码时按 descriptor 翻转行；managed 求 alpha bbox，按裁剪 UV 绘制 |
 | 整体过亮、灰蓝（Unity 是暗暖色） | Unity 端是 HDRP + RealToon，整体比原始贴图暗约 5x（线性）且偏暖；UE 端材质是 unlit，无光照模型 | `UnityEngine.SceneLighting.SurfaceScale`（ambient×0.05 + light×0.03，再乘暖白平衡）乘到所有材质 TintColor |
-| 调试日志面板挡住半个画面 | 侧栏默认可见 | 默认隐藏；F1 / RC `OverlayVisible` 打开；底部保留原生对话栏 |
+| 调试日志面板挡住半个画面 | 侧栏默认可见 | 诊断面板默认隐藏，现由 Tab 菜单或 RC `overlay` 控制 |
 | 场景背景是蓝天 | 关卡里有 SkyAtmosphere/HeightFog/SkyLight/强白平行光 | 删除这些 actor；材质全部 unlit，背景纯黑 |
 | 光环类模型显示为暗环 | 透明/加法混合材质未实现 | 材质四态：`M_Pal3Tex`(opaque) / `_Add`(additive) / `_Alpha`(translucent) / `_Masked`(cutout) |
 | 第二次 PIE 无菜单/直接旧台词，随后崩溃 | 托管运行时跨 PIE 不卸载：boot 标志、单例、协程、命令注册表都指向已销毁 actor | `Pal3Boot.ResetForNewSession()`（含 Singleton/CommandExecutorRegistry 重置），PIE 连续启停验证 |
@@ -63,12 +63,9 @@ Managed：
 - `_TintColor`、`_HasShadowTex`、`_Exposure` 映射到上面参数；
 - `ApplyTint()` = 游戏 Tint × `SceneLighting.SurfaceScale`。
 
-### 2.4 对话栏（原生 HUD）
-- `APal3DebugHUD::DrawDialogueBar`：底部 86% 宽、0.23 屏高、深色底 + 金色细边；
-- 头像：`SetDialogueAvatar(UTexture2D*, bRightAligned, U0,V0,U1,V1)`，UV 是 alpha bbox（避开透明边），按裁剪比例缩放；
-- 文本：中文逐字换行，字号 scale 1.85；
-- 对话结束 `DialogueManager.ResetUI()` → `ClearDialogue()` + `ClearDialogueAvatar()`；
-- 侧栏日志默认关闭，F1 / RC `SetOverlayVisible` 切换。
+### 2.4 对话栏
+
+早期原生 HUD 用于验证对白和头像。现行 `DialoguePresentation` 提供对白文本、头像裁剪 UV 和选项，`Pal3Hud` 与 `Pal3DialogueChoices` 用 JSON UMG 显示。旧原生类保留 RC 查询和网格接口。现行 UI 操作见[项目入口](../README.md)。
 
 ### 2.5 场景光照（近似）
 `GameScene.SetupEnvironmentLighting` 末尾调用 `UnityEngine.SceneLighting.Set(mainLight.color, intensity, ambient, ambientIntensity)`。
@@ -153,67 +150,20 @@ Cannot queue the Expression Cache for Material MID_M_Pal3Tex_11344 when it is ab
 
 ---
 
-## 6. 音频（WAV + MP3，无外部插件）
+## 6. 音频移植与回收
 
-- **不依赖 RuntimeAudioImporter**：UE5 自带 `Engine/Source/ThirdParty/dr_libs`（dr_libs v0.6.39，含 `FMP3Decoder`），模块加 `dr_libs` 依赖即可运行时解 MP3；WAV 用 ~60 行 RIFF 解析。
-- 新增 `Source/SharpDemo/Pal3AudioHelper.{h,cpp}`：
-  - `PlayAudio(bytes, audioType, volume, loopCount) -> handle`（7=WAV / 6=MPEG，Unity AudioType 值）；
-  - WAV：PCM8/16/float32 → PCM16；MP3：解析帧头（跳过 ID3v2、按 bitrate/samplerate 表切帧）逐帧喂 `FMP3Decoder`；PCM16 交给 `USoundWaveProcedural::QueueAudio` + `UGameplayStatics::SpawnSound2D`；
-  - `TickAudio()` 负责循环实例重放（音乐 `loop=-1`）、`StopAudio/StopAllAudio/SetAudioVolume`；
-  - 所有 ProceduralSoundWave `AddToRoot()`，避免 GC/渲染线程竞态。
-- managed：
-  - `GameResourceProvider.LoadAudioClipAsync` 直接读文件（SFX 在 `snd/*.wav`；音乐由 `ExtractAndMoveMp3FileToCacheFolderAsync` 从 `music.cpk` 解出），WAV header 计算 `length`；
-  - `AudioSource` 的 `Play/Stop/PlayOneShot/volume` 接到 C++ handle；
-  - `APal3Driver.Tick` 调 `TickAudio()`；会话重置时 `StopAllAudio()`。
-- 验证：日志 `[Pal3Audio] play handle=1 type=7 22.0kHz x1`（SFX）、`type=6 44.1kHz x2 loops=-1`（PI27 音乐），`audio=decoded=..` 计数增长。听感需人工确认。
+PAL3 运行时从 WAV 或 MPEG 解码得到 PCM，C# 的 `AudioSource` wrapper 保存播放句柄。早期版本以程序音频队列播放，后续在安宁村复现了组件重建与 PCM 积压。现行 PCM 生成器在同一个组件内处理循环，播放结束时由 UE 回收组件。回归数据与统计入口见[音频内存案例](DIAGNOSTICS.md#历史案例--音频组件和-pcm-增长)。
 
----
+## 7. JSON UMG 演进
 
-## 7. RuntimeWidgetLayout 模块（JSON → UMG）
+早期 `JsonUiDemo` 用来验证 JSON 到 UMG 的建树和点击轮询。现行主菜单由独立 JSON 定义首页、场景、剧情及存读档四页，C# 通过 `WidgetSwitcher` 换页。诊断面板、对白栏和对白选项也使用 JSON UMG。布局调试与 RC 入口见[诊断与回归](DIAGNOSTICS.md#6-pal3-主菜单布局)。
 
-新模块 `Source/RuntimeWidgetLayout`（Runtime，Default 加载）：
+## 8. 视觉跟进项
 
-- `URuntimeJsonWidget : UUserWidget`：`BuildFromJson(FString)` 解析 JSON 并用 `UWidgetTree->ConstructWidget` 构造控件树；
-- 已支持：`canvas`、`border`、`text`、`button`、`progressbar`（可扩展）；
-- `URuntimeJsonWidgetLibrary`：
-  - `CreateJsonWidget(Json, ZOrder)` → 建树 + `AddToViewport` + `GameAndUI` 输入模式 + 鼠标光标；
-  - `RemoveJsonWidget` / `SetJsonWidgetVisible`；
-- 按钮点击：`UJsonButton`（记录 JSON `id`）+ `ConsumeClickedButton(out id)` 轮询；`NativeTick` 里另有按 PC 鼠标坐标 + 按钮矩形的手动命中测试兜底；
-- C# 用法（`Script/ManagedSharpDemo/JsonUiDemo.cs`，RC `RequestJsonDemo` 触发）：JSON → `URuntimeJsonWidgetLibrary.CreateJsonWidget(json, 100)` → 每帧 `ConsumeClickedButton` 取 id；
-- 已验证：PIE 中 JSON 面板正确渲染（`Saved/Screenshots/pal3_jsonui.png`）；无前台焦点的自动化环境无法注入 Slate 点击（PC 鼠标坐标冻结），按钮点击需人工确认；绑定与轮询逻辑已就绪；
-- JSON 坐标为设计空间像素（1080p 基准，UMG DPI 曲线会缩放到实际视口）。
+- 对照前台 PIE 的脚底接地、步幅、材质和中文排版。
+- 角色与场景阴影、光环混合语义、UV 约定及 MID 生命周期仍有后续工作。
+- 本轮本机原版数据缺少兼容格式的 `pal3op`，启动日志会记录视频加载失败。
 
----
+## 9. 回归记录
 
-## 8. 仍未完成
-
-- 角色/场景脚下无影子（`SpriteRenderer` 仍是数据桩；需 UE 投影 quad 或 blob shadow）。
-- 两处光环 artifact 的正确混合语义待确认（已具备 additive/alpha 材质，但对应对象可能走其他路径）。
-- 开场视频（`pal3op` 缺失，VideoManager 只记错误日志）。
-- JSON UI：按钮点击在自动化环境未验证（需人工点击确认）；Slate 输入路由在失焦 PIE 下不喂事件，已加手动命中兜底。
-- 完整 UI（存档/菜单/选项）尚未迁移到 RuntimeWidgetLayout。
-- 字体排版与原文更精细的对齐。
-- UV 约定统一（见 3.5 的 TODO）；MID 内存增长治理。
-
----
-
-## 9. 复现与验证
-
-```
-# 编译 C++（会顺带生成 UHT glue）
-D:\Code\UE5\Engine\Binaries\ThirdParty\DotNet\10.0\win-x64\dotnet.exe \
-  D:\Code\UE5\Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.dll \
-  SharpDemoEditor Win64 Development -Project=D:\UEProject\SharpDemo\SharpDemo.uproject -WaitMutex
-
-# 编译托管（注意引用项目会编到各自 bin\Debug，最终 DLL 在 app 的 bin\Release）
-cd D:\UEProject\SharpDemo\Script
-dotnet build ManagedSharpDemo.sln -c Release -p:EnablePal3=true
-cp ManagedSharpDemo\bin\Release\net10.0\{Engine,Pal3.Game,ManagedSharpDemo}.dll ..\Binaries\Managed\net10.0\
-
-# 启动编辑器 + RC 启停 PIE
-UnrealEditor.exe D:\UEProject\SharpDemo\SharpDemo.uproject -log -abslog=...\Saved\Logs\pal3.log
-python Script\Tools\ue_remote.py call /Script/LevelEditor.Default__LevelEditorSubsystem EditorRequestBeginPlay
-python Script\Tools\ue_remote.py call /Script\SharpDemo.Default__Pal3DebugOverlay StartGame
-```
-
-关键日志标记：`[Pal3Boot] Session state reset`、`Full boot starting`、`Scene loaded`、`[Lighting]`、`[Pal3Driver] actors=`（含 a11/a12/a13 位置与 native 位置）。
+Win64 独立游戏中，景天 `z19` 和雪见 `c02` 分别取得至少三种 UE 网格姿势。雪见脚本移动取得水平位移，后续回归也通过了原生朝向与位移对齐检查。指纹取自 ProceduralMesh 本地顶点。当前复现命令见[开场回归](DIAGNOSTICS.md#回归开场-mv3-顶点动画)，构建命令见[项目入口](../README.md#windows-开发启动)。

@@ -3,7 +3,7 @@
 // PAL3 ships SFX as 16-bit WAV (snd/*.wav) and music as MPEG audio inside
 // music.cpk. UE has no runtime "play these bytes" path for either format, so this
 // helper decodes in-process (dr_libs FMP3Decoder for MPEG, a small RIFF parser for
-// WAV) and feeds the PCM to a UProceduralSoundWave. No external plugin required.
+// WAV) and feeds PCM to the audio mixer. No external plugin required.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -23,10 +23,13 @@ public:
 	 * Returns a handle (0 on failure) for Stop/SetVolume.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "PAL3|Audio")
-	static int32 PlayAudio(const TArray<uint8>& Data, int32 AudioType, float Volume, int32 LoopCount);
+	static int32 PlayAudio(TArray<uint8> Data, int32 AudioType, float Volume, int32 LoopCount);
 
 	UFUNCTION(BlueprintCallable, Category = "PAL3|Audio")
 	static void StopAudio(int32 Handle);
+
+	UFUNCTION(BlueprintCallable, Category = "PAL3|Audio")
+	static bool IsAudioPlaying(int32 Handle);
 
 	UFUNCTION(BlueprintCallable, Category = "PAL3|Audio")
 	static void StopAllAudio();
@@ -34,11 +37,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "PAL3|Audio")
 	static void SetAudioVolume(int32 Handle, float Volume);
 
-	/** Per-frame housekeeping: restarts looping instances that finished. */
+	/** Drops handles for components that have finished or were stopped by the mixer. */
 	UFUNCTION(BlueprintCallable, Category = "PAL3|Audio")
 	static void TickAudio();
 
-	/** Diagnostics text: decoded/played/failed counters + active instances. */
+	/** Diagnostics counters and PCM bytes held by active instances. */
 	UFUNCTION(BlueprintCallable, Category = "PAL3|Audio")
-	static FString GetAudioStats();
+	static void GetAudioStats(int32& Decoded, int32& Failed, int32& Active, int64& PcmBytes);
 };

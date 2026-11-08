@@ -26,11 +26,36 @@ namespace Pal3.Game.GamePlay
         private const float PLAYER_ACTOR_MOVEMENT_SFX_WALK_VOLUME = 0.6f;
         private const float PLAYER_ACTOR_MOVEMENT_SFX_RUN_VOLUME = 1.0f;
 
+        private Vector2 _commandMovement;
+        private float _commandMovementRemaining;
+
+        public void MovePlayerFor(Vector2 direction, float seconds)
+        {
+            _commandMovement = direction;
+            _commandMovementRemaining = seconds;
+        }
+
         private void ReadInputAndMovePlayerIfNeeded(float deltaTime)
         {
+            if (_commandMovementRemaining > 0f)
+            {
+                float step = System.Math.Min(deltaTime, _commandMovementRemaining);
+                _commandMovementRemaining -= step;
+                MovePlayer(_commandMovement, step);
+                if (_commandMovementRemaining <= 0f)
+                {
+                    _playerActorActionController.PerformAction(ActorActionType.Stand);
+                }
+                return;
+            }
+
             Vector2 movement = _inputActions.Gameplay.Movement.ReadValue<Vector2>();
             if (movement.magnitude <= 0.01f) return;
+            MovePlayer(movement, deltaTime);
+        }
 
+        private void MovePlayer(Vector2 movement, float deltaTime)
+        {
             MovementMode movementMode = movement.magnitude < 0.7f ? MovementMode.Walk : MovementMode.Run;
             ActorActionType movementAction = movementMode == MovementMode.Walk ? ActorActionType.Walk : ActorActionType.Run;
             _playerActorMovementController.CancelMovement();

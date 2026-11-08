@@ -1,4 +1,4 @@
-﻿// ---------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------
 //  Copyright (c) 2021-2025, Jiaqi (0x7c13) Liu. All rights reserved.
 //  See LICENSE file in the project root for license information.
 // ---------------------------------------------------------------------------------------------
@@ -58,6 +58,9 @@ namespace Pal3.Game.GameSystems.Caption
         }
 
         private void CutsceneContinueOnPerformed(InputAction.CallbackContext obj)
+            => RequestContinue();
+
+        public void RequestContinue()
         {
             _skipCaptionRequested = true;
         }
@@ -82,7 +85,8 @@ namespace Pal3.Game.GameSystems.Caption
                 });
 
             _skipCaptionRequested = false;
-            yield return CoroutineYieldInstruction.WaitUntil(() => _skipCaptionRequested);
+            yield return CoroutineYieldInstruction.WaitUntil(() =>
+                _skipCaptionRequested || Pal3Boot.AutoDialogueEnabled);
 
             _captionImage.color = Color.clear;
             texture.Destroy();

@@ -27,10 +27,9 @@ namespace UnityEngine
 
     public enum AudioType { UNKNOWN = 0, ACC = 1, AIFF = 2, AUDIOQUEUE = 3, AUDIO_WAV = 4, AUDIO_OGGVORBIS = 5, MPEG = 6, WAV = 7, OGGVORBIS = 8 }
 
-    public class AudioSource : Component
+    public class AudioSource : Component, IDisposable
     {
         public AudioClip? clip;
-        public bool isPlaying;
         public bool loop;
         public bool mute;
         public float spatialBlend;
@@ -39,6 +38,16 @@ namespace UnityEngine
 
         private float _volume = 1f;
         private int _handle;
+        private readonly List<int> _oneShots = new();
+
+        public bool isPlaying
+        {
+            get
+            {
+                _oneShots.RemoveAll(handle => !UnrealSharp.SharpDemo.UPal3AudioHelper.IsAudioPlaying(handle));
+                return (_handle != 0 && UnrealSharp.SharpDemo.UPal3AudioHelper.IsAudioPlaying(_handle)) || _oneShots.Count > 0;
+            }
+        }
 
         public float volume
         {
@@ -55,21 +64,29 @@ namespace UnityEngine
 
         public void Play()
         {
-            Stop();
-            if (clip?.rawData == null) return;
+            StopClip();
+            if (!enabled || clip?.rawData == null) return;
             _handle = UnrealSharp.SharpDemo.UPal3AudioHelper.PlayAudio(
                 clip.rawData, clip.audioType, mute ? 0f : _volume, loop ? -1 : 1);
-            isPlaying = _handle != 0;
         }
 
         public void Stop()
+        {
+            StopClip();
+            foreach (int handle in _oneShots)
+            {
+                UnrealSharp.SharpDemo.UPal3AudioHelper.StopAudio(handle);
+            }
+            _oneShots.Clear();
+        }
+
+        private void StopClip()
         {
             if (_handle != 0)
             {
                 UnrealSharp.SharpDemo.UPal3AudioHelper.StopAudio(_handle);
                 _handle = 0;
             }
-            isPlaying = false;
         }
 
         public void Pause() { }
@@ -77,9 +94,17 @@ namespace UnityEngine
 
         public void PlayOneShot(AudioClip oneShotClip, float volumeScale = 1f)
         {
-            if (oneShotClip?.rawData == null) return;
-            UnrealSharp.SharpDemo.UPal3AudioHelper.PlayAudio(
+            if (!enabled || oneShotClip?.rawData == null) return;
+            _oneShots.RemoveAll(shotHandle => !UnrealSharp.SharpDemo.UPal3AudioHelper.IsAudioPlaying(shotHandle));
+            int handle = UnrealSharp.SharpDemo.UPal3AudioHelper.PlayAudio(
                 oneShotClip.rawData, oneShotClip.audioType, (mute ? 0f : _volume) * volumeScale, 1);
+            if (handle != 0) _oneShots.Add(handle);
+        }
+
+        public void Dispose()
+        {
+            enabled = false;
+            Stop();
         }
     }
 
@@ -386,10 +411,7 @@ namespace UnityEngine.InputSystem
         }
 
         /// <summary>
-        /// Debug hook used by the port's auto-advance driver (PAL3_AUTODIALOGUE=1):
-        /// fires the same callback a real device/button press would. Nothing else in
-        /// the port raises InputAction events yet, so dialogue/scripts that wait for
-        /// "continue" would otherwise block forever.
+        /// Fires the callbacks used by the keyboard bridge and automation.
         /// </summary>
         public void SimulatePerformed()
         {
@@ -557,12 +579,6 @@ namespace UnityEngine.InputSystem.OnScreen
         public void OnPointerUp() { }
     }
 
-    public class OnScreenStick : Component
-    {
-        public float movementRange = 50f;
-        public bool useIsometricView;
-        public Vector2 value => default;
-    }
 }
 
 namespace UnityEngine.InputSystem.Utilities
@@ -602,7 +618,7 @@ namespace UnityEngine.UI
         public bool preserveAspect;
         public bool raycastTarget = true;
         public Material? material;
-        public RectTransform rectTransform => null!;
+        public RectTransform rectTransform => GetComponent<RectTransform>();
     }
 
     public class Button : Component
@@ -708,9 +724,6 @@ namespace TMPro
 {
     public class TextMeshProUGUI
     {
-        // Property (not a field) so every story line written by the dialogue
-        // managers also reaches the C++ debug overlay. The text itself stays a stub
-        // (no UMG rendering yet).
         private string _text = "";
         public string text
         {
@@ -931,7 +944,6 @@ namespace Engine.Renderer
         // Default lit material for every section: the ported game's own materials are
         // still stubs, and UE skips sections whose material is null.
         private static UnrealSharp.Engine.UMaterialInterface? _defaultMaterial;
-        private bool _uploadedOnce;
 
         // Diagnostics: proves the ported level data actually reached UE.
         public static int UploadCount;
@@ -964,8 +976,23 @@ namespace Engine.Renderer
 
         public void AttachTo(Engine.Core.Implementation.UEGameEntity entity) => _actor = entity.Actor;
 
-        public UnityEngine.Bounds GetRendererBounds() => default;
+        public UnityEngine.Bounds GetRendererBounds()
+        {
+            if (_mesh == null || !UnrealSharp.CoreUObject.UObjectExtensions.IsValid(_mesh))
+                return new UnityEngine.Bounds(_actor == null ? UnityEngine.Vector3.zero :
+                    Engine.Core.Implementation.UnityUeConvert.ToUnityPosition(_actor.ActorLocation), UnityEngine.Vector3.zero);
+
+            UnrealSharp.Engine.SystemLibrary.GetComponentBounds(_mesh, out var origin, out var extent, out _);
+            return new UnityEngine.Bounds(Engine.Core.Implementation.UnityUeConvert.ToUnityPosition(origin),
+                Engine.Core.Implementation.UnityUeConvert.ToUnityPosition(extent) * 2f);
+        }
         public UnityEngine.Bounds GetMeshBounds() => default;
+        public string FingerprintMesh()
+        {
+            if (_mesh == null) return string.Empty;
+            long hash = UnrealSharp.SharpDemo.UPal3DebugOverlay.FingerprintMeshSection(_mesh, 0, out int vertexCount);
+            return vertexCount == 0 ? string.Empty : $"{vertexCount}:{hash:x8}";
+        }
         public Engine.Core.Abstraction.IMaterial[] GetMaterials() => Array.Empty<Engine.Core.Abstraction.IMaterial>();
 
         public UnityEngine.Mesh Render(
@@ -1012,9 +1039,15 @@ namespace Engine.Renderer
                 return new UnityEngine.Mesh();
             }
 
-            bool _statsRecorded = false;
-            void UploadSection(bool createCollision)
+            var ueVertices = new UnrealSharp.CoreUObject.FVector[vertexCount];
+            void CopyVertices()
             {
+                for (int i = 0; i < vertexCount; i++)
+                {
+                    ueVertices[i] = Engine.Core.Implementation.UnityUeConvert.ToUePosition(vertices[i]);
+                }
+            }
+
             try
             {
                 _mesh ??= _actor.AddComponentByClass<UnrealSharp.ProceduralMeshComponent.UProceduralMeshComponent>(
@@ -1046,11 +1079,7 @@ namespace Engine.Renderer
                     }
                 }
 
-                var ueVertices = new System.Collections.Generic.List<UnrealSharp.CoreUObject.FVector>(vertices.Length);
-                foreach (UnityEngine.Vector3 v in vertices)
-                {
-                    ueVertices.Add(Engine.Core.Implementation.UnityUeConvert.ToUePosition(v));
-                }
+                CopyVertices();
 
                 var ueNormals = new System.Collections.Generic.List<UnrealSharp.CoreUObject.FVector>(
                     hasNormals ? vertexCount : 0);
@@ -1092,9 +1121,10 @@ namespace Engine.Renderer
                     ueTriangles.Add(triangles[i + 1]);
                 }
 
+                // Static level geometry keeps collision; animated sections only upload positions after creation.
+                UnrealSharp.SharpDemo.UPal3DebugOverlay.CreateProceduralSection(
+                    _mesh, 0, ueVertices, ueTriangles, ueNormals, uv0, uv1, !isDynamic);
                 ++UploadCount;
-                if (_statsRecorded) { ++ReuploadCount; return; } // per-frame re-uploads don't refresh stats
-                _statsRecorded = true;
                 UnrealSharp.CoreUObject.FVector actorPos = _actor.ActorLocation;
                 foreach (UnrealSharp.CoreUObject.FVector p in ueVertices)
                 {
@@ -1103,9 +1133,9 @@ namespace Engine.Renderer
                     if (wy < MinY) MinY = wy; if (wy > MaxY) MaxY = wy;
                     if (wz < MinZ) MinZ = wz; if (wz > MaxZ) MaxZ = wz;
                 }
-                TotalVertices += ueVertices.Count;
+                TotalVertices += ueVertices.Length;
                 TotalTriangles += ueTriangles.Count / 3;
-                if (!_loggedFirstUpload && ueVertices.Count > 0)
+                if (!_loggedFirstUpload && ueVertices.Length > 0)
                 {
                     _loggedFirstUpload = true;
                     double minX = double.MaxValue, minY = double.MaxValue, minZ = double.MaxValue;
@@ -1116,7 +1146,7 @@ namespace Engine.Renderer
                         if (p.Y < minY) minY = p.Y; if (p.Y > maxY) maxY = p.Y;
                         if (p.Z < minZ) minZ = p.Z; if (p.Z > maxZ) maxZ = p.Z;
                     }
-                    UnityEngine.Debug.Log($"[StaticMeshRenderer] first mesh: verts={ueVertices.Count} tris={ueTriangles.Count / 3} "
+                    UnityEngine.Debug.Log($"[StaticMeshRenderer] first mesh: verts={ueVertices.Length} tris={ueTriangles.Count / 3} "
                         + $"bounds=({minX:F0},{minY:F0},{minZ:F0})..({maxX:F0},{maxY:F0},{maxZ:F0})"
                         + $" actor={_actor.Name} at=({actorPos.X:F0},{actorPos.Y:F0},{actorPos.Z:F0})");
                     float uMin = float.MaxValue, uMax = float.MinValue, vMin = float.MaxValue, vMax = float.MinValue;
@@ -1130,58 +1160,24 @@ namespace Engine.Renderer
                         UnityEngine.Debug.Log($"[StaticMeshRenderer] uv0 range=({uMin:F2},{vMin:F2})..({uMax:F2},{vMax:F2}) count={mainTextureUvs.uvs.Length}");
                     }
                 }
-
-                if (_uploadedOnce)
-                {
-                    // Per-frame vertex animation: only refresh the buffers. Recreating
-                    // the section (CreateMeshSection) rebuilds the render state every
-                    // frame and was a major cause of the 3 FPS + MID churn.
-                    _mesh.UpdateMeshSection(
-                        sectionIndex: 0,
-                        vertices: ueVertices,
-                        normals: ueNormals,
-                        uV0: uv0,
-                        uV1: uv1,
-                        uV2: new System.Collections.Generic.List<UnrealSharp.CoreUObject.FVector2D>(),
-                        uV3: new System.Collections.Generic.List<UnrealSharp.CoreUObject.FVector2D>(),
-                        vertexColors: new System.Collections.Generic.List<UnrealSharp.CoreUObject.FLinearColor>(),
-                        tangents: new System.Collections.Generic.List<UnrealSharp.ProceduralMeshComponent.FProcMeshTangent>());
-                }
-                else
-                {
-                    _uploadedOnce = true;
-                    _mesh.CreateMeshSection(
-                        sectionIndex: 0,
-                        vertices: ueVertices,
-                        triangles: ueTriangles,
-                        normals: ueNormals,
-                        uV0: uv0,
-                        uV1: uv1,
-                        uV2: new System.Collections.Generic.List<UnrealSharp.CoreUObject.FVector2D>(),
-                        uV3: new System.Collections.Generic.List<UnrealSharp.CoreUObject.FVector2D>(),
-                        vertexColors: new System.Collections.Generic.List<UnrealSharp.CoreUObject.FLinearColor>(),
-                        tangents: new System.Collections.Generic.List<UnrealSharp.ProceduralMeshComponent.FProcMeshTangent>(),
-                        // Static level geometry needs UE collision so the pawn/camera has
-                        // something to stand on (PAL3 gameplay itself uses its own tile data).
-                        createCollision: createCollision);
-                }
             }
             catch (Exception e)
             {
                 UnityEngine.Debug.LogError("[StaticMeshRenderer] UE mesh upload failed: " + e.Message);
+                return new UnityEngine.Mesh();
             }
-            } // UploadSection
-
-            UploadSection(createCollision: !isDynamic);
 
             UnityEngine.Mesh result = new();
             if (isDynamic)
             {
-                // Mv3 vertex animation mutates `vertices` in place and calls
-                // SetVertices — re-upload the section with the mutated buffers.
-                // (verts/normals/uvs/triangles are the same array instances the
-                // animation writes into; conversion happens per upload.)
-                result.OnMeshDataChanged = () => UploadSection(createCollision: false);
+                result.OnMeshDataChanged = () =>
+                {
+                    if (_mesh == null) return;
+                    CopyVertices();
+                    UnrealSharp.SharpDemo.UPal3DebugOverlay.UpdateProceduralVertices(_mesh, 0, ueVertices);
+                    ++UploadCount;
+                    ++ReuploadCount;
+                };
             }
             return result;
         }

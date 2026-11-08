@@ -69,14 +69,27 @@ namespace UnityEngine
             float newMag = Mathf.MoveTowards(currentMag, targetMag, maxMagnitudeDelta);
 
             if (currentDir.sqrMagnitude < 1e-8f || targetDir.sqrMagnitude < 1e-8f)
-                return targetDir * newMag;
+                return (targetMag > currentMag ? targetDir : currentDir) * newMag;
 
-            float angle = Angle(currentDir, targetDir) * Mathf.Deg2Rad;
+            Vector3 axis = Cross(currentDir, targetDir);
+            float axisMagnitude = axis.magnitude;
+            float angle = MathF.Atan2(axisMagnitude, Dot(currentDir, targetDir));
             if (angle <= maxRadiansDelta)
                 return targetDir * newMag;
 
-            float t = Mathf.Clamp01(maxRadiansDelta / angle);
-            return Lerp(currentDir, targetDir, t).normalized * newMag;
+            if (axisMagnitude > 1e-6f)
+            {
+                axis /= axisMagnitude;
+            }
+            else
+            {
+                // Collinear directions do not define an axis. Prefer a flat turn for horizontal movement.
+                Vector3 reference = MathF.Abs(currentDir.y) < 0.99f ? up : right;
+                axis = (reference - currentDir * Dot(reference, currentDir)).normalized;
+            }
+
+            float step = MathF.Max(maxRadiansDelta, angle - MathF.PI);
+            return (Quaternion.AngleAxis(step * Mathf.Rad2Deg, axis) * currentDir) * newMag;
         }
 
         /// <summary>

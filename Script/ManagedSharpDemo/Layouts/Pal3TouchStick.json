@@ -1,0 +1,17 @@
+{
+  "root": {
+    "type": "canvas",
+    "children": [
+      { "type": "border", "id": "stick_base", "anchor": "bottom_left", "position": [44, -38],
+        "size": [160, 160], "cornerRadius": 80, "color": [0.08, 0.12, 0.17, 0.65],
+        "child": {
+          "type": "canvas",
+          "children": [
+            { "type": "border", "id": "stick_thumb", "anchor": "center", "size": [64, 64],
+              "cornerRadius": 32, "color": [0.82, 0.87, 0.92, 0.82] }
+          ]
+        }
+      }
+    ]
+  }
+}

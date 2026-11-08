@@ -94,7 +94,7 @@ namespace ManagedSharpDemo
             if (_widget == null) return string.Empty;
             try
             {
-                return _widget.ConsumeClickedButton(out string id) ? id : string.Empty;
+                return _widget.ConsumeClickedButton(out var id) ? id.ToString() : string.Empty;
             }
             catch (System.Exception)
             {

@@ -48,6 +48,23 @@ namespace Pal3.Game.Scene
         private CombatScene _currentCombatScene;
 
         private readonly HashSet<int> _sceneObjectIdsToNotLoadFromSaveState = new ();
+        private const double LoadBudgetMs = 8;
+        private SceneLoadJob? _load;
+
+        private sealed record SceneLoadJob(IEnumerator<SceneLoadStep> Batches, Action? OnReady,
+            Action<Exception>? OnFailure, Stopwatch Elapsed)
+        {
+            public int Frames;
+            public double SlowestBatchMs;
+            public string SlowestPhase = "";
+            public Action? ResumeScript;
+            public Action<Exception>? FailScript;
+        }
+
+        public bool IsLoading => _load != null;
+        public string LoadingPhase { get; private set; } = "";
+        public float LoadingProgress { get; private set; }
+        public string? LastLoadError { get; private set; }
 
         public SceneManager(GameResourceProvider resourceProvider,
             ISceneObjectFactory sceneObjectFactory,
@@ -67,6 +84,7 @@ namespace Pal3.Game.Scene
 
         public void Dispose()
         {
+            CancelLoad();
             DisposeCurrentScene();
             CommandExecutorRegistry<ICommand>.Instance.UnRegister(this);
         }
@@ -95,48 +113,161 @@ namespace Pal3.Game.Scene
             return null;
         }
 
-        public GameScene LoadScene(string sceneCityName, string sceneName)
+        internal void LoadTitleScene(string sceneCityName, string sceneName)
         {
-            Stopwatch timer = Stopwatch.StartNew();
+            foreach (var _ in LoadBatches(sceneCityName, sceneName)) { }
+        }
 
-            DisposeCurrentScene();
+        internal void BeginLoadScene(string city, string scene, Action? onReady = null, Action<Exception>? onFailure = null)
+        {
+            if (IsLoading) throw new InvalidOperationException("A PAL3 scene is already loading.");
+            LastLoadError = null;
+            LoadingPhase = "正在准备场景";
+            LoadingProgress = 0;
+            _load = new SceneLoadJob(LoadBatches(city, scene).GetEnumerator(), onReady, onFailure, Stopwatch.StartNew());
+        }
 
+        internal bool TryWaitForLoad(Action onReady, Action<Exception> onFailure)
+        {
+            if (_load is not { } load) return false;
+            load.ResumeScript += onReady;
+            load.FailScript += onFailure;
+            return true;
+        }
+
+        internal void RunSceneCommands(IReadOnlyList<ICommand> commands, Action<Exception>? onFailure = null)
+        {
+            ExecuteFrom(0);
+
+            void ExecuteFrom(int first)
+            {
+                for (int i = first; i < commands.Count; i++)
+                {
+                    if (commands[i] is SceneLoadCommand load)
+                    {
+                        int next = i + 1;
+                        BeginLoadScene(load.SceneCityName, load.SceneName, () => ExecuteFrom(next), onFailure);
+                        return;
+                    }
+                    Pal3Game.Instance.Execute(commands[i]);
+                }
+            }
+        }
+
+        internal void TickLoad()
+        {
+            if (_load is not { } load) return;
+            // Let the loading widget present before the first batch runs.
+            if (load.Frames++ == 0) return;
+            long frameStart = Stopwatch.GetTimestamp();
+            try
+            {
+                do
+                {
+                    long batchStart = Stopwatch.GetTimestamp();
+                    bool more = load.Batches.MoveNext();
+                    double batchMs = Stopwatch.GetElapsedTime(batchStart).TotalMilliseconds;
+                    if (batchMs > load.SlowestBatchMs)
+                    {
+                        load.SlowestBatchMs = batchMs;
+                        load.SlowestPhase = more ? load.Batches.Current.Phase : "完成场景";
+                    }
+                    if (!more)
+                    {
+                        CancelLoad();
+                        load.OnReady?.Invoke();
+                        if (_load is { } next)
+                        {
+                            next.ResumeScript += load.ResumeScript;
+                            next.FailScript += load.FailScript;
+                        }
+                        else
+                        {
+                            load.ResumeScript?.Invoke();
+                        }
+                        EngineLogger.Log($"Scene loaded across {load.Frames} frames in {load.Elapsed.ElapsedMilliseconds} ms, slowest batch {load.SlowestBatchMs:F1} ms ({load.SlowestPhase})");
+                        return;
+                    }
+                    LoadingPhase = load.Batches.Current.Phase;
+                    LoadingProgress = load.Batches.Current.Progress;
+                } while (Stopwatch.GetElapsedTime(frameStart).TotalMilliseconds < LoadBudgetMs);
+            }
+            catch (Exception error)
+            {
+                if (ReferenceEquals(_load, load)) CancelLoad();
+                LastLoadError = error.GetBaseException().Message;
+                EngineLogger.LogException(error);
+                try
+                {
+                    load.OnFailure?.Invoke(error);
+                }
+                finally
+                {
+                    load.FailScript?.Invoke(error);
+                }
+            }
+        }
+
+        private void CancelLoad()
+        {
+            var load = _load;
+            _load = null;
+            LoadingPhase = "";
+            LoadingProgress = 0;
+            load?.Batches.Dispose();
+        }
+
+        private IEnumerable<SceneLoadStep> LoadBatches(string sceneCityName, string sceneName)
+        {
             ScnFile scnFile = _resourceProvider.GetGameResourceFile<ScnFile>(
-                    FileConstants.GetScnFileVirtualPath(sceneCityName, sceneName));
-
-            Pal3Game.Instance.Execute(new ScenePreLoadingNotification(scnFile.SceneInfo));
-
-            EngineLogger.Log($"Loading scene: {JsonConvert.SerializeObject(scnFile.SceneInfo)}");
-
-            _currentSceneRoot = GameEntityFactory.Create($"Scene_{sceneCityName}_{sceneName}",
-                null, worldPositionStays: false);
-            _currentGameScene = _currentSceneRoot.AddComponent<GameScene>();
-            _currentGameScene.Init(_resourceProvider,
-                _sceneObjectFactory,
-                _sceneStateManager,
-                _gameSettings.IsRealtimeLightingAndShadowsEnabled,
-                _cameraEntity,
-                _sceneObjectIdsToNotLoadFromSaveState);
-            _currentGameScene.Load(scnFile, _currentSceneRoot);
-
-            // Must to clear the exclude list after loading the scene.
-            _sceneObjectIdsToNotLoadFromSaveState.Clear();
-
-            // Add scene script if exists.
+                FileConstants.GetScnFileVirtualPath(sceneCityName, sceneName));
             SceFile sceFile = _resourceProvider.GetGameResourceFile<SceFile>(
                 FileConstants.GetSceneSceFileVirtualPath(sceneCityName));
+            yield return new("正在读取场景描述", .04f);
 
-            Pal3Game.Instance.Execute(
-                _scriptManager.TryAddSceneScript(sceFile, $"_{sceneCityName}_{sceneName}", out var sceneScriptId)
-                    ? new ScenePostLoadingNotification(scnFile.SceneInfo, sceneScriptId)
-                    : new ScenePostLoadingNotification(scnFile.SceneInfo, ScriptConstants.InvalidScriptId));
+            if (_currentGameScene != null) Pal3Game.Instance.Execute(new SceneLeavingCurrentSceneNotification());
+            try
+            {
+                if (_currentSceneRoot is GameEntity root)
+                {
+                    foreach (var _ in root.DestroyDescendantsInBatches())
+                    {
+                        yield return new("正在卸载旧场景", .08f);
+                    }
+                }
+            }
+            finally
+            {
+                DisposeCurrentScene(notifyLeaving: false);
+            }
+            yield return new("正在卸载旧场景", .14f);
+            bool committed = false;
+            try
+            {
+                Pal3Game.Instance.Execute(new ScenePreLoadingNotification(scnFile.SceneInfo));
+                EngineLogger.Log($"Loading scene: {JsonConvert.SerializeObject(scnFile.SceneInfo)}");
 
-            EngineLogger.Log($"Scene loaded in {timer.ElapsedMilliseconds} ms");
+                _currentSceneRoot = GameEntityFactory.Create($"Scene_{sceneCityName}_{sceneName}",
+                    null, worldPositionStays: false);
+                _currentGameScene = _currentSceneRoot.AddComponent<GameScene>();
+                _currentGameScene.Init(_resourceProvider,
+                    _sceneObjectFactory, _sceneStateManager, _gameSettings.IsRealtimeLightingAndShadowsEnabled,
+                    _cameraEntity, _sceneObjectIdsToNotLoadFromSaveState);
+                foreach (var phase in _currentGameScene.LoadBatches(scnFile, _currentSceneRoot))
+                {
+                    yield return phase;
+                }
 
-            // Also a good time to collect garbage
-            System.GC.Collect();
-
-            return _currentGameScene;
+                _sceneObjectIdsToNotLoadFromSaveState.Clear();
+                _scriptManager.TryAddSceneScript(sceFile, $"_{sceneCityName}_{sceneName}", out var sceneScriptId);
+                Pal3Game.Instance.Execute(new ScenePostLoadingNotification(scnFile.SceneInfo, sceneScriptId));
+                committed = true;
+            }
+            finally
+            {
+                _sceneObjectIdsToNotLoadFromSaveState.Clear();
+                if (!committed) DisposeCurrentScene(notifyLeaving: false);
+            }
         }
 
         public CombatScene LoadCombatScene(string combatSceneName)
@@ -240,14 +371,14 @@ namespace Pal3.Game.Scene
             _temporarilyDisabledGameObjects.Clear();
         }
 
-        private void DisposeCurrentScene()
+        private void DisposeCurrentScene(bool notifyLeaving = true)
         {
             _temporarilyDisabledRenderers.Clear();
             _temporarilyDisabledGameObjects.Clear();
 
             if (_currentGameScene != null)
             {
-                Pal3Game.Instance.Execute(new SceneLeavingCurrentSceneNotification());
+                if (notifyLeaving) Pal3Game.Instance.Execute(new SceneLeavingCurrentSceneNotification());
                 _currentGameScene.Destroy();
                 _currentGameScene = null;
             }
@@ -265,9 +396,13 @@ namespace Pal3.Game.Scene
             }
         }
 
-        public void Execute(SceneLoadCommand command) => LoadScene(command.SceneCityName, command.SceneName);
+        public void Execute(SceneLoadCommand command) => BeginLoadScene(command.SceneCityName, command.SceneName);
 
-        public void Execute(ResetGameStateCommand command) => DisposeCurrentScene();
+        public void Execute(ResetGameStateCommand command)
+        {
+            CancelLoad();
+            DisposeCurrentScene();
+        }
 
         public void Execute(SceneObjectDoNotLoadFromSaveStateCommand command)
         {

@@ -133,12 +133,26 @@ public sealed class GameEntity : IGameEntity
     // subtree; without this the children's scripts keep ticking against actors that
     // the parent already destroyed (native use-after-free).
     private readonly List<GameEntity> _children = new();
+    private GameEntity? _parent;
     private bool _destroyed;
+
+    // Use only while the owning system is transitioning away from this subtree.
+    internal IEnumerable<GameEntity> DestroyDescendantsInBatches()
+    {
+        foreach (GameEntity child in _children.ToArray())
+        {
+            foreach (GameEntity descendant in child.DestroyDescendantsInBatches()) yield return descendant;
+            child.Destroy();
+            yield return child;
+        }
+    }
 
     public void Destroy()
     {
         if (_destroyed) return;
         _destroyed = true;
+        _parent?._children.Remove(this);
+        _parent = null;
 
         // Unity destroys the whole subtree, and destroyed objects tolerate any later
         // access. Do the same: children first, then our own scripts/components, then
@@ -185,9 +199,11 @@ public sealed class GameEntity : IGameEntity
             _ue.SetParent(parentUe, worldPositionStays);
         }
 
-        if (parent is GameEntity parentEntity && !parentEntity._children.Contains(this))
+        if (!ReferenceEquals(_parent, parent))
         {
-            parentEntity._children.Add(this);
+            _parent?._children.Remove(this);
+            _parent = parent as GameEntity;
+            _parent?._children.Add(this);
         }
     }
 
@@ -303,7 +319,17 @@ public sealed class GameEntity : IGameEntity
         if (existing != null) return existing;
         return AddComponent<T>();
     }
-    public IGameEntity FindChild(string name) => null!;
+    public IGameEntity FindChild(string name)
+    {
+        foreach (GameEntity child in _children)
+        {
+            if (!child.IsNativeObjectDisposed && child._name == name)
+            {
+                return child;
+            }
+        }
+        return null!;
+    }
 }
 
 /// <summary>

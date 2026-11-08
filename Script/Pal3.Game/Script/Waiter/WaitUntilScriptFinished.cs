@@ -11,9 +11,11 @@ namespace Pal3.Game.Script.Waiter
     using UnityEngine;
 
     public sealed class WaitUntilScriptFinished : CustomYieldInstruction,
-        ICommandExecutor<ScriptFinishedRunningNotification>
+        ICommandExecutor<ScriptFinishedRunningNotification>,
+        ICommandExecutor<ScriptFailedToRunNotification>
     {
         public override bool keepWaiting => !_isFinished;
+        public bool Failed { get; private set; }
 
         private readonly PalScriptType _scriptType;
         private readonly uint _scriptId;
@@ -26,11 +28,18 @@ namespace Pal3.Game.Script.Waiter
             CommandExecutorRegistry<ICommand>.Instance.Register(this);
         }
 
-        public void Execute(ScriptFinishedRunningNotification command)
+        public void Execute(ScriptFinishedRunningNotification command) =>
+            Complete(command.ScriptType, command.ScriptId, failed: false);
+
+        public void Execute(ScriptFailedToRunNotification command) =>
+            Complete(command.ScriptType, command.ScriptId, failed: true);
+
+        private void Complete(PalScriptType scriptType, uint scriptId, bool failed)
         {
-            if (_scriptType == command.ScriptType && _scriptId == command.ScriptId)
+            if (_scriptType == scriptType && _scriptId == scriptId)
             {
                 _isFinished = true;
+                Failed = failed;
                 CommandExecutorRegistry<ICommand>.Instance.UnRegister(this);
             }
         }

@@ -6,14 +6,10 @@ namespace UnityEngine
 
         // Set by Engine.Diagnostics.DebugOverlay (UnityEngine must not reference
         // Engine: the dependency runs the other way). Lets log lines reach the
-        // C++ viewport panel without a circular assembly reference.
+        // managed diagnostics panel without a circular assembly reference.
         public static System.Action<string>? LogSink;
         public static System.Action<string>? ErrorSink;
-        public static System.Action<string>? DialogueSink;
         public static System.Action<string>? DebugSink;
-
-        /// <summary>Pushes a story line to the viewport overlay (set by DebugOverlay).</summary>
-        public static void PushDialogue(string text) => DialogueSink?.Invoke(text);
 
         /// <summary>Pushes a debug info line to the viewport overlay (set by DebugOverlay).</summary>
         public static void PushDebug(string text) => DebugSink?.Invoke(text);

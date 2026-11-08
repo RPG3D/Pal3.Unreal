@@ -1,4 +1,4 @@
-﻿// ---------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------
 //  Copyright (c) 2021-2025, Jiaqi (0x7c13) Liu. All rights reserved.
 //  See LICENSE file in the project root for license information.
 // ---------------------------------------------------------------------------------------------
@@ -43,7 +43,7 @@ namespace Pal3.Game.Dev
         ICommandExecutor<ScenePostLoadingNotification>,
         ICommandExecutor<GameStateChangedNotification>
     {
-        private const int SAVE_SLOT_COUNT = 5;
+        private const int SAVE_SLOT_COUNT = SaveManager.ManualSlotCount;
 
         private readonly GameSettings _gameSettings;
         private readonly InputManager _inputManager;
@@ -55,7 +55,6 @@ namespace Pal3.Game.Dev
         private readonly GameStateManager _gameStateManager;
         private readonly SceneManager _sceneManager;
         private readonly SaveManager _saveManager;
-        private readonly InformationManager _informationManager;
         private readonly MazeSkipper _mazeSkipper;
 
         private readonly CanvasGroup _mainMenuCanvasGroup;
@@ -80,7 +79,6 @@ namespace Pal3.Game.Dev
             ScriptManager scriptManager,
             TeamManager teamManager,
             SaveManager saveManager,
-            InformationManager informationManager,
             MazeSkipper mazeSkipper,
             CanvasGroup mainMenuCanvasGroup,
             GameObject menuButtonPrefab,
@@ -97,7 +95,6 @@ namespace Pal3.Game.Dev
             _scriptManager = Requires.IsNotNull(scriptManager, nameof(scriptManager));
             _teamManager = Requires.IsNotNull(teamManager, nameof(teamManager));
             _saveManager = Requires.IsNotNull(saveManager, nameof(saveManager));
-            _informationManager = Requires.IsNotNull(informationManager, nameof(informationManager));
             _mazeSkipper = Requires.IsNotNull(mazeSkipper, nameof(mazeSkipper));
             _mainMenuCanvasGroup = Requires.IsNotNull(mainMenuCanvasGroup, nameof(mainMenuCanvasGroup));
             _menuButtonPrefab = Requires.IsNotNull(menuButtonPrefab, nameof(menuButtonPrefab));
@@ -170,7 +167,7 @@ namespace Pal3.Game.Dev
             _deferredExecutionCommands.Add("CameraFollowPlayer 0");
             _deferredExecutionCommands.Add("CameraSetTransform -33.24 -19.48 688.0 308.31 240.44 480.61");
             _deferredExecutionCommands.Add("CameraFadeIn");
-            Pal3Game.Instance.Execute(new SceneLoadCommand("q01", "yn09a"));
+            _sceneManager.LoadTitleScene("q01", "yn09a");
             Pal3Game.Instance.Execute(new PlayScriptMusicCommand(AudioConstants.ThemeMusicName, -1));
             #elif PAL3A
             // 南宫煌房间
@@ -178,7 +175,7 @@ namespace Pal3.Game.Dev
             _deferredExecutionCommands.Add("CameraFollowPlayer 0");
             _deferredExecutionCommands.Add("CameraSetTransform -21.69 -22.48 688.0 182.87 263.07 531.61");
             _deferredExecutionCommands.Add("CameraFadeIn");
-            Pal3Game.Instance.Execute(new SceneLoadCommand("q02", "qn08y"));
+            _sceneManager.LoadTitleScene("q02", "qn08y");
             Pal3Game.Instance.Execute(new PlayScriptMusicCommand(AudioConstants.ThemeMusicName, -1));
             #endif
 
@@ -833,45 +830,7 @@ namespace Pal3.Game.Dev
 
         private void ExecuteCommandsFromSaveFile(string saveFileContent)
         {
-            _informationManager.EnableNoteDisplay(false);
-            _saveManager.IsAutoSaveEnabled = false; // Disable auto save during loading
-
-            _deferredExecutionCommands.Clear();
-
-            List<string> commandsToExecute = new();
-
-            foreach (string command in saveFileContent.Split('\n'))
-            {
-                if (string.IsNullOrEmpty(command)) continue;
-
-                List<string> arguments = new();
-
-                DebugLogConsole.FetchArgumentsFromCommand(command, arguments);
-
-                // These commands should be executed after the scene script is executed
-                // to prevent unexpected behavior
-                if (arguments[0] + "Command" == nameof(ActorActivateCommand) ||
-                    arguments[0] + "Command" == nameof(ActorSetNavLayerCommand) ||
-                    arguments[0] + "Command" == nameof(ActorSetWorldPositionCommand) ||
-                    arguments[0] + "Command" == nameof(ActorSetYPositionCommand) ||
-                    arguments[0] + "Command" == nameof(ActorSetFacingCommand) ||
-                    arguments[0] + "Command" == nameof(ActorSetScriptCommand) ||
-                    arguments[0] + "Command" == nameof(CameraFadeInCommand))
-                {
-                    _deferredExecutionCommands.Add(command);
-                }
-                else
-                {
-                    commandsToExecute.Add(command);
-                }
-            }
-
-            foreach (string command in commandsToExecute)
-            {
-                DebugLogConsole.ExecuteCommand(command);
-            }
-
-            _informationManager.EnableNoteDisplay(true);
+            _saveManager.Restore(saveFileContent, HideMenu);
         }
 
         public void Execute(ToggleMainMenuRequest command) => ToggleMainMenu();
@@ -888,7 +847,7 @@ namespace Pal3.Game.Dev
         {
             if (_deferredExecutionCommands.Count == 0)
             {
-                if (!_isInInitView)
+                if (!_isInInitView && !_saveManager.IsRestoring)
                 {
                     _saveManager.IsAutoSaveEnabled = true;
                 }
@@ -899,7 +858,7 @@ namespace Pal3.Game.Dev
             {
                 ExecuteCommands(string.Join('\n', _deferredExecutionCommands));
                 _deferredExecutionCommands.Clear();
-                if (!_isInInitView)
+                if (!_isInInitView && !_saveManager.IsRestoring)
                 {
                     _saveManager.IsAutoSaveEnabled = true;
                 }
@@ -913,7 +872,13 @@ namespace Pal3.Game.Dev
 
         private IEnumerator ExecuteDeferredCommandsAfterSceneScriptFinishedAsync(uint scriptId)
         {
-            yield return new WaitUntilScriptFinished(PalScriptType.Scene, scriptId);
+            var waiter = new WaitUntilScriptFinished(PalScriptType.Scene, scriptId);
+            yield return waiter;
+            if (waiter.Failed)
+            {
+                _deferredExecutionCommands.Clear();
+                yield break;
+            }
 
             if (_deferredExecutionCommands.Count > 0)
             {
@@ -921,7 +886,7 @@ namespace Pal3.Game.Dev
                 _deferredExecutionCommands.Clear();
             }
 
-            if (!_isInInitView)
+            if (!_isInInitView && !_saveManager.IsRestoring)
             {
                 _saveManager.IsAutoSaveEnabled = true;
             }

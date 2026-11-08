@@ -27,6 +27,7 @@ namespace Pal3.Game.GamePlay
     using UnityEngine.InputSystem;
 
     using Quaternion = UnityEngine.Quaternion;
+    using Bounds = UnityEngine.Bounds;
     using Vector2 = UnityEngine.Vector2;
     using Vector3 = UnityEngine.Vector3;
 
@@ -68,51 +69,47 @@ namespace Pal3.Game.GamePlay
                 return;
             }
 
-            if (IsPlayerActorInsideJumpableArea())
-            {
-                Pal3Game.Instance.StartCoroutine(JumpAsync());
-            }
-            else
-            {
-                InteractWithFacingInteractable();
-            }
+            Execute(new PlayerInteractionRequest());
         }
+
+        public readonly record struct InteractionTarget(int Id, bool IsActor, Vector3 HintPosition);
 
         /// <summary>
         /// Interact with the nearby interactable object by the player actor facing direction.
         /// </summary>
         private void InteractWithFacingInteractable()
         {
+            if (GetInteractionTarget() is not { } target) return;
+            var scene = _sceneManager.GetCurrentScene();
+            Pal3Game.Instance.StartCoroutine(target.IsActor
+                ? InteractWithActorAsync(target.Id, scene.GetActorGameEntity(target.Id))
+                : InteractWithSceneObjectAsync(scene.GetSceneObject(target.Id), startedByPlayer: true));
+        }
+
+        public InteractionTarget? GetInteractionTarget()
+        {
+            var scene = _sceneManager.GetCurrentScene();
+            if (_sceneManager.IsLoading || scene == null || _playerActorGameEntity.IsNullOrDisposed() ||
+                IsPlayerActorInsideJumpableArea()) return null;
+
             Vector3 actorFacingDirection = _playerActorMovementController.Transform.Forward;
             Vector3 actorCenterPosition = _playerActorActionController.GetRendererBounds().center;
             int currentLayerIndex = _playerActorMovementController.GetCurrentLayerIndex();
 
             float nearestInteractableFacingAngle = 181f;
-            IEnumerator interactionRoutine = null;
+            InteractionTarget? target = null;
 
-            foreach (int sceneObjectId in
-                     _sceneManager.GetCurrentScene().GetAllActivatedSceneObjects())
+            foreach (int sceneObjectId in scene.GetAllActivatedSceneObjects())
             {
-                SceneObject sceneObject = _sceneManager.GetCurrentScene().GetSceneObject(sceneObjectId);
-
-                Vector3 closetPointOnObject = sceneObject.GetRendererBounds().ClosestPoint(actorCenterPosition);
-                float distanceToActor = Vector3.Distance(actorCenterPosition, closetPointOnObject);
-                Vector3 actorToObjectFacing = closetPointOnObject - actorCenterPosition;
-                float facingAngle = Vector2.Angle(
-                    new Vector2(actorFacingDirection.x, actorFacingDirection.z),
-                    new Vector2(actorToObjectFacing.x, actorToObjectFacing.z));
-
-                if (sceneObject.IsDirectlyInteractable(distanceToActor) &&
-                    facingAngle < nearestInteractableFacingAngle)
-                {
-                    //Debug.DrawLine(actorCenterPosition, closetPointOnObject, Color.white, 1000);
-                    nearestInteractableFacingAngle = facingAngle;
-                    interactionRoutine = InteractWithSceneObjectAsync(sceneObject, startedByPlayer: true);
-                }
+                SceneObject sceneObject = scene.GetSceneObject(sceneObjectId);
+                if (sceneObject.ObjectInfo.LayerIndex != currentLayerIndex || !sceneObject.IsDirectlyInteractable(0f)) continue;
+                Bounds bounds = sceneObject.GetRendererBounds();
+                Vector3 closestPoint = bounds.ClosestPoint(actorCenterPosition);
+                if (!sceneObject.IsDirectlyInteractable(Vector3.Distance(actorCenterPosition, closestPoint))) continue;
+                Consider(sceneObjectId, false, bounds, closestPoint);
             }
 
-            foreach (KeyValuePair<int, IGameEntity> actorInfo in
-                     _sceneManager.GetCurrentScene().GetAllActorGameEntities())
+            foreach (KeyValuePair<int, IGameEntity> actorInfo in scene.GetAllActorGameEntities())
             {
                 ActorController actorController = actorInfo.Value.GetComponent<ActorController>();
                 ActorActionController actorActionController = actorInfo.Value.GetComponent<ActorActionController>();
@@ -120,27 +117,23 @@ namespace Pal3.Game.GamePlay
 
                 if (actorMovementController.GetCurrentLayerIndex() != currentLayerIndex ||
                     actorInfo.Key == _playerActorManager.GetPlayerActorId() ||
-                    !actorController.IsActive) continue;
-
-                Vector3 targetActorCenterPosition = actorActionController.GetRendererBounds().center;
-                float distance = Vector3.Distance(actorCenterPosition,targetActorCenterPosition);
-                Vector3 actorToActorFacing = targetActorCenterPosition - actorCenterPosition;
-                float facingAngle = Vector2.Angle(
-                    new Vector2(actorFacingDirection.x, actorFacingDirection.z),
-                    new Vector2(actorToActorFacing.x, actorToActorFacing.z));
-
-                if (actorController.IsDirectlyInteractable(distance) &&
-                    facingAngle < nearestInteractableFacingAngle)
-                {
-                    //Debug.DrawLine(actorCenterPosition, targetActorCenterPosition, Color.white, 1000);
-                    nearestInteractableFacingAngle = facingAngle;
-                    interactionRoutine = InteractWithActorAsync(actorInfo.Key, actorInfo.Value);
-                }
+                    !actorController.IsActive || !actorController.IsDirectlyInteractable(0f)) continue;
+                Bounds bounds = actorActionController.GetRendererBounds();
+                if (!actorController.IsDirectlyInteractable(Vector3.Distance(actorCenterPosition, bounds.center))) continue;
+                Consider(actorInfo.Key, true, bounds, bounds.center);
             }
 
-            if (interactionRoutine != null)
+            return target;
+
+            void Consider(int id, bool isActor, Bounds bounds, Vector3 point)
             {
-                Pal3Game.Instance.StartCoroutine(interactionRoutine);
+                Vector3 offset = point - actorCenterPosition;
+                float facingAngle = Vector2.Angle(
+                    new Vector2(actorFacingDirection.x, actorFacingDirection.z),
+                    new Vector2(offset.x, offset.z));
+                if (facingAngle >= nearestInteractableFacingAngle) return;
+                nearestInteractableFacingAngle = facingAngle;
+                target = new InteractionTarget(id, isActor, bounds.center + Vector3.up * (bounds.extents.y + .25f));
             }
         }
 
@@ -213,13 +206,15 @@ namespace Pal3.Game.GamePlay
             }
 
             // Run dialogue script
-            Pal3Game.Instance.Execute(new ScriptExecuteCommand((int)targetActor.GetScriptId()));
+            uint scriptId = targetActor.GetScriptId();
+            var waiter = new WaitUntilScriptFinished(ScriptManager.GetScriptType(scriptId), scriptId);
+            Pal3Game.Instance.Execute(new ScriptExecuteCommand((int)scriptId));
 
             // Wait until the dialogue script is finished
-            yield return new WaitUntilScriptFinished(PalScriptType.Scene, targetActor.GetScriptId());
+            yield return waiter;
 
             // Resume current path follow movement of the interacting actor
-            if (actorController != null &&
+            if (!actorGameEntity.IsNullOrDisposed() && actorController != null &&
                 movementController != null &&
                 actorController.GetCurrentBehaviour() == ActorBehaviourType.PathFollow)
             {

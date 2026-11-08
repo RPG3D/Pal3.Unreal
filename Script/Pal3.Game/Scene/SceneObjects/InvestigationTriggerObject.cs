@@ -43,7 +43,7 @@ namespace Pal3.Game.Scene.SceneObjects
 
         public override bool IsDirectlyInteractable(float distance)
         {
-            return IsActivated && distance < MAX_INTERACTION_DISTANCE;
+            return IsActivated && ObjectInfo.Times > 0 && distance < MAX_INTERACTION_DISTANCE;
         }
 
         public override bool ShouldGoToCutsceneWhenInteractionStarted() => true;

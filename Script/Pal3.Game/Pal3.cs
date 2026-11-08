@@ -99,8 +99,6 @@ namespace Pal3.Game
         [SerializeField] private TextMeshProUGUI dialogueTextLeft;
         [SerializeField] private TextMeshProUGUI dialogueTextRight;
         [SerializeField] private TextMeshProUGUI dialogueTextDefault;
-        [SerializeField] private Canvas dialogueSelectionButtonsCanvas;
-        [SerializeField] private GameObject dialogueSelectionButtonPrefab;
 
         // Caption
         [SerializeField] private Image captionImage;
@@ -448,16 +446,13 @@ namespace Pal3.Game
                     _gameStateManager,
                     _sceneManager,
                     _inputManager,
-                    eventSystem,
                     dialogueCanvasGroup,
                     dialogueBackgroundImage,
                     dialogueAvatarImageLeft,
                     dialogueAvatarImageRight,
                     dialogueTextLeft,
                     dialogueTextRight,
-                    dialogueTextDefault,
-                    dialogueSelectionButtonsCanvas,
-                    dialogueSelectionButtonPrefab)
+                    dialogueTextDefault)
             );
 
             ServiceLocator.Instance.Register(_combatManager =
@@ -504,7 +499,6 @@ namespace Pal3.Game
                     _scriptManager,
                     _teamManager,
                     _saveManager,
-                    _informationManager,
                     _mazeSkipper,
                     mainMenuCanvasGroup,
                     menuButtonPrefab,
@@ -625,6 +619,11 @@ namespace Pal3.Game
         /// </summary>
         private void Update()
         {
+            if (_sceneManager.IsLoading)
+            {
+                _sceneManager.TickLoad();
+                return;
+            }
             var deltaTime = Time.deltaTime;
             _gameTimeProvider.Tick(deltaTime);
 
@@ -633,6 +632,8 @@ namespace Pal3.Game
                 currentState != GameState.Combat)
             {
                 _scriptManager.Update(deltaTime);
+                if (_sceneManager.IsLoading) return;
+                _saveManager.CompleteRestoreIfReady();
                 _dialogueManager.Update(deltaTime);
             }
 
@@ -651,6 +652,7 @@ namespace Pal3.Game
         /// </summary>
         private void LateUpdate()
         {
+            if (_sceneManager.IsLoading) return;
             float deltaTime = Time.deltaTime;
 
             GameState currentState = _gameStateManager.GetCurrentState();

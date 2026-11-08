@@ -48,6 +48,9 @@ namespace Pal3.Game.Actor.Controllers
         private bool _canPerformHoldAnimation;
 
         private Mv3ModelRenderer _mv3ModelRenderer;
+
+        public string[] GetMeshPoseFingerprints() =>
+            _mv3ModelRenderer?.GetMeshPoseFingerprints() ?? Array.Empty<string>();
         private WaitUntilCanceled _animationLoopPointWaiter;
 
         private Bounds _rendererBounds;

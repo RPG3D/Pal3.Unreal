@@ -233,11 +233,8 @@ namespace Pal3.Game.Scene.SceneObjects
                 return _cvdModelRenderer.GetRendererBounds();
             }
 
-            return new Bounds
-            {
-                center = ObjectInfo.GameBoxPosition.ToUnityPosition(),
-                size = Vector3.one
-            };
+            return new Bounds(GetGameEntity()?.Transform.Position ?? ObjectInfo.GameBoxPosition.ToUnityPosition(),
+                Vector3.one);
         }
 
         public CvdModelRenderer GetCvdModelRenderer()
@@ -332,8 +329,9 @@ namespace Pal3.Game.Scene.SceneObjects
         internal IEnumerator ExecuteScriptAndWaitForFinishIfAnyAsync()
         {
             if (ObjectInfo.ScriptId == ScriptConstants.InvalidScriptId) yield break;
+            var waiter = new WaitUntilScriptFinished(ScriptManager.GetScriptType(ObjectInfo.ScriptId), ObjectInfo.ScriptId);
             Pal3Game.Instance.Execute(new ScriptExecuteCommand((int)ObjectInfo.ScriptId));
-            yield return new WaitUntilScriptFinished(PalScriptType.Scene, ObjectInfo.ScriptId);
+            yield return waiter;
         }
 
         internal void PlaySfxIfAny()

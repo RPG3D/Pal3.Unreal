@@ -1,0 +1,20 @@
+{
+  "root": {
+    "type": "canvas",
+    "children": [
+      {
+        "type": "border",
+        "anchor": "full",
+        "color": [0.025, 0.035, 0.05, 1],
+        "child": {
+          "type": "canvas",
+          "children": [
+            { "type": "text", "text": "仙剑奇侠传三", "fontSize": 26, "align": "center", "anchor": "center", "size": [420, 42], "color": [0.96, 0.89, 0.74, 1] },
+            { "type": "text", "id": "loading_phase", "text": "正在准备场景", "fontSize": 18, "align": "left", "anchor": "bottom_center", "position": [0, -70], "size": [480, 28] },
+            { "type": "progressbar", "id": "loading_progress", "anchor": "bottom_center", "position": [0, -51], "size": [480, 15], "fillColor": [0.82, 0.68, 0.42, 1] }
+          ]
+        }
+      }
+    ]
+  }
+}

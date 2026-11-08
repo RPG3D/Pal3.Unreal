@@ -136,6 +136,10 @@ namespace Pal3.Game.GamePlay
                 isPlayerInControl = true;
                 ReadInputAndMovePlayerIfNeeded(deltaTime);
             }
+            else
+            {
+                _commandMovementRemaining = 0f;
+            }
 
             bool shouldUpdatePlayerActorMovementSfx = false;
 
@@ -187,7 +191,12 @@ namespace Pal3.Game.GamePlay
 
         private void MovementCanceled(InputAction.CallbackContext _)
         {
-            _playerActorActionController.PerformAction(ActorActionType.Stand);
+            if (_gameStateManager.GetCurrentState() == GameState.Gameplay &&
+                _playerActorManager.IsPlayerInputEnabled() &&
+                _playerActorManager.IsPlayerActorControlEnabled())
+            {
+                _playerActorActionController?.PerformAction(ActorActionType.Stand);
+            }
         }
 
         private void OnTapPerformed(InputAction.CallbackContext _)
@@ -416,6 +425,7 @@ namespace Pal3.Game.GamePlay
 
         public void Execute(ScenePostLoadingNotification notification)
         {
+            _commandMovementRemaining = 0f;
             int playerActorId = _playerActorManager.GetPlayerActorId();
 
             Pal3Game.Instance.Execute(new ActorActivateCommand(playerActorId, 1));
@@ -452,6 +462,7 @@ namespace Pal3.Game.GamePlay
 
         public void Execute(ResetGameStateCommand command)
         {
+            _commandMovementRemaining = 0f;
             ResetAndDisposeJumpIndicators();
 
             _playerActorLastKnownSceneState.Clear();

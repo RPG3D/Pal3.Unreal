@@ -1,0 +1,13 @@
+{
+  "root": {
+    "type": "canvas",
+    "children": [
+      { "type": "button", "id": "touch_menu", "text": "Menu", "anchor": "top_right", "position": [-38, 30],
+        "size": [116, 60], "fontSize": 23, "normalColor": [0.17, 0.24, 0.34, 0.94] },
+      { "type": "button", "id": "touch_interact", "text": "交互", "anchor": "bottom_right", "position": [-42, -62],
+        "size": [116, 70], "fontSize": 25, "normalColor": [0.17, 0.24, 0.34, 0.94] },
+      { "type": "button", "id": "touch_continue", "text": "继续", "anchor": "bottom_right", "position": [-42, -62],
+        "size": [116, 70], "fontSize": 25, "normalColor": [0.17, 0.24, 0.34, 0.94] }
+    ]
+  }
+}
