@@ -226,6 +226,10 @@ namespace Pal3.Game.GameSystems.Dialogue
             bool isRightAligned = true;
             bool isAvatarPresented = false;
 
+            // Native HUD dialogue bar: clear the previous portrait, then show this
+            // line's avatar if the script supplied one.
+            Dev.DialogueAvatarBridge.Clear();
+
             if (avatarCommand != null &&
                 _sceneManager.GetCurrentScene().GetActor(avatarCommand.ActorId) is { } actor &&
                 _resourceProvider.GetActorAvatarSprite(actor.Name, avatarCommand.AvatarTextureName) is { } avatarSprite)
@@ -242,6 +246,8 @@ namespace Pal3.Game.GameSystems.Dialogue
                     _avatarImageLeft.color = Color.white;
                     _avatarImageLeft.sprite = avatarSprite.NativeObject as Sprite;
                 }
+
+                Dev.DialogueAvatarBridge.Show(avatarSprite, isRightAligned);
 
                 isAvatarPresented = true;
             }
@@ -383,6 +389,10 @@ namespace Pal3.Game.GameSystems.Dialogue
             _avatarImageRight.color = new Color(0f, 0f, 0f, 0f);
             _avatarImageLeft.sprite = null;
             _avatarImageRight.sprite = null;
+
+            // Native HUD: portrait and text box disappear with the dialogue UI.
+            Dev.DialogueAvatarBridge.Clear();
+            Engine.Diagnostics.DebugOverlay.ClearDialogue();
 
             _dialogueSelectionButtonsCanvas.enabled = false;
 

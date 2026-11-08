@@ -5,6 +5,26 @@ using UERotator = UnrealSharp.CoreUObject.FRotator;
 
 namespace UnityEngine
 {
+    // Quaternion convention (the "general solution" for Unity↔UE handedness):
+    //
+    // The shim stores UE FQuat components (same convention as UnrealSharp's FQuat).
+    // eulerAngles / Euler() round-trip through FRotator, so a quat built from
+    // Euler(x,y,z) renders as FRotator(-x, y, -z) — that extra flip is what makes
+    // the shim behave like Unity's Quaternion.Euler, whose pitch is inverted
+    // relative to UE (Unity: +pitch looks down; UE: +pitch looks up).
+    //
+    // Algebraically (from the UE FRotator→FQuat formula), negating the rotator's
+    // pitch and roll before construction negates the quat's X and Y components:
+    //     applied(q) = (-q.x, -q.y, q.z, q.w)      — "flip"
+    // So the rotation a transform write actually applies is flip(q), and every
+    // Unity-space operation here is defined to stay consistent with that:
+    //     q * v            = MapInv(rot(Map(v), flip(q)))
+    //     a * b (stored)   = flip(flip(a) * flip(b))
+    //     AngleAxis(θ, ax) = flip(axis-angle(Map(ax), θ))
+    //     LookRotation     = Unity-style extraction over mapped basis rows
+    // where Map is the basis permutation UE.(x,y,z) = U.(z,x,y).
+    // Inverse/Slerp/Lerp/Dot/Angle/RotateTowards/FromToRotation are unchanged:
+    // flip commutes with all of them (verified numerically).
     public struct Quaternion : IEquatable<Quaternion>
     {
         public float x, y, z, w;
@@ -59,13 +79,18 @@ namespace UnityEngine
 
         public static Quaternion LookRotation(Vector3 forward, Vector3 upwards)
         {
+            // Unity semantics: +Z (forward) → forward, keeping up as close to
+            // upwards as possible. Built over UE-mapped basis rows so the stored
+            // components match the flip convention (validated numerically).
             Vector3 fwd = forward.normalized;
             Vector3 right = Vector3.Cross(upwards, fwd).normalized;
             Vector3 up = Vector3.Cross(fwd, right);
 
-            float m00 = right.x, m01 = right.y, m02 = right.z;
-            float m10 = up.x,    m11 = up.y,    m12 = up.z;
-            float m20 = fwd.x,   m21 = fwd.y,   m22 = fwd.z;
+            // Map to UE axes: UE.(x,y,z) = U.(z,x,y). Each ROW is one mapped
+            // basis vector: row0 = fwd', row1 = right', row2 = up'.
+            float m00 = fwd.z, m01 = fwd.x, m02 = fwd.y;
+            float m10 = right.z, m11 = right.x, m12 = right.y;
+            float m20 = up.z, m21 = up.x, m22 = up.y;
 
             float num8 = m00 + m11 + m22;
             if (num8 > 0f)
@@ -151,10 +176,12 @@ namespace UnityEngine
 
         public static Quaternion AngleAxis(float angle, Vector3 axis)
         {
+            // Unity axis-angle, expressed in the flip convention: the applied UE
+            // rotation is axis-angle(Map(axis)); stored = flip of that.
             float halfAngle = angle * Mathf.Deg2Rad * 0.5f;
             float s = MathF.Sin(halfAngle);
             float c = MathF.Cos(halfAngle);
-            return new Quaternion(axis.x * s, axis.y * s, axis.z * s, c);
+            return new Quaternion(-axis.z * s, -axis.x * s, axis.y * s, c);
         }
 
         public static Quaternion FromToRotation(Vector3 fromDirection, Vector3 toDirection)
@@ -182,18 +209,33 @@ namespace UnityEngine
 
         public static Quaternion operator *(Quaternion a, Quaternion b)
         {
+            // Unity composition, expressed in the flip convention:
+            // stored(a*b) = flip(flip(a) * flip(b)).
+            float ax = -a.x, ay = -a.y, az = a.z, aw = a.w;
+            float bx = -b.x, by = -b.y, bz = b.z, bw = b.w;
             return new Quaternion(
-                a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
-                a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
-                a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
-                a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z);
+                -(aw * bx + ax * bw + ay * bz - az * by),
+                -(aw * by - ax * bz + ay * bw + az * bx),
+                aw * bz + ax * by - ay * bx + az * bw,
+                aw * bw - ax * bx - ay * by - az * bz);
         }
 
         public static Vector3 operator *(Quaternion q, Vector3 v)
         {
-            Vector3 qv = new Vector3(q.x, q.y, q.z);
-            Vector3 t = 2f * Vector3.Cross(qv, v);
-            return v + q.w * t + Vector3.Cross(qv, t);
+            // Unity rotation of a Unity-space vector: map to UE axes, rotate by
+            // the applied quat flip(q), map back.
+            float ax = -q.x, ay = -q.y, az = q.z, aw = q.w;
+            float vx = v.z, vy = v.x, vz = v.y; // Map: UE.(x,y,z) = U.(z,x,y)
+
+            float tx = 2f * (ay * vz - az * vy);
+            float ty = 2f * (az * vx - ax * vz);
+            float tz = 2f * (ax * vy - ay * vx);
+
+            float rx = vx + aw * tx + (ay * tz - az * ty);
+            float ry = vy + aw * ty + (az * tx - ax * tz);
+            float rz = vz + aw * tz + (ax * ty - ay * tx);
+
+            return new Vector3(ry, rz, rx); // MapInv: U.(x,y,z) = UE.(y,z,x)
         }
 
         public static bool operator ==(Quaternion a, Quaternion b) => a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w;

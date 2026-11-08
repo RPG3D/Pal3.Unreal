@@ -36,9 +36,24 @@ namespace ManagedSharpDemo
         [UProperty]
         partial UInputAction LookAction { get; set; }
 
+        // The Paragon "Shinbi" sample character is only a placeholder for the raw
+        // UnrealSharp demo. Loading its skeletal mesh + anim blueprint costs a few
+        // hundred ms on every launch, so it is OFF by default; set
+        // SHARP_SAMPLE_PAWN=1 to bring the sample character back (nothing is deleted).
+        private static bool SamplePawnEnabled =>
+            System.Environment.GetEnvironmentVariable("SHARP_SAMPLE_PAWN") == "1";
+
         public override void BeginPlay()
         {
             base.BeginPlay();
+
+            if (!SamplePawnEnabled)
+            {
+                // Skip the whole sample-pawn setup (input mappings + Shinbi meshes +
+                // camera boom). PAL3 drives its own camera and input.
+                ActorHiddenInGame = true;
+                return;
+            }
 
             APlayerController PlayerCtrl = Controller as APlayerController;
 

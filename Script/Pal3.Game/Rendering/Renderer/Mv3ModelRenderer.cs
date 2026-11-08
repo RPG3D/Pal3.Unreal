@@ -257,6 +257,16 @@ namespace Pal3.Game.Rendering.Renderer
             mv3Mesh.Uvs.ToUnityVector2s(
                 _renderMeshComponents[index].MeshDataBuffer.UvBuffer);
 
+            // Mv3 textures are TGAs, which the port's loader flips to UE's top-down
+            // row order; UE samples v=0 at the top while the Unity data is v-up, so
+            // the V coordinate must be mirrored here. (Scene CVD meshes use DDS and
+            // stay untouched - applying the flip globally breaks the room.)
+            UnityEngine.Vector2[] mv3Uvs = _renderMeshComponents[index].MeshDataBuffer.UvBuffer;
+            for (int uvIndex = 0; uvIndex < mv3Uvs.Length; uvIndex++)
+            {
+                mv3Uvs[uvIndex] = new UnityEngine.Vector2(mv3Uvs[uvIndex].x, 1f - mv3Uvs[uvIndex].y);
+            }
+
             Mesh renderMesh = meshRenderer.Render(
                 vertices: _renderMeshComponents[index].MeshDataBuffer.VertexBuffer,
                 triangles: _renderMeshComponents[index].MeshDataBuffer.TriangleBuffer,

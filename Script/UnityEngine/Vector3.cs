@@ -21,10 +21,15 @@ namespace UnityEngine
 
         public static Vector3 zero => new(0f, 0f, 0f);
         public static Vector3 one => new(1f, 1f, 1f);
-        public static Vector3 forward => new(0f, 1f, 0f);
-        public static Vector3 back => new(0f, -1f, 0f);
-        public static Vector3 up => new(0f, 0f, 1f);
-        public static Vector3 down => new(0f, 0f, -1f);
+        // Unity semantics (X right / Y up / Z forward) — these MUST match the
+        // Quaternion shim's convention (which stores UE FQuat components but speaks
+        // Unity euler semantics). The old values had forward/up swapped, which
+        // silently rotated every `q * Vector3.forward` computation by 90° and made
+        // horizontal orbits dive below the floor.
+        public static Vector3 forward => new(0f, 0f, 1f);
+        public static Vector3 back => new(0f, 0f, -1f);
+        public static Vector3 up => new(0f, 1f, 0f);
+        public static Vector3 down => new(0f, -1f, 0f);
         public static Vector3 left => new(-1f, 0f, 0f);
         public static Vector3 right => new(1f, 0f, 0f);
 

@@ -5,6 +5,12 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <Import Project="..\..\Plugins\UnrealSharp\UnrealSharp.Shared.props" />
+  <!-- AScriptGameMode spawns APal3Driver under #if PAL3. Without this define the
+       managed driver never exists and nothing in the Pal3 port runs. Tied to
+       EnablePal3 so a plain (non-Pal3) managed build still compiles. -->
+  <PropertyGroup Condition="'$(EnablePal3)' == 'true'">
+    <DefineConstants>$(DefineConstants);PAL3</DefineConstants>
+  </PropertyGroup>
   <ItemGroup>
     <!-- Generated game-module bindings (UnrealSharp.SharpDemo namespace).
          Emitted by UHT to Binaries/Managed/net10.0/SharpDemo.dll.
@@ -12,6 +18,10 @@
          hand-written glue project that no longer exists in the current layout. -->
     <Reference Include="SharpDemo">
       <HintPath>..\..\Binaries\Managed\net10.0\SharpDemo.dll</HintPath>
+    </Reference>
+    <!-- Generated bindings for the RuntimeWidgetLayout module (JSON → UMG). -->
+    <Reference Include="RuntimeWidgetLayout">
+      <HintPath>..\..\Binaries\Managed\net10.0\RuntimeWidgetLayout.dll</HintPath>
     </Reference>
     <!-- Managed Pal3 port projects (loaded by UnrealSharp in LoadOrder.json;
          referenced here so APal3Driver can bridge UE tick into the runtime). -->

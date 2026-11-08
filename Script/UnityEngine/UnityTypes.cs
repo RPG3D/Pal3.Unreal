@@ -66,6 +66,13 @@ namespace UnityEngine
     {
         public GameObject() { }
         public GameObject(string n) { name = n; }
+
+        /// <summary>
+        /// Real UE actor backing this stub object, when one exists. The port sets it
+        /// for the main camera so the game's ITransform writes land on a real actor;
+        /// entities created from such a GameObject wrap it (see GameEntity).
+        /// </summary>
+        public UnrealSharp.Engine.AActor? UeActor;
         public bool activeInHierarchy => true;
         public bool activeSelf => true;
 
@@ -107,12 +114,17 @@ namespace UnityEngine
         public void RecalculateBounds() { }
         public void RecalculateNormals() { }
         public void RecalculateTangents() { }
-        public void SetVertices(Vector3[] v) => vertices = v;
-        public void SetTriangles(int[] t, int submesh = 0) => triangles = t;
-        public void SetNormals(Vector3[] n) => normals = n;
-        public void SetTangents(Vector4[] t) => tangents = t;
-        public void SetUVs(int channel, Vector2[] uv2) => uv = uv2;
-        public void Destroy() { }
+        // Mv3 vertex animation mutates these buffers every frame; when the mesh is
+        // backed by a UE ProceduralMeshSection (wired up by StaticMeshRenderer) the
+        // callback re-uploads the section, otherwise animation writes are invisible.
+        public System.Action? OnMeshDataChanged;
+
+        public void SetVertices(Vector3[] v) { vertices = v; OnMeshDataChanged?.Invoke(); }
+        public void SetTriangles(int[] t, int submesh = 0) { triangles = t; OnMeshDataChanged?.Invoke(); }
+        public void SetNormals(Vector3[] n) { normals = n; OnMeshDataChanged?.Invoke(); }
+        public void SetTangents(Vector4[] t) { tangents = t; OnMeshDataChanged?.Invoke(); }
+        public void SetUVs(int channel, Vector2[] uv2) { uv = uv2; OnMeshDataChanged?.Invoke(); }
+        public void Destroy() { OnMeshDataChanged = null; }
     }
 
     public class Texture : Object { public int width; public int height; public Texture2D? nativeTexture; }
@@ -167,7 +179,64 @@ namespace UnityEngine
     {
         public string name = "";
         public float length;
-        public void Destroy() { }
+
+        // Compressed bytes handed to the UE audio helper (decoded there via
+        // dr_libs / RIFF parser). audioType follows Unity's AudioType enum:
+        // 7 = WAV, 6 = MPEG.
+        public byte[]? rawData;
+        public int audioType;
+
+        public void Destroy()
+        {
+            rawData = null;
+        }
+
+        /// <summary>Builds a clip from the bytes read out of the CPK archives.</summary>
+        public static AudioClip FromCompressedData(string clipName, byte[]? data, int type)
+        {
+            return new AudioClip
+            {
+                name = clipName,
+                rawData = data,
+                audioType = type,
+                length = data != null ? EstimateLength(data, type) : 0f,
+            };
+        }
+
+        private static float EstimateLength(byte[] data, int type)
+        {
+            if (type == 7) // WAV
+            {
+                int sampleRate = 22050, channels = 2, bits = 16, dataSize = 0;
+                for (int pos = 12; pos + 8 <= data.Length;)
+                {
+                    string id = System.Text.Encoding.ASCII.GetString(data, pos, 4);
+                    int size = data[pos + 4] | (data[pos + 5] << 8) | (data[pos + 6] << 16) | (data[pos + 7] << 24);
+                    int body = pos + 8;
+                    if (id == "fmt " && body + 16 <= data.Length)
+                    {
+                        channels = data[body + 2] | (data[body + 3] << 8);
+                        sampleRate = data[body + 4] | (data[body + 5] << 8) |
+                                     (data[body + 6] << 16) | (data[body + 7] << 24);
+                        bits = data[body + 14] | (data[body + 15] << 8);
+                    }
+                    else if (id == "data")
+                    {
+                        dataSize = System.Math.Min(size, System.Math.Max(0, data.Length - body));
+                        break;
+                    }
+                    int advance = 8 + size + ((size & 1) == 1 ? 1 : 0);
+                    if (advance <= 8) break;
+                    pos += advance;
+                }
+
+                int bytesPerSecond = System.Math.Max(1, sampleRate * channels * System.Math.Max(1, bits / 8));
+                return dataSize > 0 ? (float)dataSize / bytesPerSecond : 0f;
+            }
+
+            // MPEG: rough estimate at 128 kbps (only used for loop pacing).
+            return data.Length > 0 ? data.Length / (128f * 1024f / 8f) : 0f;
+        }
     }
 
     public class Camera : Component
@@ -354,6 +423,54 @@ namespace UnityEngine
         public static float fogDensity = 0.01f;
         public static float fogStartDistance = 0f;
         public static float fogEndDistance = 300f;
+    }
+
+    /// <summary>
+    /// Scene lighting approximation for the UE port.
+    ///
+    /// The Unity build renders with RealToon + HDRP: GameScene sets a dim main
+    /// directional light plus an ambient colour (dark blue at night) and the toon
+    /// shader folds both into a dark, low-key image. The UE port uses one unlit
+    /// material (M_Pal3Tex), so without this the scene renders at full texture
+    /// brightness - flat and blown out versus the reference.
+    ///
+    /// GameScene publishes the lighting here; UnityMaterial multiplies every tint by
+    /// <see cref="SurfaceScale"/> so the port keeps the original night/day mood. The
+    /// constants approximate a Lambert/toon response (ambient*0.25 + light*0.2).
+    /// </summary>
+    public static class SceneLighting
+    {
+        public static Color MainLightColor = Color.white;
+        public static float MainLightIntensity = 1f;
+        public static Color AmbientColor = Color.white;
+        public static float AmbientIntensity = 1f;
+
+        /// <summary>Composite multiplier applied to every PAL3 texture.</summary>
+        public static Color SurfaceScale = Color.white;
+
+        public static void Set(Color mainLightColor, float mainLightIntensity,
+            Color ambientColor, float ambientIntensity)
+        {
+            MainLightColor = mainLightColor;
+            MainLightIntensity = mainLightIntensity;
+            AmbientColor = ambientColor;
+            AmbientIntensity = ambientIntensity;
+
+            // Calibrated against the Unity reference capture (same camera/scene):
+            // the HDRP + RealToon image is ~5x darker in linear space than raw
+            // textures, with a warm white-balance. The factors below reproduce that
+            // exposure and warm cast on top of the unlit UE material.
+            float r = ambientColor.r * ambientIntensity * 0.050f + mainLightColor.r * mainLightIntensity * 0.030f;
+            float g = ambientColor.g * ambientIntensity * 0.050f + mainLightColor.g * mainLightIntensity * 0.030f;
+            float b = ambientColor.b * ambientIntensity * 0.050f + mainLightColor.b * mainLightIntensity * 0.030f;
+
+            const float WarmR = 1.20f, WarmG = 1.10f, WarmB = 0.62f;
+            SurfaceScale = new Color(Clamp01(r * WarmR), Clamp01(g * WarmG), Clamp01(b * WarmB), 1f);
+        }
+
+        public static void Reset() => SurfaceScale = Color.white;
+
+        private static float Clamp01(float v) => v < 0f ? 0f : (v > 1f ? 1f : v);
     }
 
     public enum AudioRolloffMode { Logarithmic = 0, Linear = 1, Custom = 2 }

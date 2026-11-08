@@ -845,11 +845,16 @@ namespace Pal3.Game.Camera
                 WaitUntilCanceled waiter = new();
                 Pal3Game.Instance.Execute(new ScriptRunnerAddWaiterRequest(waiter));
                 Quaternion rotation = UnityPrimitivesConvertor.ToUnityQuaternion(command.Pitch, command.Yaw, 0f);
+                // Port fix: pass the cancellation token so the menu's init-view orbit
+                // can be aborted when the story starts (otherwise the in-flight 20 s
+                // orbit lands its final write mid-cutscene and pollutes the follow
+                // offset for the rest of the scene).
                 Pal3Game.Instance.StartCoroutine(OrbitAsync(rotation,
                     command.Duration,
                     (AnimationCurveType)command.CurveType,
                     distanceDelta,
-                    () => waiter.CancelWait()));
+                    () => waiter.CancelWait(),
+                    _asyncCameraAnimationCts.Token));
             }
             else
             {

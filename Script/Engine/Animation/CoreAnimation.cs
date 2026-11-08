@@ -2,14 +2,18 @@
 //  Copyright (c) 2021-2025, Jiaqi (0x7c13) Liu. All rights reserved.
 //  See LICENSE file in the project root for license information.
 // ---------------------------------------------------------------------------------------------
-// Ported to UnrealSharp: IEnumerator coroutines converted to async Task
-// (yield return null -> await Task.Yield(); yield break -> return).
+// Restored to the upstream IEnumerator coroutine form (an earlier port pass had
+// converted these to async Task / await Task.Yield — those continuations ran on
+// the UE task-graph game-thread queue, which can execute inside the engine's
+// PostTickComponentUpdate phase; transform/component writes from there hit
+// "Assertion failed: !bPostTickComponentUpdate" (LevelTick.cpp). Coroutines run
+// inside our TickAll instead, which is a normal actor-tick context.)
 
 namespace Engine.Animation
 {
     using System;
+    using System.Collections;
     using System.Threading;
-    using System.Threading.Tasks;
     using Core.Abstraction;
     using Pal3.Core.Utilities;
     using Services;
@@ -60,7 +64,7 @@ namespace Engine.Animation
 
         private static float Lerp(float a, float b, float t) => a + (b - a) * Clamp01(t);
 
-        public static async Task EnumerateValueAsync(float from,
+        public static IEnumerator EnumerateValueAsync(float from,
             float to,
             float duration,
             AnimationCurveType curveType,
@@ -70,7 +74,7 @@ namespace Engine.Animation
             if (MathF.Abs(duration) < float.Epsilon)
             {
                 onValueChanged?.Invoke(to);
-                return;
+                yield break;
             }
 
             float timePast = 0f;
@@ -79,17 +83,16 @@ namespace Engine.Animation
                 float newValue = Lerp(from, to, GetInterpolationRatio(timePast / duration, curveType));
                 onValueChanged?.Invoke(newValue);
                 timePast += GameTimeProvider.Instance.DeltaTime;
-                await Task.Yield();
+                yield return null;
             }
 
             if (!cancellationToken.IsCancellationRequested)
             {
                 onValueChanged?.Invoke(to);
             }
-            await Task.Yield();
         }
 
-        public static async Task MoveAsync(this ITransform target,
+        public static IEnumerator MoveAsync(this ITransform target,
             Vector3 toPosition,
             float duration,
             AnimationCurveType curveType = AnimationCurveType.Linear,
@@ -103,14 +106,16 @@ namespace Engine.Animation
                 target.Position = oldPosition + (toPosition - oldPosition) *
                     GetInterpolationRatio(timePast / duration, curveType);
                 timePast += GameTimeProvider.Instance.DeltaTime;
-                await Task.Yield();
+                yield return null;
             }
 
-            if (!target.IsNativeObjectDisposed && !cancellationToken.IsCancellationRequested) target.Position = toPosition;
-            await Task.Yield();
+            if (!target.IsNativeObjectDisposed && !cancellationToken.IsCancellationRequested)
+            {
+                target.Position = toPosition;
+            }
         }
 
-        public static async Task ShakeAsync(this ITransform target,
+        public static IEnumerator ShakeAsync(this ITransform target,
             float duration,
             float xAxisAmplitude,
             float yAxisAmplitude,
@@ -126,14 +131,13 @@ namespace Engine.Animation
                     y * yAxisAmplitude / 2f,
                     z * zAxisAmplitude / 2f);
                 duration -= GameTimeProvider.Instance.DeltaTime;
-                await Task.Yield();
+                yield return null;
             }
 
             if (!target.IsNativeObjectDisposed) target.LocalPosition = originalPosition;
-            await Task.Yield();
         }
 
-        public static async Task OrbitAroundCenterPointAsync(this ITransform target,
+        public static IEnumerator OrbitAroundCenterPointAsync(this ITransform target,
             Quaternion toRotation,
             Vector3 centerPoint,
             float duration,
@@ -145,6 +149,7 @@ namespace Engine.Animation
             Quaternion startRotation = target.Rotation;
 
             float timePast = 0f;
+            int _probeFrame = 0;
             while (timePast < duration && !target.IsNativeObjectDisposed && !cancellationToken.IsCancellationRequested)
             {
                 Quaternion newRotation = Quaternion.Slerp(startRotation, toRotation,
@@ -153,10 +158,19 @@ namespace Engine.Animation
                 Vector3 direction = (newRotation * Vector3.forward).normalized;
                 Vector3 newPosition = centerPoint + direction * -(distance + (timePast / duration) * distanceDelta);
 
+                // Orbit probe: pin down mid-flight pose vs endpoints (camera dips
+                // below the floor during horizontal orbits despite endpoints being OK).
+                if ((_probeFrame++ % 20) == 0)
+                {
+                    UnityEngine.Debug.Log($"[OrbitProbe] t={timePast:F2}/{duration} "
+                        + $"startE={startRotation.eulerAngles} toE={toRotation.eulerAngles} "
+                        + $"curE={newRotation.eulerAngles} dir={direction} pos={newPosition}");
+                }
+
                 target.SetPositionAndRotation(newPosition, newRotation);
 
                 timePast += GameTimeProvider.Instance.DeltaTime;
-                await Task.Yield();
+                yield return null;
             }
 
             if (!target.IsNativeObjectDisposed && !cancellationToken.IsCancellationRequested)
@@ -164,11 +178,9 @@ namespace Engine.Animation
                 Vector3 newPosition = centerPoint + (toRotation * Vector3.forward).normalized * -(distance + distanceDelta);
                 target.SetPositionAndRotation(newPosition, toRotation);
             }
-
-            await Task.Yield();
         }
 
-        public static async Task RotateAsync(this ITransform target,
+        public static IEnumerator RotateAsync(this ITransform target,
             Quaternion toRotation,
             float duration,
             AnimationCurveType curveType,
@@ -185,11 +197,13 @@ namespace Engine.Animation
                 target.Rotation = rotation;
 
                 timePast += GameTimeProvider.Instance.DeltaTime;
-                await Task.Yield();
+                yield return null;
             }
 
-            if (!target.IsNativeObjectDisposed && !cancellationToken.IsCancellationRequested) target.Rotation = toRotation;
-            await Task.Yield();
+            if (!target.IsNativeObjectDisposed && !cancellationToken.IsCancellationRequested)
+            {
+                target.Rotation = toRotation;
+            }
         }
     }
 }

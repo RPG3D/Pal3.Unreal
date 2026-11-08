@@ -33,8 +33,26 @@ namespace Pal3.Game.Dev
             }
             else
             {
-                JObject releaseInfo = JObject.Parse(unityWebRequest.downloadHandler.text);
-                callback.Invoke(releaseInfo["tag_name"]?.ToString());
+                // Port note: in this environment the request can "succeed" with an
+                // empty body (hosts/proxy interception), which would throw inside the
+                // coroutine and kill it. Version check is best-effort only.
+                try
+                {
+                    string body = unityWebRequest.downloadHandler.text;
+                    if (string.IsNullOrWhiteSpace(body))
+                    {
+                        EngineLogger.LogWarning("Latest release check: empty response body");
+                    }
+                    else
+                    {
+                        JObject releaseInfo = JObject.Parse(body);
+                        callback.Invoke(releaseInfo["tag_name"]?.ToString());
+                    }
+                }
+                catch (Exception e)
+                {
+                    EngineLogger.LogWarning($"Latest release check failed: {e.Message}");
+                }
             }
         }
     }

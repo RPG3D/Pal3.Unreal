@@ -1,4 +1,4 @@
-// Stubs for Unity/Engine types not yet ported to UnrealSharp compat layer.
+﻿// Stubs for Unity/Engine types not yet ported to UnrealSharp compat layer.
 // These let Pal3.Game compile; UI/Input/Video/Renderer functionality is deferred (Batch 4).
 // Replace with real UE (UMG / EnhancedInput / Engine.Renderer UE impl) over time.
 // NOTE: stub members are minimal common surface; expand as CS1061 errors reveal real usage.
@@ -33,15 +33,54 @@ namespace UnityEngine
         public bool isPlaying;
         public bool loop;
         public bool mute;
-        public float volume = 1f;
         public float spatialBlend;
         public float maxDistance = 500f;
         public AudioRolloffMode rolloffMode = AudioRolloffMode.Logarithmic;
-        public void Play() { }
-        public void Stop() { }
+
+        private float _volume = 1f;
+        private int _handle;
+
+        public float volume
+        {
+            get => _volume;
+            set
+            {
+                _volume = value;
+                if (_handle != 0)
+                {
+                    UnrealSharp.SharpDemo.UPal3AudioHelper.SetAudioVolume(_handle, value);
+                }
+            }
+        }
+
+        public void Play()
+        {
+            Stop();
+            if (clip?.rawData == null) return;
+            _handle = UnrealSharp.SharpDemo.UPal3AudioHelper.PlayAudio(
+                clip.rawData, clip.audioType, mute ? 0f : _volume, loop ? -1 : 1);
+            isPlaying = _handle != 0;
+        }
+
+        public void Stop()
+        {
+            if (_handle != 0)
+            {
+                UnrealSharp.SharpDemo.UPal3AudioHelper.StopAudio(_handle);
+                _handle = 0;
+            }
+            isPlaying = false;
+        }
+
         public void Pause() { }
         public void UnPause() { }
-        public void PlayOneShot(AudioClip clip, float volumeScale = 1f) { }
+
+        public void PlayOneShot(AudioClip oneShotClip, float volumeScale = 1f)
+        {
+            if (oneShotClip?.rawData == null) return;
+            UnrealSharp.SharpDemo.UPal3AudioHelper.PlayAudio(
+                oneShotClip.rawData, oneShotClip.audioType, (mute ? 0f : _volume) * volumeScale, 1);
+        }
     }
 
     public class Rigidbody : Component
@@ -289,6 +328,17 @@ namespace UnityEngine.InputSystem
         public static InputSettings settings { get; } = new();
         public static void DisableDevice(InputDevice device) { }
         public static void EnableDevice(InputDevice device) { }
+
+        /// <summary>
+        /// Drops subscribers from the previous PIE session. Pal3Game.Start subscribes
+        /// a handler that destroys the logo and calls Pal3Game.Instance (now the new
+        /// session's instance) — stale handlers must never run again.
+        /// </summary>
+        public static void ResetForNewSession()
+        {
+            onEvent = null;
+            onActionChange = null;
+        }
     }
 
     public class InputAction
@@ -311,9 +361,42 @@ namespace UnityEngine.InputSystem
         public void AddCompositeBinding(string composite) { }
         public void ApplyBindingOverride(string path) { }
 
-        public T ReadValue<T>() where T : struct => default;
-        public bool IsPressed() => false;
-        public bool WasPressedThisFrame() => false;
+        // Keyboard bridge (APal3Driver polls UE keys and injects values here — the
+        // real InputSystem backend does not exist yet). ReadValue returns the last
+        // injected value when its type matches, so Movement.ReadValue<Vector2>()
+        // and friends behave like a real device.
+        private object? _injectedValue;
+        private bool _pressedThisFrame;
+
+        public void InjectValue<T>(T value) where T : struct => _injectedValue = value;
+        public void InjectPressed() => _pressedThisFrame = true;
+
+        public T ReadValue<T>() where T : struct => _injectedValue is T typed ? typed : default;
+        public bool IsPressed() => _injectedValue switch
+        {
+            float f => f > 0.01f,
+            Vector2 v2 => v2.magnitude > 0.01f,
+            _ => false
+        };
+        public bool WasPressedThisFrame()
+        {
+            bool pressed = _pressedThisFrame;
+            _pressedThisFrame = false;
+            return pressed;
+        }
+
+        /// <summary>
+        /// Debug hook used by the port's auto-advance driver (PAL3_AUTODIALOGUE=1):
+        /// fires the same callback a real device/button press would. Nothing else in
+        /// the port raises InputAction events yet, so dialogue/scripts that wait for
+        /// "continue" would otherwise block forever.
+        /// </summary>
+        public void SimulatePerformed()
+        {
+            started?.Invoke(default);
+            performed?.Invoke(default);
+        }
+        public void SimulateCanceled() => canceled?.Invoke(default);
         public bool WasReleasedThisFrame() => false;
 
         public struct CallbackContext
@@ -625,7 +708,18 @@ namespace TMPro
 {
     public class TextMeshProUGUI
     {
-        public string text = "";
+        // Property (not a field) so every story line written by the dialogue
+        // managers also reaches the C++ debug overlay. The text itself stays a stub
+        // (no UMG rendering yet).
+        private string _text = "";
+        public string text
+        {
+            get => _text;
+            set
+            {
+                _text = value ?? "";
+            }
+        }
         public float fontSize = 14f;
         public bool enabled = true;
         public Color color = Color.white;
@@ -817,15 +911,63 @@ namespace Engine.Renderer
     /// Static-mesh renderer stub. The full Render(...) surface mirrors the call shape in
     /// CvdModelRenderer so the ported mesh pipeline compiles; real UE rendering is deferred.
     /// </summary>
-    public class StaticMeshRenderer
+    /// <summary>
+    /// Mesh renderer backed by a real UE UProceduralMeshComponent. The ported game
+    /// hands over Unity-space vertex data (meters, X-right/Y-up/Z-forward); every
+    /// position/normal goes through UnityUeConvert at this boundary. Materials are
+    /// ignored for now - UE's default material is used (texture pipeline is a later
+    /// phase). This is what makes the PAL3 level visible at all.
+    /// </summary>
+    public class StaticMeshRenderer : Engine.Core.Implementation.IUeStubComponent
     {
         public bool receiveShadows;
         public bool ReceiveShadows { get => receiveShadows; set => receiveShadows = value; }
         public bool castShadows = true;
         public bool IsVisible { get; set; } = true;
+
+        private UnrealSharp.Engine.AActor? _actor;
+        private UnrealSharp.ProceduralMeshComponent.UProceduralMeshComponent? _mesh;
+
+        // Default lit material for every section: the ported game's own materials are
+        // still stubs, and UE skips sections whose material is null.
+        private static UnrealSharp.Engine.UMaterialInterface? _defaultMaterial;
+        private bool _uploadedOnce;
+
+        // Diagnostics: proves the ported level data actually reached UE.
+        public static int UploadCount;
+        public static int RenderCalls;
+        public static int ReuploadCount;
+        public static long TotalVertices;
+        public static long TotalTriangles;
+        // World-space (UE cm) bounds of everything uploaded, for camera placement.
+        public static double MinX = double.MaxValue, MinY = double.MaxValue, MinZ = double.MaxValue;
+        public static double MaxX = double.MinValue, MaxY = double.MinValue, MaxZ = double.MinValue;
+        private static bool _loggedFirstUpload;
+
+        /// <summary>
+        /// Resets per-session counters/bounds and the cached default material (PIE
+        /// session reset). The material lives in the previous world's package and is
+        /// garbage-collected with it.
+        /// </summary>
+        public static void ResetForNewSession()
+        {
+            _defaultMaterial = null;
+            _loggedFirstUpload = false;
+            UploadCount = 0;
+            RenderCalls = 0;
+            ReuploadCount = 0;
+            TotalVertices = 0;
+            TotalTriangles = 0;
+            MinX = MinY = MinZ = double.MaxValue;
+            MaxX = MaxY = MaxZ = double.MinValue;
+        }
+
+        public void AttachTo(Engine.Core.Implementation.UEGameEntity entity) => _actor = entity.Actor;
+
         public UnityEngine.Bounds GetRendererBounds() => default;
         public UnityEngine.Bounds GetMeshBounds() => default;
         public Engine.Core.Abstraction.IMaterial[] GetMaterials() => Array.Empty<Engine.Core.Abstraction.IMaterial>();
+
         public UnityEngine.Mesh Render(
             UnityEngine.Vector3[] vertices,
             int[] triangles,
@@ -833,9 +975,240 @@ namespace Engine.Renderer
             (int channel, UnityEngine.Vector2[] uvs) mainTextureUvs,
             (int channel, UnityEngine.Vector2[] uvs) secondaryTextureUvs,
             Engine.Core.Abstraction.IMaterial[] materials,
-            bool isDynamic) => new UnityEngine.Mesh();
-        public void Dispose() { }
-        public void Destroy() { }
+            bool isDynamic)
+        {
+            ++RenderCalls;
+            if (_actor == null || vertices == null || vertices.Length == 0
+                || triangles == null || triangles.Length < 3)
+            {
+                return new UnityEngine.Mesh();
+            }
+
+            // NOTE: Render is called once per model/action switch (Mv3ModelRenderer.Init
+            // → Render with fresh buffers); per-frame vertex animation flows through
+            // Mesh.SetVertices → OnMeshDataChanged (wired below), not through Render.
+
+            // Sanitise before crossing into UE: real game data has nodes whose normal /
+            // UV arrays do not match the vertex count, and mismatched buffer lengths
+            // crash the engine side of CreateMeshSection.
+            int vertexCount = vertices.Length;
+            bool hasNormals = normals != null && normals.Length == vertexCount;
+            bool hasUv0 = mainTextureUvs.uvs != null && mainTextureUvs.uvs.Length == vertexCount;
+            bool hasUv1 = secondaryTextureUvs.uvs != null && secondaryTextureUvs.uvs.Length == vertexCount;
+            bool trianglesValid = true;
+            for (int i = 0; i + 2 < triangles.Length; i += 3)
+            {
+                if (triangles[i] < 0 || triangles[i] >= vertexCount
+                    || triangles[i + 1] < 0 || triangles[i + 1] >= vertexCount
+                    || triangles[i + 2] < 0 || triangles[i + 2] >= vertexCount)
+                {
+                    trianglesValid = false;
+                    break;
+                }
+            }
+            if (!trianglesValid)
+            {
+                UnityEngine.Debug.LogWarning($"[StaticMeshRenderer] dropped mesh with out-of-range indices ({vertexCount} verts)");
+                return new UnityEngine.Mesh();
+            }
+
+            bool _statsRecorded = false;
+            void UploadSection(bool createCollision)
+            {
+            try
+            {
+                _mesh ??= _actor.AddComponentByClass<UnrealSharp.ProceduralMeshComponent.UProceduralMeshComponent>(
+                    false, new UnrealSharp.CoreUObject.FTransform());
+
+                if (_mesh.OverrideMaterials == null || _mesh.OverrideMaterials.Count == 0)
+                {
+                    // Prefer the game-provided materials (M_Pal3Tex MID with the
+                    // bound texture); fall back to the engine default when absent.
+                    var gameMats = new System.Collections.Generic.List<UnrealSharp.Engine.UMaterialInterface>();
+                    foreach (Engine.Core.Abstraction.IMaterial gm in materials)
+                    {
+                        if (gm.NativeObject is UnrealSharp.Engine.UMaterialInterface umi)
+                        {
+                            gameMats.Add(umi);
+                        }
+                    }
+                    if (gameMats.Count > 0)
+                    {
+                        _mesh.OverrideMaterials = gameMats;
+                    }
+                    else
+                    {
+                        UnrealSharp.Engine.UMaterialInterface mat = GetDefaultMaterial();
+                        if (mat != null)
+                        {
+                            _mesh.OverrideMaterials = new System.Collections.Generic.List<UnrealSharp.Engine.UMaterialInterface> { mat };
+                        }
+                    }
+                }
+
+                var ueVertices = new System.Collections.Generic.List<UnrealSharp.CoreUObject.FVector>(vertices.Length);
+                foreach (UnityEngine.Vector3 v in vertices)
+                {
+                    ueVertices.Add(Engine.Core.Implementation.UnityUeConvert.ToUePosition(v));
+                }
+
+                var ueNormals = new System.Collections.Generic.List<UnrealSharp.CoreUObject.FVector>(
+                    hasNormals ? vertexCount : 0);
+                if (hasNormals)
+                {
+                    foreach (UnityEngine.Vector3 n in normals)
+                    {
+                        ueNormals.Add(Engine.Core.Implementation.UnityUeConvert.ToUeDirection(n));
+                    }
+                }
+
+                var uv0 = new System.Collections.Generic.List<UnrealSharp.CoreUObject.FVector2D>(
+                    hasUv0 ? vertexCount : 0);
+                if (hasUv0)
+                {
+                    foreach (UnityEngine.Vector2 uv in mainTextureUvs.uvs)
+                    {
+                        uv0.Add(new UnrealSharp.CoreUObject.FVector2D(uv.x, uv.y));
+                    }
+                }
+
+                var uv1 = new System.Collections.Generic.List<UnrealSharp.CoreUObject.FVector2D>(
+                    hasUv1 ? vertexCount : 0);
+                if (hasUv1)
+                {
+                    foreach (UnityEngine.Vector2 uv in secondaryTextureUvs.uvs)
+                    {
+                        uv1.Add(new UnrealSharp.CoreUObject.FVector2D(uv.x, uv.y));
+                    }
+                }
+
+                // Unity winds triangles clockwise seen from the front; UE culls those.
+                // Swap the last two indices so faces survive backface culling.
+                var ueTriangles = new System.Collections.Generic.List<int>(triangles.Length);
+                for (int i = 0; i + 2 < triangles.Length; i += 3)
+                {
+                    ueTriangles.Add(triangles[i]);
+                    ueTriangles.Add(triangles[i + 2]);
+                    ueTriangles.Add(triangles[i + 1]);
+                }
+
+                ++UploadCount;
+                if (_statsRecorded) { ++ReuploadCount; return; } // per-frame re-uploads don't refresh stats
+                _statsRecorded = true;
+                UnrealSharp.CoreUObject.FVector actorPos = _actor.ActorLocation;
+                foreach (UnrealSharp.CoreUObject.FVector p in ueVertices)
+                {
+                    double wx = p.X + actorPos.X, wy = p.Y + actorPos.Y, wz = p.Z + actorPos.Z;
+                    if (wx < MinX) MinX = wx; if (wx > MaxX) MaxX = wx;
+                    if (wy < MinY) MinY = wy; if (wy > MaxY) MaxY = wy;
+                    if (wz < MinZ) MinZ = wz; if (wz > MaxZ) MaxZ = wz;
+                }
+                TotalVertices += ueVertices.Count;
+                TotalTriangles += ueTriangles.Count / 3;
+                if (!_loggedFirstUpload && ueVertices.Count > 0)
+                {
+                    _loggedFirstUpload = true;
+                    double minX = double.MaxValue, minY = double.MaxValue, minZ = double.MaxValue;
+                    double maxX = double.MinValue, maxY = double.MinValue, maxZ = double.MinValue;
+                    foreach (UnrealSharp.CoreUObject.FVector p in ueVertices)
+                    {
+                        if (p.X < minX) minX = p.X; if (p.X > maxX) maxX = p.X;
+                        if (p.Y < minY) minY = p.Y; if (p.Y > maxY) maxY = p.Y;
+                        if (p.Z < minZ) minZ = p.Z; if (p.Z > maxZ) maxZ = p.Z;
+                    }
+                    UnityEngine.Debug.Log($"[StaticMeshRenderer] first mesh: verts={ueVertices.Count} tris={ueTriangles.Count / 3} "
+                        + $"bounds=({minX:F0},{minY:F0},{minZ:F0})..({maxX:F0},{maxY:F0},{maxZ:F0})"
+                        + $" actor={_actor.Name} at=({actorPos.X:F0},{actorPos.Y:F0},{actorPos.Z:F0})");
+                    float uMin = float.MaxValue, uMax = float.MinValue, vMin = float.MaxValue, vMax = float.MinValue;
+                    if (mainTextureUvs.uvs != null)
+                    {
+                        foreach (UnityEngine.Vector2 uv in mainTextureUvs.uvs)
+                        {
+                            if (uv.x < uMin) uMin = uv.x; if (uv.x > uMax) uMax = uv.x;
+                            if (uv.y < vMin) vMin = uv.y; if (uv.y > vMax) vMax = uv.y;
+                        }
+                        UnityEngine.Debug.Log($"[StaticMeshRenderer] uv0 range=({uMin:F2},{vMin:F2})..({uMax:F2},{vMax:F2}) count={mainTextureUvs.uvs.Length}");
+                    }
+                }
+
+                if (_uploadedOnce)
+                {
+                    // Per-frame vertex animation: only refresh the buffers. Recreating
+                    // the section (CreateMeshSection) rebuilds the render state every
+                    // frame and was a major cause of the 3 FPS + MID churn.
+                    _mesh.UpdateMeshSection(
+                        sectionIndex: 0,
+                        vertices: ueVertices,
+                        normals: ueNormals,
+                        uV0: uv0,
+                        uV1: uv1,
+                        uV2: new System.Collections.Generic.List<UnrealSharp.CoreUObject.FVector2D>(),
+                        uV3: new System.Collections.Generic.List<UnrealSharp.CoreUObject.FVector2D>(),
+                        vertexColors: new System.Collections.Generic.List<UnrealSharp.CoreUObject.FLinearColor>(),
+                        tangents: new System.Collections.Generic.List<UnrealSharp.ProceduralMeshComponent.FProcMeshTangent>());
+                }
+                else
+                {
+                    _uploadedOnce = true;
+                    _mesh.CreateMeshSection(
+                        sectionIndex: 0,
+                        vertices: ueVertices,
+                        triangles: ueTriangles,
+                        normals: ueNormals,
+                        uV0: uv0,
+                        uV1: uv1,
+                        uV2: new System.Collections.Generic.List<UnrealSharp.CoreUObject.FVector2D>(),
+                        uV3: new System.Collections.Generic.List<UnrealSharp.CoreUObject.FVector2D>(),
+                        vertexColors: new System.Collections.Generic.List<UnrealSharp.CoreUObject.FLinearColor>(),
+                        tangents: new System.Collections.Generic.List<UnrealSharp.ProceduralMeshComponent.FProcMeshTangent>(),
+                        // Static level geometry needs UE collision so the pawn/camera has
+                        // something to stand on (PAL3 gameplay itself uses its own tile data).
+                        createCollision: createCollision);
+                }
+            }
+            catch (Exception e)
+            {
+                UnityEngine.Debug.LogError("[StaticMeshRenderer] UE mesh upload failed: " + e.Message);
+            }
+            } // UploadSection
+
+            UploadSection(createCollision: !isDynamic);
+
+            UnityEngine.Mesh result = new();
+            if (isDynamic)
+            {
+                // Mv3 vertex animation mutates `vertices` in place and calls
+                // SetVertices — re-upload the section with the mutated buffers.
+                // (verts/normals/uvs/triangles are the same array instances the
+                // animation writes into; conversion happens per upload.)
+                result.OnMeshDataChanged = () => UploadSection(createCollision: false);
+            }
+            return result;
+        }
+
+        private static UnrealSharp.Engine.UMaterialInterface? GetDefaultMaterial()
+        {
+            if (_defaultMaterial != null) return _defaultMaterial;
+            _defaultMaterial = UnrealSharp.CoreUObject.UObject.StaticLoadObject<UnrealSharp.Engine.UMaterial>(
+                "/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
+            _defaultMaterial ??= UnrealSharp.CoreUObject.UObject.StaticLoadObject<UnrealSharp.Engine.UMaterial>(
+                "/Engine/EngineMaterials/DefaultMaterial.DefaultMaterial");
+            UnityEngine.Debug.Log(_defaultMaterial != null
+                ? "[StaticMeshRenderer] default material loaded: " + _defaultMaterial.Name
+                : "[StaticMeshRenderer] NO default material found");
+            return _defaultMaterial;
+        }
+
+        public void Dispose()
+        {
+            if (_mesh != null && _actor != null)
+            {
+                _mesh.DestroyComponent(_actor);
+            }
+            _mesh = null;
+        }
+
+        public void Destroy() => Dispose();
     }
 
     public class AnimatedBillboardRenderer
@@ -948,13 +1321,27 @@ namespace Engine.Core.Implementation
 
         // Internal bridges letting GameEntityScriptRuntime (same assembly) invoke the
         // protected virtuals above only when a derived type actually overrides them.
-        private bool? _overridesOnUpdate, _overridesOnLateUpdate, _overridesOnDisable;
+        private bool? _overridesOnEnable, _overridesOnUpdate, _overridesOnLateUpdate, _overridesOnDisable;
 
         private bool IsOverridden(string methodName)
         {
             System.Reflection.MethodInfo? method = GetType().GetMethod(methodName,
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            return method != null && method.GetBaseDefinition().DeclaringType != typeof(GameEntityScript);
+            // Compare the DECLARING type of the found (most-derived) method with the base
+            // class. Comparing GetBaseDefinition() instead would always yield the base
+            // declaration, i.e. the check was permanently false and no virtual lifecycle
+            // hook (OnEnable/OnUpdate/OnLateUpdate/OnDisable) ever reached a subclass.
+            return method != null && method.DeclaringType != typeof(GameEntityScript);
+        }
+
+        internal void InvokeVirtualOnEnable()
+        {
+            _overridesOnEnable ??= IsOverridden(nameof(OnEnableGameEntity));
+            if (_overridesOnEnable == true)
+            {
+                UnityEngine.Debug.Log($"[Lifecycle] OnEnableGameEntity -> {GetType().Name}");
+                OnEnableGameEntity();
+            }
         }
 
         internal void InvokeVirtualOnUpdate(float deltaTime)
@@ -1012,6 +1399,13 @@ namespace IngameDebugConsole
         public event Action? OnLogWindowShown;
         public event Action? OnLogWindowHidden;
         public UnityEngine.GameObject gameObject => new();
+
+        /// <summary>Drops the previous session's Pal3Game subscribers (PIE restart).</summary>
+        public static void ResetForNewSession()
+        {
+            _instance.OnLogWindowShown = null;
+            _instance.OnLogWindowHidden = null;
+        }
     }
 }
 
@@ -1050,37 +1444,10 @@ namespace SimpleFileBrowser
     }
 }
 
-namespace Engine.DataLoader
-{
-    /// <summary>
-    /// Texture loaders, in the Engine.DataLoader namespace the ported code expects
-    /// (TextureLoaderFactory uses `using Engine.DataLoader;`). Loading is deferred;
-    /// Load just reports an alpha channel, ToTexture returns a white texture.
-    /// </summary>
-    public sealed class TgaTextureLoader : ITextureLoader
-    {
-        private readonly ITextureFactory _textureFactory;
-        public TgaTextureLoader(ITextureFactory textureFactory) { _textureFactory = textureFactory; }
-        public void Load(byte[] data, out bool hasAlphaChannel) { hasAlphaChannel = false; }
-        public ITexture2D ToTexture() => _textureFactory.CreateWhiteTexture();
-    }
-
-    public sealed class DxtTextureLoader : ITextureLoader
-    {
-        private readonly ITextureFactory _textureFactory;
-        public DxtTextureLoader(ITextureFactory textureFactory) { _textureFactory = textureFactory; }
-        public void Load(byte[] data, out bool hasAlphaChannel) { hasAlphaChannel = true; }
-        public ITexture2D ToTexture() => _textureFactory.CreateWhiteTexture();
-    }
-
-    public sealed class BmpTextureLoader : ITextureLoader
-    {
-        private readonly ITextureFactory _textureFactory;
-        public BmpTextureLoader(ITextureFactory textureFactory) { _textureFactory = textureFactory; }
-        public void Load(byte[] data, out bool hasAlphaChannel) { hasAlphaChannel = false; }
-        public ITexture2D ToTexture() => _textureFactory.CreateWhiteTexture();
-    }
-}
+// REMOVED: the stub Engine.DataLoader.TgaTextureLoader that used to live here.
+// Because Pal3.Game defines the type itself, it shadowed the real TGA decoder in the
+// Engine assembly (CS0436) and every .tga texture (all character textures!) became a
+// 1x1 white stub with no UE texture → characters rendered untextured/black.
 
 namespace Pal3.Game.Data
 {
@@ -1091,15 +1458,75 @@ namespace Pal3.Game.Data
     public sealed class UnityTexture2D : ITexture2D
     {
         private readonly UnityEngine.Texture2D _texture;
-        public UnityTexture2D(UnityEngine.Texture2D texture) { _texture = texture; }
+        private readonly byte[]? _rgba;   // managed copy: GetPixel (water opacity etc.)
+        public UnrealSharp.Engine.UTexture2D? UeTexture { get; }
+
+        public UnityTexture2D(UnityEngine.Texture2D texture)
+        {
+            _texture = texture;
+        }
+
+        // Full pipeline: rgba bytes -> UE UTexture2D (via UPal3AssetHelper).
+        public UnityTexture2D(int width, int height, byte[] rgba)
+        {
+            _texture = new UnityEngine.Texture2D(width, height);
+            _rgba = rgba;
+            UeTexture = UnrealSharp.SharpDemo.UPal3AssetHelper.CreateTextureFromRgba(width, height, rgba);
+            if (UeTexture == null && TextureCreateFailures++ < 8)
+            {
+                UnityEngine.Debug.LogWarning($"[UnityTexture2D] UE texture failed {width}x{height} "
+                    + $"len={rgba?.Length ?? -1} expected={(long)width * height * 4}");
+            }
+        }
+
+        public static int TextureCreateFailures;
 
         public int Width => _texture?.width ?? 0;
         public int Height => _texture?.height ?? 0;
-        public object NativeObject => (object?)_texture ?? this;
+        public object NativeObject => UeTexture ?? (object?)_texture ?? this;
         public bool IsNativeObjectDisposed => false;
 
         public void SetWrapMode(WrapMode wrapMode) { }
-        public (float r, float g, float b, float a) GetPixel(int x, int y) => (1f, 1f, 1f, 1f);
+        public (float r, float g, float b, float a) GetPixel(int x, int y)
+        {
+            if (_rgba == null || x < 0 || y < 0 || x >= Width || y >= Height) return (1f, 1f, 1f, 1f);
+            int i = (y * Width + x) * 4;
+            return (_rgba[i] / 255f, _rgba[i + 1] / 255f, _rgba[i + 2] / 255f, _rgba[i + 3] / 255f);
+        }
+
+        /// <summary>
+        /// Normalized UV rectangle of the non-transparent pixels (avatar portraits
+        /// ship with large transparent padding; the HUD dialogue bar crops to this).
+        /// Returns false for textures without a managed RGBA copy.
+        /// </summary>
+        public bool TryGetAlphaBounds(out float u0, out float v0, out float u1, out float v1)
+        {
+            u0 = v0 = 0f;
+            u1 = v1 = 1f;
+            if (_rgba == null || Width <= 0 || Height <= 0) return false;
+
+            int minX = Width, minY = Height, maxX = -1, maxY = -1;
+            int step = System.Math.Max(1, System.Math.Min(Width, Height) / 128);
+            for (int y = 0; y < Height; y += step)
+            {
+                int row = y * Width;
+                for (int x = 0; x < Width; x += step)
+                {
+                    if (_rgba[(row + x) * 4 + 3] <= 8) continue;
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+            }
+            if (maxX < 0) return false;
+
+            u0 = (float)minX / Width;
+            v0 = (float)minY / Height;
+            u1 = (float)(maxX + 1) / Width;
+            v1 = (float)(maxY + 1) / Height;
+            return true;
+        }
         public ISprite CreateSprite(float x, float y, float width, float height, float pivotX, float pivotY)
             => new UnitySprite(this);
         public void Destroy() { }
@@ -1116,26 +1543,195 @@ namespace Pal3.Game.Data
 
     public sealed class UnityTextureFactory : ITextureFactory
     {
-        public ITexture2D CreateTexture(int width, int height, byte[] rgba32DataBuffer) => new UnityTexture2D(new UnityEngine.Texture2D(width, height));
+        public ITexture2D CreateTexture(int width, int height, byte[] rgba32DataBuffer)
+            => new UnityTexture2D(width, height, rgba32DataBuffer);
         public ITexture2D CreateWhiteTexture() => new UnityTexture2D(new UnityEngine.Texture2D(1, 1));
     }
 
     public sealed class UnityMaterial : IMaterial
     {
-        private readonly UnityEngine.Material _material;
+        private readonly UnityEngine.Material? _material;
+        private readonly string _shaderName = "";
+        public UnrealSharp.Engine.UMaterialInterface? UeMaterial { get; set; }
+
         public UnityMaterial(UnityEngine.Material material, bool isClone) { _material = material; }
 
-        public string ShaderName => _material?.shader?.name ?? "";
-        public object NativeObject => (object?)_material ?? this;
+        // Runtime material: MID of /Game/Pal3/M_Pal3Tex (Pal3Tex texture param).
+        public UnityMaterial() : this("")
+        {
+        }
+
+        public UnityMaterial(string shaderName)
+        {
+            _shaderName = shaderName ?? "";
+            _blendMode = IsTransparentShader(_shaderName) ? 2 : 0;
+            UeMaterial = UnrealSharp.SharpDemo.UPal3AssetHelper.CreatePal3MaterialBlend(_blendMode);
+        }
+
+        // "RealToon/.../Fade Transparency", "Pal3/Transparent" and
+        // "Pal3/TransparentOpaquePart" are the game's transparent material variants.
+        private static bool IsTransparentShader(string shaderName)
+            => shaderName.Contains("Transparent", StringComparison.OrdinalIgnoreCase)
+            || shaderName.Contains("Fade", StringComparison.OrdinalIgnoreCase);
+
+        public string ShaderName => _shaderName.Length > 0 ? _shaderName : (_material?.shader?.name ?? "");
+        public object NativeObject => UeMaterial ?? (object?)_material ?? this;
         public bool IsNativeObjectDisposed => false;
 
         public float GetFloat(int propertyId) => _material?.GetFloat(PropertyIdToName(propertyId)) ?? 0f;
         public int GetInt(int propertyId) => _material?.GetInt(PropertyIdToName(propertyId)) ?? 0;
-        public void SetInt(int propertyId, int value) { }
-        public void SetFloat(int propertyId, float value) { }
-        public void SetColor(int propertyId, Pal3.Core.Primitives.Color value) { }
-        public void SetMainTexture(ITexture2D texture) { }
-        public void SetTexture(int propertyId, ITexture2D value) { }
+
+        public void SetInt(int propertyId, int value)
+        {
+            string? name = Engine.Services.ShaderUtility.GetPropertyNameById(propertyId);
+            if (name == "_BlendDstFactor")
+            {
+                // Unity BlendMode: One = 1 -> additive (InvertColorBlend), 
+                // OneMinusSrcAlpha = 10 -> alpha blend.
+                if (value == 1) SwitchBlend(1);
+                else if (value == 10) SwitchBlend(2);
+                return;
+            }
+            if (name == "_BlendSrcFactor") return; // SrcAlpha for both variants
+            SetFloat(propertyId, value);
+        }
+
+        // 0 = opaque M_Pal3Tex, 1 = additive, 2 = translucent, 3 = masked (cutout).
+        private int _blendMode;
+        private float _cutout;
+        private UnrealSharp.Engine.UTexture2D? _mainTexture;
+        private static UnrealSharp.Engine.UTexture2D? _whiteTexture;
+
+        private static UnrealSharp.Engine.UTexture2D? GetWhiteTexture()
+        {
+            // Rooted by the C++ helper; one shared instance for cleared slots.
+            _whiteTexture ??= UnrealSharp.SharpDemo.UPal3AssetHelper.CreateTextureFromRgba(
+                1, 1, new byte[] { 255, 255, 255, 255 });
+            return _whiteTexture;
+        }
+
+        private void SwitchBlend(int mode)
+        {
+            if (_blendMode == mode) return;
+            _blendMode = mode;
+            UeMaterial = UnrealSharp.SharpDemo.UPal3AssetHelper.CreatePal3MaterialBlend(mode);
+            if (_mainTexture != null && UeMaterial != null)
+            {
+                UnrealSharp.SharpDemo.UPal3AssetHelper.BindTexture(
+                    UeMaterial, new UnrealSharp.Core.FName("Pal3Tex"), _mainTexture);
+            }
+            ApplyTint();
+        }
+
+
+        // The Unity "Pal3/Opaque" shader is ported to /Game/Pal3/M_Pal3Tex:
+        //   emissive = MainTex * TintColor * lerp(1, ShadowTex/(1-Exposure), HasShadowTex)
+        // The ported game only speaks Unity property ids, so map the handful of
+        // parameters the material actually declares.
+        public void SetFloat(int propertyId, float value)
+        {
+            if (UeMaterial == null) return;
+            switch (Engine.Services.ShaderUtility.GetPropertyNameById(propertyId))
+            {
+                case "_HasShadowTex":
+                    UnrealSharp.SharpDemo.UPal3AssetHelper.SetScalarParameter(
+                        UeMaterial, new UnrealSharp.Core.FName("HasShadowTex"), value);
+                    break;
+                case "_Exposure":
+                    UnrealSharp.SharpDemo.UPal3AssetHelper.SetScalarParameter(
+                        UeMaterial, new UnrealSharp.Core.FName("ShadowExposure"), value);
+                    break;
+                case "_Cutout":
+                    // 0.3 = alpha cutout (Mv3 hair/cloth masks), 0 = fully opaque.
+                    _cutout = value;
+                    if (_blendMode == 0 || _blendMode == 3)
+                    {
+                        SwitchBlend(value > 0.001f ? 3 : 0);
+                    }
+                    break;
+            }
+        }
+
+        public void SetColor(int propertyId, Pal3.Core.Primitives.Color value)
+        {
+            if (UeMaterial == null) return;
+            if (Engine.Services.ShaderUtility.GetPropertyNameById(propertyId) != "_TintColor") return;
+            _tint = value;
+            ApplyTint();
+        }
+
+        // Game tint * scene lighting approximation (see UnityEngine.SceneLighting).
+        private Pal3.Core.Primitives.Color _tint = new(1f, 1f, 1f, 1f);
+
+        private void ApplyTint()
+        {
+            if (UeMaterial == null) return;
+            UnityEngine.Color scale = UnityEngine.SceneLighting.SurfaceScale;
+            UnrealSharp.SharpDemo.UPal3AssetHelper.SetVectorParameter(
+                UeMaterial,
+                new UnrealSharp.Core.FName("TintColor"),
+                new UnrealSharp.CoreUObject.FLinearColor(
+                    _tint.R * scale.r, _tint.G * scale.g, _tint.B * scale.b, _tint.A));
+        }
+
+
+        public void SetMainTexture(ITexture2D texture) => SetTexture(0, texture);
+
+        public void SetTexture(int propertyId, ITexture2D value)
+        {
+            ++SetTextureCalls;
+
+            // Material-pool reset path: SetMainTexture(null) means "clear". Binding a
+            // shared white texture (instead of leaving the previous one) avoids a
+            // pooled translucent material showing the last object's texture.
+            if (value == null)
+            {
+                _mainTexture = null;
+                if (UeMaterial != null)
+                {
+                    UnrealSharp.SharpDemo.UPal3AssetHelper.BindTexture(
+                        UeMaterial, new UnrealSharp.Core.FName("Pal3Tex"), GetWhiteTexture());
+                }
+                return;
+            }
+
+            if (UeMaterial == null)
+            {
+                if (++BindFailures <= 3)
+                {
+                    var st = new System.Diagnostics.StackTrace(1, false);
+                    var frames = st.GetFrames();
+                    string caller = frames != null && frames.Length > 1 ? frames[1].GetMethod()?.DeclaringType?.Name + "." + frames[1].GetMethod()?.Name : "?";
+                    UnityEngine.Debug.LogWarning($"[UnityMaterial] bind skipped: UeMaterial null (this={GetType().Name}#{GetHashCode():X}, caller={caller})");
+                }
+                return;
+            }
+            if (value is not UnityTexture2D { UeTexture: not null } tex)
+            {
+                if (++BindFailures <= 3) UnityEngine.Debug.LogWarning($"[UnityMaterial] bind skipped: texture type {value?.GetType().Name} ueTex={(value as UnityTexture2D)?.UeTexture != null}");
+                return;
+            }
+
+            string? name = propertyId == 0
+                ? "_MainTex"
+                : Engine.Services.ShaderUtility.GetPropertyNameById(propertyId) ?? "_MainTex";
+
+            string? parameter = name switch
+            {
+                "_ShadowTex" => "ShadowTex",
+                "_MainTex" or "MainTex" or "_BaseMap" => "Pal3Tex",
+                _ => null, // skybox / other slots are not ported yet
+            };
+            if (parameter == null) return;
+
+            UnrealSharp.SharpDemo.UPal3AssetHelper.BindTexture(
+                UeMaterial, new UnrealSharp.Core.FName(parameter), tex.UeTexture);
+            if (parameter == "Pal3Tex") _mainTexture = tex.UeTexture;
+            ApplyTint();
+        }
+
+        public static int SetTextureCalls;
+        public static int BindFailures;
         public void SetMainTextureScale(float x, float y) { }
         public void SetVector4(int propertyId, UnityEngine.Vector4 value) { }
         public void Destroy() { }
@@ -1145,8 +1741,20 @@ namespace Pal3.Game.Data
 
     public sealed class UnityMaterialFactory : IMaterialFactory
     {
-        public IMaterial CreateMaterial(string shaderName) => new UnityMaterial(new UnityEngine.Material { shader = UnityEngine.Shader.Find(shaderName) }, isClone: false);
-        public IMaterial CreateMaterialFrom(IMaterial material) => new UnityMaterial(new UnityEngine.Material(), isClone: true);
+        public IMaterial CreateMaterial(string shaderName)
+        {
+            // The Unity shader does not exist in UE; the shader NAME is kept so the
+            // clone pool preserves the opaque/transparent variant (M_Pal3Tex /
+            // M_Pal3Tex_Alpha / M_Pal3Tex_Add).
+            return new UnityMaterial(shaderName);
+        }
+
+        public IMaterial CreateMaterialFrom(IMaterial material)
+        {
+            // Every instance gets its OWN MID (upstream clones materials per
+            // instance so pool pops can mutate them independently).
+            return new UnityMaterial((material as UnityMaterial)?.ShaderName ?? "");
+        }
     }
 
     /// <summary>

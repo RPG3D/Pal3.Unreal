@@ -9,5 +9,8 @@
     <Reference Include="SharpDemo">
       <HintPath>..\..\Binaries\Managed\net10.0\SharpDemo.dll</HintPath>
     </Reference>
+    <Reference Include="RuntimeWidgetLayout">
+      <HintPath>..\..\Binaries\Managed\net10.0\RuntimeWidgetLayout.dll</HintPath>
+    </Reference>
   </ItemGroup>
 </Project>

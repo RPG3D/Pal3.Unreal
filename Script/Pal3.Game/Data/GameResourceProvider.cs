@@ -133,6 +133,16 @@ namespace Pal3.Game.Data
 
         // No need to deallocate the shadow texture/sprite since it is been used almost every where.
         private static ISprite _shadowSprite;
+
+        /// <summary>
+        /// Drops the cached shadow sprite (PIE session reset): it wraps a UTexture2D
+        /// created in the previous world and is garbage-collected with it.
+        /// </summary>
+        public static void ResetStaticCaches()
+        {
+            _shadowSprite = null;
+        }
+
         public ISprite GetShadowSprite()
         {
             if (_shadowSprite != null) return _shadowSprite;
@@ -288,14 +298,37 @@ namespace Pal3.Game.Data
                 yield break;
             }
 
-            yield return AudioClipLoader.LoadAudioClipAsync(filePath,
-                audioType,
-                streamAudio,
-                audioClip =>
+            // Read the compressed bytes straight out of the CPK archives and hand
+            // them to the UE audio helper, which decodes WAV/MPEG at runtime.
+            AudioClip audioClip = null;
+            try
+            {
+                // SFX are loose files under the game folder; music is extracted from
+                // music.cpk into the cache folder first. Both are physical paths.
+                byte[] data = File.Exists(filePath)
+                    ? File.ReadAllBytes(filePath)
+                    : _fileSystem.ReadAllBytes(filePath);
+                if (data is { Length: > 16 })
                 {
-                    _audioClipCache[cacheKey] = audioClip;
-                    onLoaded?.Invoke(audioClip);
-                });
+                    audioClip = AudioClip.FromCompressedData(filePath, data, (int)audioType);
+                }
+            }
+            catch (Exception e)
+            {
+                EngineLogger.LogWarning($"[Audio] failed to read {filePath}: {e.Message}");
+            }
+
+            if (audioClip != null)
+            {
+                _audioClipCache[cacheKey] = audioClip;
+            }
+            else
+            {
+                EngineLogger.LogWarning($"[Audio] clip not found: {filePath}");
+            }
+
+            onLoaded?.Invoke(audioClip);
+            yield break;
         }
 
         public ISprite GetLogoSprite()

@@ -15,6 +15,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
+using Pal3.Game;
 
 namespace Engine.Core.Implementation
 {
@@ -44,6 +45,9 @@ namespace Engine.Core.Implementation
 
         private static readonly object _gate = new();
         private static readonly List<Routine> _routines = new();
+
+        /// <summary>Number of live coroutines (diagnostics only).</summary>
+        public static int ActiveCount { get { lock (_gate) return _routines.Count; } }
         private static readonly List<Routine> _pending = new();       // registered during Tick; started next Tick
         private static readonly Dictionary<IEnumerator, Routine> _byEnumerator = new();
 
@@ -79,8 +83,40 @@ namespace Engine.Core.Implementation
             }
         }
 
+        /// <summary>
+        /// Drops every routine (PIE session reset). Stale coroutines capture actors of
+        /// the previous world; stepping one after a PIE restart calls into freed memory.
+        /// </summary>
+        public static void ResetForNewSession()
+        {
+            lock (_gate)
+            {
+                _routines.Clear();
+                _pending.Clear();
+                _byEnumerator.Clear();
+            }
+        }
+
         /// <summary>Advances every live routine one step. Call once per frame, game thread only.</summary>
         public static void Tick(float deltaTime)
+        {
+            long tickStart = System.Diagnostics.Stopwatch.GetTimestamp();
+            try
+            {
+                TickInternal(deltaTime);
+            }
+            finally
+            {
+                double totalMs = (System.Diagnostics.Stopwatch.GetTimestamp() - tickStart) * 1000.0
+                                 / System.Diagnostics.Stopwatch.Frequency;
+                if (totalMs > 100.0)
+                {
+                    Engine.Diagnostics.ManagedDiagnostics.ReportSlow("CoroutineScheduler.Tick", totalMs);
+                }
+            }
+        }
+
+        private static void TickInternal(float deltaTime)
         {
             lock (_gate)
             {
@@ -210,8 +246,30 @@ namespace Engine.Core.Implementation
 
         private static readonly object _gate = new();
         private static readonly List<ScriptInfo> _active = new();
+
+        // Crash triage: PAL3_TRACE_UPDATES=1 logs every script Update so the last line
+        // before a native access violation identifies the culprit.
+        private static readonly bool s_TraceUpdates =
+            System.Environment.GetEnvironmentVariable("PAL3_TRACE_UPDATES") == "1";
+
+        /// <summary>Number of active scripts (diagnostics only).</summary>
+        public static int ActiveScriptCount { get { lock (_gate) return _active.Count; } }
         private static readonly Dictionary<Type, MethodCache> _cache = new();
         private static bool _tickedOnce;
+
+        /// <summary>
+        /// Drops all active scripts and the Pal3Game tick hooks (PIE session reset).
+        /// Does not dispatch OnDisable: the owning UE world is already gone by the time
+        /// the next session starts. The method cache is type-keyed and stays valid.
+        /// </summary>
+        public static void ResetForNewSession()
+        {
+            lock (_gate)
+            {
+                _active.Clear();
+                _tickedOnce = false;
+            }
+        }
 
         private const BindingFlags LifecycleFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
 
@@ -248,6 +306,10 @@ namespace Engine.Core.Implementation
                 AutoFillStubFields(script);
                 InvokeSafe(script, cache.Awake, "Awake");
                 InvokeSafe(script, cache.OnEnable, "OnEnable");
+                // Unity's OnEnable also drives the GameEntityScript virtual (upstream
+                // wires it in a private OnEnable method; the port's base class cannot
+                // declare one, so the runtime dispatches it explicitly).
+                if (script is GameEntityScript ges) ges.InvokeVirtualOnEnable();
             }
 
             // Start runs right before the first Update in Unity; when activating
@@ -282,16 +344,46 @@ namespace Engine.Core.Implementation
             {
                 CoroutineScheduler.Run(routine, script);
             }
-        }        /// <summary>
+        }
+
+        /// <summary>
         /// Per-frame dispatch: Unity Time state first, then the coroutine pump,
         /// then Update and LateUpdate on every active script.
         /// Call once per frame, game thread only.
         /// </summary>
+        // Low frame rates (e.g. UE throttling PIE to ~3 FPS while the editor is in
+        // the background) deliver huge deltas. Feeding them straight into gameplay
+        // makes a 4 m/s actor step 1.33 m per frame - a 1.2 m tile path finishes in
+        // one frame and the walk action is replaced before a single new pose can be
+        // displayed. Clamping the simulation delta under load applies time dilation
+        // instead: movement stays proportional to the (clamped) delta and the
+        // animation advances one step per rendered frame. At normal frame rates this
+        // has no effect. Override with PAL3_MAX_SIM_DELTA (seconds; <=0 disables).
+        private static readonly float s_MaxSimulationDelta = ReadMaxSimulationDelta();
+
+        private static float ReadMaxSimulationDelta()
+        {
+            string? raw = System.Environment.GetEnvironmentVariable("PAL3_MAX_SIM_DELTA");
+            if (!string.IsNullOrWhiteSpace(raw) &&
+                float.TryParse(raw, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out float parsed))
+            {
+                return parsed;
+            }
+            return 0.05f; // 20 Hz minimum simulation step
+        }
+
         public static void TickAll(float deltaTime)
         {
+            float simulationDelta = deltaTime;
+            if (s_MaxSimulationDelta > 0f && simulationDelta > s_MaxSimulationDelta)
+            {
+                simulationDelta = s_MaxSimulationDelta;
+            }
+
             // Unity semantics: Time.deltaTime is timeScale-scaled.
-            float scaledDelta = deltaTime * UnityEngine.Time.timeScale;
-            UnityEngine.Time.unscaledDeltaTime = deltaTime;
+            float scaledDelta = simulationDelta * UnityEngine.Time.timeScale;
+            UnityEngine.Time.unscaledDeltaTime = simulationDelta;
             UnityEngine.Time.deltaTime = scaledDelta;
             UnityEngine.Time.time += scaledDelta;
             UnityEngine.Time.frameCount++;
@@ -314,16 +406,43 @@ namespace Engine.Core.Implementation
                             continue;
                         }
 
+                        // Crash triage: with PAL3_TRACE_UPDATES=1 the last logged name
+                        // before an access violation identifies the culprit (managed
+                        // exceptions are caught, native AVs are not).
+                        if (s_TraceUpdates)
+                        {
+                            UnityEngine.Debug.Log($"[TickTrace] {si.Script.GetType().Name}.Update");
+                        }
+                        long __t0 = System.Diagnostics.Stopwatch.GetTimestamp();
                         InvokeSafe(si.Script, si.Update, "Update");
+                        double __ms = (System.Diagnostics.Stopwatch.GetTimestamp() - __t0) * 1000.0
+                                      / System.Diagnostics.Stopwatch.Frequency;
+                        if (__ms > 100.0)
+                        {
+                            Engine.Diagnostics.ManagedDiagnostics.ReportSlow(
+                                $"{si.Script.GetType().Name}.Update", __ms);
+                        }
                         if (si.Script is GameEntityScript script)
                         {
-                            script.InvokeVirtualOnUpdate(deltaTime);
+                            script.InvokeVirtualOnUpdate(scaledDelta);
                         }
 
+                    }
+
+                    // Unity runs all LateUpdates after all Updates so the camera
+                    // follow (Pal3Game.LateUpdate -> CameraManager.LateUpdate) sees
+                    // every position written this frame.
+                    for (int i = 0; i < _active.Count; i++)
+                    {
+                        ScriptInfo si = _active[i];
+                        if (si.Script is GameEntityScript { enabled: false })
+                        {
+                            continue;
+                        }
                         InvokeSafe(si.Script, si.LateUpdate, "LateUpdate");
                         if (si.Script is GameEntityScript lateScript)
                         {
-                            lateScript.InvokeVirtualOnLateUpdate(deltaTime);
+                            lateScript.InvokeVirtualOnLateUpdate(scaledDelta);
                         }
                     }
                 }
@@ -443,6 +562,13 @@ namespace Engine.Core.Implementation
                     {
                         object instance = Activator.CreateInstance(fieldType)!;
                         field.SetValue(script, instance);
+
+                        // The game's main camera is a stub; give it the real actor so
+                        // Pal3Game's camera entity drives the UE camera (Pal3Boot).
+                        if (instance is UnityEngine.Camera cameraStub)
+                        {
+                            cameraStub.gameObject.UeActor = Pal3.Game.Pal3Boot.CameraActor;
+                        }
                     }
                     catch (Exception)
                     {

@@ -11,6 +11,9 @@
     or by flipping the default below.
   -->
   <PropertyGroup>
-    <EnablePal3 Condition="'$(EnablePal3)' == ''">false</EnablePal3>
+    <!-- Default ON: the editor's startup managed build (UnrealSharp BuildUserSolution)
+         doesn't pass -p:EnablePal3, so a false default here silently strips the whole
+         PAL3 port from Binaries/Managed on every editor launch. -->
+    <EnablePal3 Condition="'$(EnablePal3)' == ''">true</EnablePal3>
   </PropertyGroup>
 </Project>

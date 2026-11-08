@@ -364,6 +364,17 @@ namespace Pal3.Game.Scene
             {
                 mainLightEntity.Transform.Rotation = mainLightRotationOverride;
             }
+
+            // Port diagnostic: the Unity reference renders this scene with RealToon +
+            // HDRP, so these values are the only way to reproduce the exposure.
+            UnityEngine.SceneLighting.Set(_mainLight.color, _mainLight.intensity,
+                RenderSettings.ambientLight, RenderSettings.ambientIntensity);
+
+            EngineLogger.Log($"[Lighting] night={IsNightScene()} type={ScnFile.SceneInfo.SceneType} "
+                + $"color=({_mainLight.color.r:F2},{_mainLight.color.g:F2},{_mainLight.color.b:F2}) "
+                + $"intensity={_mainLight.intensity:F2} "
+                + $"ambient=({RenderSettings.ambientLight.r:F2},{RenderSettings.ambientLight.g:F2},{RenderSettings.ambientLight.b:F2})x{RenderSettings.ambientIntensity:F2} "
+                + $"rot=({mainLightEntity.Transform.Rotation.eulerAngles.x:F0},{mainLightEntity.Transform.Rotation.eulerAngles.y:F0})");
         }
 
         private void AddPointLight(IGameEntity parent, float yOffset)

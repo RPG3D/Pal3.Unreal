@@ -129,3 +129,7 @@ SharpDemo.uproject.DotSettings.user
 # build/script artifacts (local)
 Archives/
 Script/ManagedSharpDemo/pre.xml
+
+# Python bytecode (dev tooling)
+__pycache__/
+*.pyc
