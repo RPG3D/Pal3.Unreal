@@ -2,7 +2,9 @@ using Engine.Diagnostics;
 using Engine.Services;
 using Pal3.Game;
 using Pal3.Game.Dev;
+using Pal3.Game.GameSystems.Caption;
 using Pal3.Game.Scene;
+using UnrealSharp.Engine;
 using UnrealSharp.RuntimeWidgetLayout;
 using UnrealSharp.UMG;
 
@@ -26,31 +28,11 @@ namespace ManagedSharpDemo
         }
         """;
 
-        private const string DialogueLayout = """
-        {
-          "root": { "type": "canvas", "children": [
-            { "type": "border", "anchor": "bottom_center", "position": [0, -24], "size": [840, 168],
-              "color": [0.035, 0.045, 0.07, 0.94],
-              "child": { "type": "canvas", "children": [
-                { "type": "image", "id": "leftPortrait", "position": [12, 10], "size": [142, 146] },
-                { "type": "image", "id": "rightPortrait", "position": [686, 10], "size": [142, 146] },
-                { "type": "text", "id": "plain", "fontSize": 23, "align": "left", "wrap": true,
-                  "color": [0.98, 0.93, 0.81, 1], "position": [28, 17], "size": [780, 118] },
-                { "type": "text", "id": "withLeft", "fontSize": 23, "align": "left", "wrap": true,
-                  "color": [0.98, 0.93, 0.81, 1], "position": [167, 17], "size": [645, 118] },
-                { "type": "text", "id": "withRight", "fontSize": 23, "align": "left", "wrap": true,
-                  "color": [0.98, 0.93, 0.81, 1], "position": [28, 17], "size": [645, 118] },
-                { "type": "text", "text": "空格 / 回车继续", "fontSize": 15, "align": "left",
-                  "color": [0.64, 0.65, 0.72, 1], "position": [550, 135], "size": [132, 24] }
-              ]}
-            }
-          ]}
-        }
-        """;
-
         private URuntimeJsonWidget? _diagnostics;
         private URuntimeJsonWidget? _dialogue;
         private URuntimeJsonWidget? _loading;
+        private URuntimeJsonWidget? _caption;
+        private UTexture2D? _captionTexture;
         private string? _loadingText;
         private float _loadingProgress = -1f;
         private int _logVersion = -1;
@@ -67,6 +49,7 @@ namespace ManagedSharpDemo
                 UpdateLoading();
                 UpdateDiagnostics(deltaTime);
                 UpdateDialogue();
+                UpdateCaption();
             }
             catch (Exception e)
             {
@@ -101,6 +84,7 @@ namespace ManagedSharpDemo
             {
                 _loadingProgress = scene.LoadingProgress;
                 _loading.SetElementProgress("loading_progress", _loadingProgress);
+                _loading.SetElementText("loading_percent", $"{(int)(Math.Clamp(_loadingProgress, 0f, 1f) * 100)}%");
             }
         }
 
@@ -143,8 +127,12 @@ namespace ManagedSharpDemo
                 return;
             }
 
-            _dialogue ??= URuntimeJsonWidgetLibrary.CreatePassiveJsonWidget(DialogueLayout, 60);
-            if (_dialogue == null) return;
+            if (_dialogue == null)
+            {
+                _dialogue = Pal3UiLayout.Create("Pal3Dialogue", 60);
+                if (_dialogue == null) return;
+                _dialogue.SetElementVisible("keyboard_continue", !Pal3TouchStick.IsSupported);
+            }
 
             var portrait = DialoguePresentation.Avatar;
             if (_lastDialogue == text && _lastPortrait == portrait) return;
@@ -152,13 +140,13 @@ namespace ManagedSharpDemo
             _lastPortrait = portrait;
 
             string textId = portrait == null ? "plain" : portrait.RightAligned ? "withRight" : "withLeft";
-            _dialogue.SetElementVisible("plain", textId == "plain");
-            _dialogue.SetElementVisible("withLeft", textId == "withLeft");
-            _dialogue.SetElementVisible("withRight", textId == "withRight");
+            _dialogue.SetElementVisible("plainScroll", textId == "plain");
+            _dialogue.SetElementVisible("withLeftScroll", textId == "withLeft");
+            _dialogue.SetElementVisible("withRightScroll", textId == "withRight");
             _dialogue.SetElementText(textId, text);
             UpdatePortrait("leftPortrait", portrait is { RightAligned: false } ? portrait : null);
             UpdatePortrait("rightPortrait", portrait is { RightAligned: true } ? portrait : null);
-            SetVisible(_dialogue, true);
+            _dialogue.Visibility = ESlateVisibility.SelfHitTestInvisible;
         }
 
         private void UpdatePortrait(string id, DialoguePresentation.Portrait? portrait)
@@ -173,6 +161,32 @@ namespace ManagedSharpDemo
             _dialogue.SetElementImage(id, portrait.Texture, portrait.U0, portrait.V0, portrait.U1, portrait.V1);
         }
 
+        private void UpdateCaption()
+        {
+            var caption = Pal3Boot.IsGameReady ? ServiceLocator.Instance.Get<CaptionRenderer>() : null;
+            var texture = caption?.DisplayTexture;
+            if (texture == null)
+            {
+                if (_caption != null && _captionTexture != null)
+                {
+                    _caption.SetElementImage("caption", null!);
+                    SetVisible(_caption, false);
+                    _captionTexture = null;
+                }
+                return;
+            }
+
+            _caption ??= Pal3UiLayout.Create("Pal3Caption", 75);
+            if (_caption == null) return;
+            if (_captionTexture != texture)
+            {
+                _caption.SetElementImage("caption", texture);
+                _captionTexture = texture;
+            }
+            _caption.SetElementRenderOpacity("caption", caption!.Opacity);
+            SetVisible(_caption, true);
+        }
+
         private static void SetVisible(URuntimeJsonWidget widget, bool visible)
         {
             var visibility = visible ? ESlateVisibility.HitTestInvisible : ESlateVisibility.Collapsed;
@@ -184,9 +198,12 @@ namespace ManagedSharpDemo
             if (_diagnostics != null) URuntimeJsonWidgetLibrary.RemoveJsonWidget(_diagnostics);
             if (_dialogue != null) URuntimeJsonWidgetLibrary.RemoveJsonWidget(_dialogue);
             if (_loading != null) URuntimeJsonWidgetLibrary.RemoveJsonWidget(_loading);
+            if (_caption != null) URuntimeJsonWidgetLibrary.RemoveJsonWidget(_caption);
             _diagnostics = null;
             _dialogue = null;
             _loading = null;
+            _caption = null;
+            _captionTexture = null;
         }
     }
 }

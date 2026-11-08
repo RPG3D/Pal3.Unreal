@@ -44,7 +44,7 @@
 - RGBA → `UTexture2D::CreateTransient(..., TConstArrayView64<uint8>)`，`SRGB=true`，`NeverStream=true`。
 
 ### 2.3 材质
-`/Game/Pal3/` 下三个材质，参数统一：
+`/Game/PAL3/` 下三个材质，参数统一：
 
 | 材质 | Blend | 用途 |
 |---|---|---|

@@ -15,6 +15,7 @@ internal sealed class Pal3TouchButtons : IDisposable
     public const string Menu = "touch_menu";
     public const string Interact = "touch_interact";
     public const string Continue = "touch_continue";
+    private const string ActionButton = "touch_action";
 
     public string ConsumeClick()
     {
@@ -23,8 +24,8 @@ internal sealed class Pal3TouchButtons : IDisposable
         return id switch
         {
             Menu when _visible.Menu => id,
-            Interact when _visible.Interact => id,
-            Continue when _visible.Continue => id,
+            ActionButton when _visible.Interact => Interact,
+            ActionButton when _visible.Continue => Continue,
             _ => ""
         };
     }
@@ -50,8 +51,8 @@ internal sealed class Pal3TouchButtons : IDisposable
 
         _visible = visible;
         _widget.SetElementVisible(Menu, visible.Menu);
-        _widget.SetElementVisible(Interact, visible.Interact);
-        _widget.SetElementVisible(Continue, visible.Continue);
+        _widget.SetElementVisible(ActionButton, visible.Interact || visible.Continue);
+        _widget.SetElementText(ActionButton, visible.Continue ? "继续" : "交互");
         _widget.Visibility = visible.Menu ? ESlateVisibility.SelfHitTestInvisible : ESlateVisibility.Collapsed;
     }
 

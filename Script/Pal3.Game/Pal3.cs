@@ -20,7 +20,6 @@ namespace Pal3.Game
     using Core.Command;
     using Core.Command.SceCommands;
     using Core.DataReader.Scn;
-    using Core.FileSystem;
     using Core.Utilities;
     using Data;
     using Dev;
@@ -143,10 +142,8 @@ namespace Pal3.Game
         private CommandDispatcher<ICommand> _commandDispatcher;
         private GameTimeProvider _gameTimeProvider;
         private GameSettings _gameSettings;
-        private ICpkFileSystem _fileSystem;
         private GameResourceProvider _gameResourceProvider;
         private IPhysicsManager _physicsManager;
-        private FileSystemCacheManager _fileSystemCacheManager;
         private PlayerInputActions _inputActions;
         private InputManager _inputManager;
         private GameStateManager _gameStateManager;
@@ -207,7 +204,6 @@ namespace Pal3.Game
             _gameSettings = Requires.IsNotNull(ServiceLocator.Instance.Get<GameSettings>(), nameof(GameSettings));
             _gameSettings.OnGameSettingsChanged += OnGameSettingsChanged;
 
-            _fileSystem = Requires.IsNotNull(ServiceLocator.Instance.Get<ICpkFileSystem>(), nameof(ICpkFileSystem));
             _gameResourceProvider = Requires.IsNotNull(ServiceLocator.Instance.Get<GameResourceProvider>(), nameof(GameResourceProvider));
             _gameResourceProvider.UseTextureCache(_textureCache);
 
@@ -233,10 +229,6 @@ namespace Pal3.Game
 
             ServiceLocator.Instance.Register<IPhysicsManager>(_physicsManager =
                 new PhysicsManager(mainCamera));
-
-            ServiceLocator.Instance.Register(_fileSystemCacheManager =
-                new FileSystemCacheManager(_fileSystem)
-            );
 
             ServiceLocator.Instance.Register(_inputActions =
                 new PlayerInputActions()
@@ -545,6 +537,7 @@ namespace Pal3.Game
             // Check latest version and notify if a newer version is found.
             StartCoroutine(CheckLatestVersionAndNotifyAsync());
             #endif
+            Pal3Boot.OnGameSingletonReady();
         }
 
         private void OnInputEvent(InputEventPtr eventPtr, InputDevice device)
@@ -619,6 +612,7 @@ namespace Pal3.Game
         /// </summary>
         private void Update()
         {
+            if (!Pal3Boot.IsGameReady) return;
             if (_sceneManager.IsLoading)
             {
                 _sceneManager.TickLoad();
@@ -652,7 +646,7 @@ namespace Pal3.Game
         /// </summary>
         private void LateUpdate()
         {
-            if (_sceneManager.IsLoading) return;
+            if (!Pal3Boot.IsGameReady || _sceneManager.IsLoading) return;
             float deltaTime = Time.deltaTime;
 
             GameState currentState = _gameStateManager.GetCurrentState();

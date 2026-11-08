@@ -11,7 +11,7 @@ using UnrealSharp.UMG;
 
 namespace ManagedSharpDemo
 {
-    internal sealed class Pal3StartMenu
+    internal sealed class Pal3StartMenu(Pal3TouchStick touchStick)
     {
         private enum Page { Home, Scenes, Story, Saves }
 
@@ -108,6 +108,10 @@ namespace ManagedSharpDemo
                     return;
                 case "auto":
                     Pal3Boot.AutoDialogueEnabled = !Pal3Boot.AutoDialogueEnabled;
+                    Show(pc, _page);
+                    return;
+                case "transparent_sticks" when Pal3TouchStick.IsSupported:
+                    touchStick.FullyTransparent = !touchStick.FullyTransparent;
                     Show(pc, _page);
                     return;
                 case "resume": Close(pc); return;
@@ -290,6 +294,9 @@ namespace ManagedSharpDemo
                 : (atTitle ? "开始游戏后按 Tab 打开菜单" : "Tab 返回游戏"));
             widget.SetElementText("diagnostics", DebugOverlay.IsOverlayVisible ? "诊断面板 · 开启" : "诊断面板 · 关闭");
             widget.SetElementText("auto", Pal3Boot.AutoDialogueEnabled ? "自动推进对白 · 开启" : "自动推进对白 · 关闭");
+            widget.SetElementVisible("transparent_sticks", Pal3TouchStick.IsSupported);
+            if (Pal3TouchStick.IsSupported)
+                widget.SetElementText("transparent_sticks", touchStick.FullyTransparent ? "摇杆全透明 · 开启" : "摇杆全透明 · 关闭");
             widget.SetElementVisible("resume", !atTitle);
             widget.SetElementVisible("new", _canTransition);
             widget.SetElementVisible("saves", _canTransition);

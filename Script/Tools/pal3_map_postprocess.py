@@ -5,7 +5,7 @@ import unreal
 
 les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
 eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
-les.load_level("/Game/Maps/LV_Pal3.LV_Pal3")
+les.load_level("/Game/PAL3/Maps/LV_Pal3.LV_Pal3")
 
 actors = eas.get_all_level_actors()
 

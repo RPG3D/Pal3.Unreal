@@ -24,7 +24,7 @@ Usage:
 
 Object paths look like:
   /Script/SharpDemo.Default__Pal3DebugOverlay      (our debug library CDO)
-  /Game/Maps/LV_Pal3.LV_Pal3:PersistentLevel.Actor_12
+  /Game/PAL3/Maps/LV_Pal3.LV_Pal3:PersistentLevel.Actor_12
 """
 import json
 import sys

@@ -6,6 +6,7 @@ using Pal3.Core.Contract.Constants;
 using Pal3.Core.Command.SceCommands;
 using Pal3.Game;
 using Pal3.Game.Actor.Controllers;
+using Pal3.Game.Camera;
 using Pal3.Game.Dev;
 using Pal3.Game.GamePlay;
 using Pal3.Game.GameSystems.Caption;
@@ -18,12 +19,14 @@ using Debug = UnityEngine.Debug;
 
 namespace ManagedSharpDemo
 {
-    internal sealed class Pal3Automation
+    internal sealed class Pal3Automation(Pal3TouchStick touchStick)
     {
         private sealed record Request(string Command, string? Argument, DateTimeOffset DeadlineUtc);
         private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
         private string? _sessionDirectory;
         private long _lastPoll;
+        private double _cameraUntil;
+        private float _cameraAxis;
 
         public void Start()
         {
@@ -110,6 +113,9 @@ namespace ManagedSharpDemo
             switch (request.Command)
             {
                 case "status": return Snapshot();
+                case "retry-boot":
+                    Pal3Boot.RunFullBoot();
+                    return Snapshot();
                 case "pose": return SampleActorPose(request.Argument);
                 case "slots":
                     if (!Pal3Boot.IsGameReady) throw new InvalidOperationException("PAL3 is not ready.");
@@ -134,6 +140,11 @@ namespace ManagedSharpDemo
                     if (!bool.TryParse(request.Argument, out bool visible)) throw new ArgumentException("Use true or false.");
                     Engine.Diagnostics.DebugOverlay.IsOverlayVisible = visible;
                     return Snapshot();
+                case "touch-sticks":
+                    if (!Pal3TouchStick.IsSupported) throw new InvalidOperationException("Touch controls are disabled.");
+                    if (!bool.TryParse(request.Argument, out bool transparent)) throw new ArgumentException("Use true or false.");
+                    touchStick.FullyTransparent = transparent;
+                    return new { transparent = touchStick.FullyTransparent };
                 case "demo":
                     JsonUiDemo.Show();
                     return new { visible = JsonUiDemo.IsVisible };
@@ -152,6 +163,19 @@ namespace ManagedSharpDemo
                 case "move":
                     RequirePlayerControl();
                     ScheduleMovement(request.Argument);
+                    return Snapshot();
+                case "rotate-camera":
+                    RequirePlayerControl();
+                    if (!ServiceLocator.Instance.Get<CameraManager>().CanRotateByUser)
+                        throw new InvalidOperationException("This PAL3 camera is locked.");
+                    var (turn, duration) = ParseTimedDirection(request.Argument);
+                    _cameraAxis = turn switch
+                    {
+                        "left" => -1f,
+                        "right" => 1f,
+                        _ => throw new ArgumentException("Camera direction must be left or right.")
+                    };
+                    _cameraUntil = GameTimeProvider.Instance.TimeSinceStartup + duration;
                     return Snapshot();
                 case "move-to":
                     RequirePlayerControl();
@@ -226,7 +250,13 @@ namespace ManagedSharpDemo
             Pal3Game.Instance.Execute(new Pal3.Core.Command.SceCommands.ScriptExecuteCommand(id));
         }
 
-        private void ScheduleMovement(string? argument)
+        public float GetCameraAxis(bool enabled)
+        {
+            if (!enabled) _cameraUntil = 0;
+            return GameTimeProvider.Instance.TimeSinceStartup < _cameraUntil ? _cameraAxis : 0f;
+        }
+
+        private static (string Direction, float Seconds) ParseTimedDirection(string? argument)
         {
             var tokens = argument?.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (tokens is not { Length: 2 } ||
@@ -235,7 +265,13 @@ namespace ManagedSharpDemo
             {
                 throw new ArgumentException("Use a direction and a duration in seconds, e.g. 'right 1' (max 5 seconds).");
             }
-            UnityEngine.Vector2 direction = tokens[0].ToLowerInvariant() switch
+            return (tokens[0].ToLowerInvariant(), seconds);
+        }
+
+        private static void ScheduleMovement(string? argument)
+        {
+            var (input, seconds) = ParseTimedDirection(argument);
+            UnityEngine.Vector2 direction = input switch
             {
                 "up" => new(0, 1),
                 "down" => new(0, -1),
@@ -323,7 +359,13 @@ namespace ManagedSharpDemo
         private static object Snapshot()
         {
             bool autoDialogue = Pal3Boot.AutoDialogueEnabled;
-            if (!Pal3Boot.IsGameReady) return new { state = "Booting", autoDialogue };
+            if (!Pal3Boot.IsGameReady) return new
+            {
+                state = "Booting",
+                autoDialogue,
+                bootError = Pal3Boot.BootError,
+                storagePermissionRequired = Pal3Boot.StoragePermissionRequired
+            };
 
             var services = ServiceLocator.Instance;
             var sceneManager = services.Get<SceneManager>();
@@ -333,6 +375,8 @@ namespace ManagedSharpDemo
             int actorId = player.GetPlayerActorId();
             var scripts = services.Get<ScriptManager>().GetScriptStatus();
             var saves = services.Get<SaveManager>();
+            var caption = services.Get<CaptionRenderer>();
+            bool playerHasControl = Pal3Boot.HasPlayerControl();
             return new
             {
                 state = sceneManager.IsLoading ? "Loading" :
@@ -341,9 +385,13 @@ namespace ManagedSharpDemo
                 scene = info?.SceneName,
                 story = services.Get<IUserVariableStore<ushort, int>>().Get(ScriptConstants.MainStoryVariableId),
                 player = DescribeActor(sceneManager.IsLoading ? null : scene, actorId),
-                playerHasControl = Pal3Boot.HasPlayerControl(),
+                playerHasControl,
+                cameraCanRotate = playerHasControl && services.Get<CameraManager>().CanRotateByUser,
+                cameraYaw = Pal3Boot.CameraActor?.ActorRotation.Yaw,
                 autoDialogue,
                 dialogue = DialoguePresentation.Text,
+                captionOpacity = caption.DisplayTexture != null ? caption.Opacity : (float?)null,
+                hasLocalSceneLight = UnityEngine.SceneLighting.LocalLightPosition.HasValue,
                 choices = DialoguePresentation.Choices,
                 choicePrompt = DialoguePresentation.ChoicePrompt,
                 diagnosticsVisible = Engine.Diagnostics.DebugOverlay.IsOverlayVisible,

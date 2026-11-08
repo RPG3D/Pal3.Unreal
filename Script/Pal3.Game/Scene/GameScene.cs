@@ -148,6 +148,14 @@ namespace Pal3.Game.Scene
                 actorTintColor = new Color(0.7f, 0.7f, 0.7f, 1f);
             }
 
+            UnityMaterial.SetSceneLocalLight(null);
+            // MIDs copy the current scene tint as they are created.
+            UnityEngine.SceneLighting.Reset();
+            if (_isLightingEnabled || scnFile.SceneInfo.Is("q01", "yn09a") || scnFile.SceneInfo.Is("q01", "yn09"))
+                SetupEnvironmentLighting();
+            if (scnFile.SceneInfo.Is("q01", "yn09a") && SceneObjects.TryGetValue(16, out var lamp))
+                UpdateOpeningRoomLamp(lamp, ShouldActivateInitially(lamp));
+
             foreach (var phase in RenderMesh())
             {
                 yield return phase;
@@ -155,10 +163,6 @@ namespace Pal3.Game.Scene
 
             RenderSkyBox();
             SetupNavMesh();
-            if (_isLightingEnabled)
-            {
-                SetupEnvironmentLighting();
-            }
             yield return new("正在布置场景", .80f);
 
             int loadedActors = 0;
@@ -431,23 +435,23 @@ namespace Pal3.Game.Scene
             int loadedObjects = 0;
             foreach (SceneObject sceneObject in SceneObjects.Values)
             {
-                if (!_sceneObjectIdsToNotLoadFromSaveState.Contains(sceneObject.ObjectInfo.Id) &&
-                    _sceneStateManager.TryGetSceneObjectStateOverride(ScnFile.SceneInfo.CityName,
-                        ScnFile.SceneInfo.SceneName,
-                        sceneObject.ObjectInfo.Id,
-                        out SceneObjectStateOverride state) && state.IsActivated.HasValue)
-                {
-                    if (state.IsActivated.Value)
-                    {
-                        ActivateSceneObject(sceneObject.ObjectInfo.Id);
-                    }
-                }
-                else if (sceneObject.ObjectInfo.InitActive == 1)
+                if (ShouldActivateInitially(sceneObject))
                 {
                     ActivateSceneObject(sceneObject.ObjectInfo.Id);
                 }
                 yield return new("正在加载场景物件", .92f + .07f * ++loadedObjects / SceneObjects.Count);
             }
+        }
+
+        private bool ShouldActivateInitially(SceneObject sceneObject)
+        {
+            int id = sceneObject.ObjectInfo.Id;
+            if (!_sceneObjectIdsToNotLoadFromSaveState.Contains(id) &&
+                _sceneStateManager.TryGetSceneObjectStateOverride(ScnFile.SceneInfo.CityName,
+                    ScnFile.SceneInfo.SceneName, id, out SceneObjectStateOverride state) && state.IsActivated.HasValue)
+                return state.IsActivated.Value;
+
+            return sceneObject.ObjectInfo.InitActive == 1;
         }
 
         public void ActivateSceneObject(int id)
@@ -476,6 +480,7 @@ namespace Pal3.Game.Scene
             }
 
             _activatedSceneObjects.Add(sceneObject.ObjectInfo.Id);
+            UpdateOpeningRoomLamp(sceneObject, active: true);
         }
 
         public void DeactivateSceneObject(int id)
@@ -491,6 +496,20 @@ namespace Pal3.Game.Scene
             }
 
             SceneObjects[id].Deactivate();
+            UpdateOpeningRoomLamp(SceneObjects[id], active: false);
+        }
+
+        private void UpdateOpeningRoomLamp(SceneObject sceneObject, bool active)
+        {
+            if (sceneObject.ObjectInfo.Id != 16 || !ScnFile.SceneInfo.Is("q01", "yn09a") ||
+                sceneObject.GraphicsEffectType != GraphicsEffectType.Fire)
+                return;
+
+            Vector3? position = null;
+            if (active && EffectConstants.FireEffectInfo.TryGetValue((FireEffectType)sceneObject.ObjectInfo.EffectModelType, out var fire))
+                position = sceneObject.ObjectInfo.GameBoxPosition.ToUnityPosition() + Vector3.up * fire.lightSourceYOffset;
+
+            UnityMaterial.SetSceneLocalLight(position);
         }
 
         private void CreateActorObject(GameActor actor, Color tintColor, Tilemap tileMap)

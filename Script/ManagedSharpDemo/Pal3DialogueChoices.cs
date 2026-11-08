@@ -10,7 +10,11 @@ namespace ManagedSharpDemo
 {
     internal sealed class Pal3DialogueChoices : IDisposable
     {
-        private const int PageSize = 6;
+        private const int PageSize = 4;
+        private const int PanelWidth = 800;
+        private const int Inset = 24;
+        private const int RowHeight = 80;
+        private const int RowGap = 16;
         private IReadOnlyList<string>? _choices;
         private URuntimeJsonWidget? _widget;
         private int _page;
@@ -55,24 +59,29 @@ namespace ManagedSharpDemo
             int count = Math.Min(PageSize, choices.Count - first);
             var rows = new List<object>();
             string prompt = DialoguePresentation.ChoicePrompt;
-            int firstRow = prompt.Length == 0 ? 54 : 90;
+            int firstRow = prompt.Length == 0 ? 68 : 124;
             rows.Add(new
             {
-                type = "text", text = prompt.Length == 0 ? "请选择" : prompt, fontSize = 21, wrap = true,
-                position = new[] { 18, 12 }, size = new[] { 524, firstRow - 18 }
+                type = "text", text = prompt.Length == 0 ? "请选择" : prompt, fontSize = 26, wrap = true,
+                position = new[] { Inset, 14 }, size = new[] { PanelWidth - Inset * 2, firstRow - 24 }
             });
             for (int i = 0; i < count; i++)
             {
                 int index = first + i;
-                rows.Add(Button(index.ToString(), $"{index + 1}. {choices[index]}", 18, firstRow + i * 51, 524));
+                rows.Add(Button(index.ToString(), $"{index + 1}. {choices[index]}",
+                    Inset, firstRow + i * (RowHeight + RowGap), PanelWidth - Inset * 2));
             }
 
-            int height = firstRow + 8 + count * 51;
+            int height = firstRow + count * (RowHeight + RowGap);
             if (choices.Count > PageSize)
             {
-                if (page > 0) rows.Add(Button("previous", "上一页", 18, height, 124));
-                if (first + count < choices.Count) rows.Add(Button("next", "下一页", 418, height, 124));
-                height += 52;
+                const int pageButtonWidth = 164;
+                const int pageButtonHeight = 64;
+                if (page > 0) rows.Add(Button("previous", "上一页", Inset, height, pageButtonWidth, pageButtonHeight));
+                if (first + count < choices.Count)
+                    rows.Add(Button("next", "下一页", PanelWidth - Inset - pageButtonWidth, height,
+                        pageButtonWidth, pageButtonHeight));
+                height += pageButtonHeight + RowGap;
             }
 
             string layout = JsonSerializer.Serialize(new
@@ -84,7 +93,7 @@ namespace ManagedSharpDemo
                     {
                         new
                         {
-                            type = "border", anchor = "center", size = new[] { 560, height },
+                            type = "border", anchor = "center", size = new[] { PanelWidth, height },
                             color = new[] { 0.035, 0.055, 0.075, 0.98 },
                             child = new { type = "canvas", children = rows }
                         }
@@ -103,10 +112,10 @@ namespace ManagedSharpDemo
             _page = page;
         }
 
-        private static object Button(string id, string text, int x, int y, int width) => new
+        private static object Button(string id, string text, int x, int y, int width, int height = RowHeight) => new
         {
-            type = "button", id, text, fontSize = 18, wrap = true,
-            position = new[] { x, y }, size = new[] { width, 46 },
+            type = "button", id, text, fontSize = 24, wrap = true,
+            position = new[] { x, y }, size = new[] { width, height },
             normalColor = new[] { 0.11, 0.22, 0.29, 1.0 },
             hoverColor = new[] { 0.18, 0.36, 0.43, 1.0 }
         };

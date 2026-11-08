@@ -1,10 +1,10 @@
-# Rebuild /Game/Pal3/M_Pal3Tex as the UE equivalent of the Unity "Pal3/Opaque" shader
+# Rebuild /Game/PAL3/M_Pal3Tex as the UE equivalent of the Unity "Pal3/Opaque" shader
 # (unlit, texture * tint * shadow-lightmap), and strip the sky/fog actors from LV_Pal3
 # so the room renders on a black background like the original.
 # Run: UnrealEditor-Cmd.exe <uproject> -run=pythonscript -script=<this>
 import unreal
 
-MAT_DIR = "/Game/Pal3"
+MAT_DIR = "/Game/PAL3"
 MAT_NAME = "M_Pal3Tex"
 MAT_PATH = MAT_DIR + "/" + MAT_NAME
 
@@ -84,7 +84,7 @@ unreal.log("[Pal3Mat] created unlit " + MAT_PATH)
 # must render on black, not under a blue sky). Lights stay for any lit fallback mat.
 les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
 eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
-les.load_level("/Game/Maps/LV_Pal3.LV_Pal3")
+les.load_level("/Game/PAL3/Maps/LV_Pal3.LV_Pal3")
 removed = []
 for a in eas.get_all_level_actors():
     cls_name = a.get_class().get_name()

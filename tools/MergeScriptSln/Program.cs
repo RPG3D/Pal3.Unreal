@@ -1,175 +1,158 @@
+using Microsoft.VisualStudio.SolutionPersistence;
+using Microsoft.VisualStudio.SolutionPersistence.Model;
+using Microsoft.VisualStudio.SolutionPersistence.Serializer;
+
 namespace MergeScriptSln;
 
 public static class Program
 {
-    public static int Main(string[] args)
+    public static async Task<int> Main(string[] args)
     {
-        if (args.Length < 1)
+        try
         {
-            var found = FindSln(Directory.GetCurrentDirectory());
-            if (found == null) { Console.Error.WriteLine("Usage: MergeScriptSln [UEProject.sln]"); return 1; }
-            args = new[] { found };
-        }
-
-        var ueSlnPath = Path.GetFullPath(args[0]);
-        if (!File.Exists(ueSlnPath)) { Console.Error.WriteLine($"Not found: {ueSlnPath}"); return 1; }
-
-        var projectDir = Path.GetDirectoryName(ueSlnPath)!;
-        var projectName = Path.GetFileNameWithoutExtension(ueSlnPath);
-        var outputPath = Path.Combine(projectDir, $"{projectName}.mixed.sln");
-        var managedSlns = Directory.Exists(Path.Combine(projectDir, "Script"))
-            ? Directory.GetFiles(Path.Combine(projectDir, "Script"), "*.sln", SearchOption.AllDirectories)
-            : Array.Empty<string>();
-
-        Console.WriteLine($"UE:   {Path.GetRelativePath(projectDir, ueSlnPath)}");
-        Console.WriteLine($"Out:  {Path.GetRelativePath(projectDir, outputPath)}");
-
-        try { if (File.Exists(outputPath)) File.Delete(outputPath); }
-        catch (IOException) { Console.Error.WriteLine("Cannot overwrite — close IDE first."); return 1; }
-
-        // ── Parse managed SLNs ────────────────────────────────────────
-        var managedProjects = new List<ManagedProject>();
-        var managedConfigs = new List<string>();
-        var managedNested = new List<string>();
-        var managedSlnConfigs = new List<string>();
-
-        foreach (var slnPath in managedSlns)
-        {
-            Console.WriteLine($"  + {Path.GetRelativePath(projectDir, slnPath)}");
-            var slnDir = Path.GetDirectoryName(slnPath)!;
-            var lines = File.ReadAllLines(slnPath);
-
-            // Project blocks
-            for (int i = 0; i < lines.Length; i++)
+            var input = args.Length == 0 ? FindSolution(Directory.GetCurrentDirectory()) : Path.GetFullPath(args[0]);
+            if (args.Length > 1 || input is null)
             {
-                if (!lines[i].Trim().StartsWith("Project(")) continue;
-
-                int end = Array.FindIndex(lines, i + 1, l => l.Trim() == "EndProject");
-                if (end < 0) continue;
-
-                var parts = ExtractQuoted(lines[i]);
-                if (parts.Count < 4) { i = end; continue; }
-
-                var absPath = Path.GetFullPath(Path.Combine(slnDir, parts[2]));
-                var relPath = Path.GetRelativePath(projectDir, absPath).Replace('/', '\\');
-
-                managedProjects.Add(new ManagedProject(
-                    Guid: parts[3],
-                    Line: $@"Project(""{parts[0]}"") = ""{parts[1]}"", ""{relPath}"", ""{parts[3]}""",
-                    IsCsProj: parts[2].EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)));
-
-                i = end;
+                Console.Error.WriteLine("Usage: MergeScriptSln [UEProject.sln | UEProject.slnx]");
+                return 1;
             }
 
-            // Global sections
-            ReadSection(lines, "SolutionConfigurationPlatforms", managedSlnConfigs);
-            ReadSection(lines, "ProjectConfigurationPlatforms", managedConfigs);
-            ReadSection(lines, "NestedProjects", managedNested);
+            await MergeAsync(input);
+            return 0;
         }
-
-        // ── Merge into native lines ───────────────────────────────────
-        var native = File.ReadAllLines(ueSlnPath).ToList();
-
-        var lastEnd = native.FindLastIndex(l => l.Trim() == "EndProject");
-        if (lastEnd < 0) { Console.Error.WriteLine("Invalid SLN — no EndProject found."); return 1; }
-        var ins = lastEnd + 1;
-        foreach (var mp in managedProjects)
-            foreach (var line in new[] { mp.Line, "EndProject" })
-                native.Insert(ins++, line);
-
-        MergeSection(native, "ProjectConfigurationPlatforms", managedConfigs, null, "\t");
-        MergeSection(native, "SolutionConfigurationPlatforms", managedSlnConfigs, null, "\t");
-        MergeSection(native, "NestedProjects", managedNested, null, "\t\t");
-
-        // ── Write ────────────────────────────────────────────────────
-        File.WriteAllLines(outputPath, native);
-        Console.WriteLine($"Done: {managedProjects.Count} managed projects");
-        return 0;
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or SolutionException or ArgumentException)
+        {
+            Console.Error.WriteLine(error.Message);
+            return 1;
+        }
     }
 
-    // ═══════════════════════════════════════════════════════════════════
-    // SLN helpers
-    // ═══════════════════════════════════════════════════════════════════
-
-    static void ReadSection(string[] lines, string sectionName, List<string> into)
+    private static async Task MergeAsync(string input)
     {
-        bool inside = false;
-        foreach (var raw in lines)
+        var projectDirectory = Path.GetDirectoryName(input)!;
+        var projectName = Path.GetFileNameWithoutExtension(input);
+        var extension = Path.GetExtension(input);
+        ISolutionSerializer serializer = extension.ToLowerInvariant() switch
         {
-            var t = raw.Trim();
-            if (!inside && t.StartsWith($"GlobalSection({sectionName})"))
-            {
-                if (!t.EndsWith("preSolution") && !t.EndsWith("postSolution")) continue;
-                inside = true;
+            ".sln" => SolutionSerializers.SlnFileV12,
+            ".slnx" => SolutionSerializers.SlnXml,
+            _ => throw new ArgumentException("Expected an Unreal .sln or .slnx file.")
+        };
+        var output = Path.Combine(projectDirectory, $"{projectName}.mixed{extension}");
+        var scriptDirectory = Path.Combine(projectDirectory, "Script");
+        var projects = FindManagedProjects(scriptDirectory).ToArray();
+        var solution = await serializer.OpenAsync(input, CancellationToken.None);
+        var existingPaths = solution.SolutionProjects
+            .Select(project => Path.GetFullPath(project.FilePath, projectDirectory))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var existingIds = solution.SolutionItems.Select(item => item.Id).ToHashSet();
+        var managedIds = await ReadManagedIdsAsync(scriptDirectory, projectName);
+
+        foreach (var path in projects)
+        {
+            if (!existingPaths.Add(path))
                 continue;
+
+            var relativePath = Path.GetRelativePath(projectDirectory, path);
+            var folder = solution.FindFolder("/Script/") ?? solution.AddFolder("/Script/");
+            var project = solution.AddProject(relativePath, folder: folder);
+            if (managedIds.TryGetValue(path, out var id) && existingIds.Add(id))
+                project.Id = id;
+
+            ConfigureProject(project, solution);
+            Console.WriteLine($"  + {relativePath}");
+        }
+
+        await SaveAsync(serializer, solution, output);
+        Console.WriteLine($"Done: {projects.Length} Script projects in {output}");
+    }
+
+    private static IEnumerable<string> FindManagedProjects(string scriptDirectory)
+    {
+        if (!Directory.Exists(scriptDirectory))
+            throw new DirectoryNotFoundException($"Script directory not found: {scriptDirectory}");
+
+        return EnumerateProjects(scriptDirectory).OrderBy(path => path, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static IEnumerable<string> EnumerateProjects(string directory)
+    {
+        foreach (var project in Directory.EnumerateFiles(directory, "*.csproj"))
+            yield return project;
+
+        foreach (var child in Directory.EnumerateDirectories(directory))
+        {
+            var name = Path.GetFileName(child);
+            if (name.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
+                name.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
+                File.GetAttributes(child).HasFlag(FileAttributes.ReparsePoint))
+                continue;
+
+            foreach (var project in EnumerateProjects(child))
+                yield return project;
+        }
+    }
+
+    private static async Task<Dictionary<string, Guid>> ReadManagedIdsAsync(string scriptDirectory, string projectName)
+    {
+        var ids = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+        var managedSolutionPath = Path.Combine(scriptDirectory, $"Managed{projectName}.sln");
+        if (!File.Exists(managedSolutionPath))
+            return ids;
+
+        var managedSolution = await SolutionSerializers.SlnFileV12.OpenAsync(managedSolutionPath, CancellationToken.None);
+        foreach (var project in managedSolution.SolutionProjects)
+            ids.TryAdd(Path.GetFullPath(project.FilePath, scriptDirectory), project.Id);
+
+        return ids;
+    }
+
+    private static void ConfigureProject(SolutionProjectModel project, SolutionModel solution)
+    {
+        foreach (var configuration in solution.BuildTypes)
+        {
+            var target = configuration.Split(' ', 2)[0];
+            var managedConfiguration = target is "Debug" or "DebugGame" ? "Debug" : "Release";
+            project.AddProjectConfigurationRule(new(BuildDimension.BuildType, configuration, string.Empty, managedConfiguration));
+        }
+
+        project.AddProjectConfigurationRule(new(BuildDimension.Platform, string.Empty, string.Empty, "Any CPU"));
+        // UnrealSharp publishes the managed assemblies after the native editor starts.
+        project.AddProjectConfigurationRule(new(BuildDimension.Build, string.Empty, string.Empty, "false"));
+        project.AddProjectConfigurationRule(new(BuildDimension.Deploy, string.Empty, string.Empty, "false"));
+    }
+
+    private static async Task SaveAsync(ISolutionSerializer serializer, SolutionModel solution, string output)
+    {
+        var temporary = $"{output}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            await serializer.SaveAsync(temporary, solution, CancellationToken.None);
+            await serializer.OpenAsync(temporary, CancellationToken.None);
+            File.Move(temporary, output, overwrite: true);
+        }
+        finally
+        {
+            File.Delete(temporary);
+        }
+    }
+
+    private static string? FindSolution(string startDirectory)
+    {
+        for (var directory = startDirectory; directory != null; directory = Path.GetDirectoryName(directory))
+        {
+            var name = Path.GetFileName(directory);
+            if (!File.Exists(Path.Combine(directory, $"{name}.uproject")))
+                continue;
+
+            foreach (var extension in new[] { ".sln", ".slnx" })
+            {
+                var path = Path.Combine(directory, name + extension);
+                if (File.Exists(path))
+                    return path;
             }
-            if (inside && t == "EndGlobalSection") { inside = false; continue; }
-            if (inside && t.Contains('=')) into.Add(t);
         }
-    }
 
-    static void MergeSection(List<string> native, string sectionName, List<string> lines,
-        Func<string, string>? filter, string prefix)
-    {
-        if (!FindSection(native, sectionName, out int start, out int end)) return;
-
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        for (int i = start + 1; i < end; i++) seen.Add(native[i].Trim());
-
-        var insAt = end;
-        foreach (var raw in lines)
-        {
-            if (!seen.Add(raw)) continue;
-            var line = prefix + raw;
-            if (filter != null) line = filter(line);
-            native.Insert(insAt++, line);
-        }
-    }
-
-    static bool FindSection(List<string> lines, string name, out int start, out int end)
-    {
-        start = end = -1;
-        var prefix = $"GlobalSection({name})";
-        for (int i = 0; i < lines.Count; i++)
-        {
-            if (!lines[i].Trim().StartsWith(prefix)) continue;
-            start = i;
-            for (int j = i + 1; j < lines.Count; j++)
-                if (lines[j].Trim() == "EndGlobalSection") { end = j; return true; }
-            return false;
-        }
-        return false;
-    }
-
-    // ═══════════════════════════════════════════════════════════════════
-    // General helpers
-    // ═══════════════════════════════════════════════════════════════════
-
-    static List<string> ExtractQuoted(string line)
-    {
-        var parts = new List<string>();
-        var inQuote = false;
-        var start = -1;
-        for (int i = 0; i < line.Length; i++)
-        {
-            if (line[i] != '"') continue;
-            if (!inQuote) { inQuote = true; start = i + 1; }
-            else { parts.Add(line[start..i]); inQuote = false; }
-        }
-        return parts;
-    }
-
-    static string? FindSln(string startDir)
-    {
-        for (var dir = startDir; dir != null; dir = Path.GetDirectoryName(dir))
-        {
-            var name = Path.GetFileName(dir);
-            if (File.Exists(Path.Combine(dir, $"{name}.uproject")) &&
-                File.Exists(Path.Combine(dir, $"{name}.sln")))
-                return Path.Combine(dir, $"{name}.sln");
-        }
         return null;
     }
 }
-
-record struct ManagedProject(string Guid, string Line, bool IsCsProj);

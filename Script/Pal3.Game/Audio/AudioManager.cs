@@ -95,6 +95,9 @@ namespace Pal3.Game.Audio
 
         private IEnumerator PlaySceneMusicAsync(string cityName, string sceneName)
         {
+            // A script can select a track after the scene queues this coroutine.
+            if (!string.IsNullOrEmpty(_currentScriptMusic)) yield break;
+
             string musicName = string.Empty;
 
             if (MusicConstants.SceneMusicInfo.TryGetValue($"{cityName}_{sceneName}".ToLower(), out var sceneMusic))

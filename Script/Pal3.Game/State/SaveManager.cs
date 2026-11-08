@@ -118,8 +118,7 @@ namespace Pal3.Game.State
 
             string? overridePath = Environment.GetEnvironmentVariable("PAL3_SAVE_DIR");
             _saveFolder = string.IsNullOrWhiteSpace(overridePath)
-                ? Path.Combine(UnrealSharp.Engine.Paths.ConvertRelativePathToFull(
-                    UnrealSharp.Engine.Paths.ProjectSavedDir(), ""), SAVE_FOLDER_NAME)
+                ? Path.Combine(UnityEngine.Application.persistentDataPath, SAVE_FOLDER_NAME)
                 : Path.GetFullPath(overridePath);
             Directory.CreateDirectory(_saveFolder);
 

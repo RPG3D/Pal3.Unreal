@@ -6,9 +6,54 @@
 # ShadowExposure) so the managed material stub can rebind without caring which one.
 import unreal
 
-MAT_DIR = "/Game/Pal3"
+MAT_DIR = "/Game/PAL3"
 mel = unreal.MaterialEditingLibrary
 tools = unreal.AssetToolsHelpers.get_asset_tools()
+
+
+def add_local_light(mat, surface, tex):
+    def node(name, x, y):
+        return mel.create_material_expression(mat, getattr(unreal, "MaterialExpression" + name), x, y)
+
+    def link(source, target, slot, output=""):
+        if not mel.connect_material_expressions(source, output, target, slot):
+            raise RuntimeError(f"Cannot connect {source.get_name()} to {target.get_name()}.{slot}")
+
+    lamp = node("VectorParameter", -890, -1120)
+    lamp.set_editor_property("parameter_name", "LocalLight")
+    lamp.set_editor_property("default_value", unreal.LinearColor(0, 0, 0, 0))
+    world = node("WorldPosition", -890, -1290)
+    distance = node("Distance", -645, -1290)
+    link(world, distance, "A")
+    link(lamp, distance, "B", "RGB")
+    range_safe = node("Max", -645, -1120)
+    range_safe.set_editor_property("const_b", 1.0)
+    link(lamp, range_safe, "A", "A")
+    distance_safe = node("Max", -465, -1290)
+    distance_safe.set_editor_property("const_b", 1.0)
+    link(distance, distance_safe, "A")
+    fraction = node("Divide", -290, -1250)
+    link(distance_safe, fraction, "A")
+    link(range_safe, fraction, "B")
+    inverse = node("OneMinus", -105, -1250)
+    link(fraction, inverse, "")
+    falloff = node("Saturate", 60, -1250)
+    link(inverse, falloff, "")
+    squared = node("Multiply", 220, -1250)
+    link(falloff, squared, "A")
+    link(falloff, squared, "B")
+    warm = node("Constant3Vector", 200, -1080)
+    warm.set_editor_property("constant", unreal.LinearColor(0.22, 0.091, 0.025, 1))
+    light = node("Multiply", 420, -1250)
+    link(squared, light, "A")
+    link(warm, light, "B")
+    colored = node("Multiply", 610, -1120)
+    link(tex, colored, "A", "RGB")
+    link(light, colored, "B")
+    total = node("Add", 840, -800)
+    link(surface, total, "A")
+    link(colored, total, "B")
+    mel.connect_material_property(total, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
 
 def build(name, blend):
@@ -73,6 +118,8 @@ def build(name, blend):
     mel.connect_material_expressions(base_tint, "", final, "A")
     mel.connect_material_expressions(shadow_factor, "", final, "B")
     mel.connect_material_property(final, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    if blend != unreal.BlendMode.BLEND_ADDITIVE:
+        add_local_light(mat, final, tex)
 
     if blend == unreal.BlendMode.BLEND_MASKED:
         mat.set_editor_property("opacity_mask_clip_value", 0.3)
@@ -93,7 +140,8 @@ def build(name, blend):
     unreal.log("[Pal3Mat] created " + name)
 
 
-build("M_Pal3Tex", unreal.BlendMode.BLEND_OPAQUE)
-build("M_Pal3Tex_Add", unreal.BlendMode.BLEND_ADDITIVE)
-build("M_Pal3Tex_Alpha", unreal.BlendMode.BLEND_TRANSLUCENT)
-build("M_Pal3Tex_Masked", unreal.BlendMode.BLEND_MASKED)
+if __name__ == "__main__":
+    build("M_Pal3Tex", unreal.BlendMode.BLEND_OPAQUE)
+    build("M_Pal3Tex_Add", unreal.BlendMode.BLEND_ADDITIVE)
+    build("M_Pal3Tex_Alpha", unreal.BlendMode.BLEND_TRANSLUCENT)
+    build("M_Pal3Tex_Masked", unreal.BlendMode.BLEND_MASKED)

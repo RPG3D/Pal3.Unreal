@@ -6,7 +6,7 @@
       {
         "type": "border",
         "anchor": "center",
-        "size": [620, 466],
+        "size": [868, 652],
         "color": [0.035, 0.055, 0.075, 0.98],
         "child": {
           "type": "canvas",
@@ -20,80 +20,81 @@
                   "type": "canvas",
                   "id": "home_page",
                   "children": [
-                    {"type": "text", "id": "home_title", "text": "仙剑奇侠传三", "fontSize": 26, "position": [20, 14], "size": [580, 40], "color": [0.96, 0.89, 0.74, 1]},
-                    {"type": "text", "id": "home_hint", "text": "开始游戏后按 Tab 打开菜单", "fontSize": 16, "position": [20, 56], "size": [580, 26], "color": [0.96, 0.89, 0.74, 1]},
-                    {"type": "button", "id": "diagnostics", "text": "诊断面板", "fontSize": 17, "position": [20, 96], "size": [285, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "auto", "text": "自动推进对白", "fontSize": 17, "position": [315, 96], "size": [285, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "new", "text": "开始新游戏", "fontSize": 17, "position": [20, 166], "size": [285, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "saves", "text": "存档与读档", "fontSize": 17, "position": [315, 166], "size": [285, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "scenes", "text": "切换 PAL3 场景", "fontSize": 17, "position": [20, 216], "size": [285, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "story", "text": "从指定剧情开始", "fontSize": 17, "position": [315, 216], "size": [285, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "resume", "text": "返回游戏", "fontSize": 17, "position": [242, 366], "size": [136, 42], "normalColor": [0.11, 0.22, 0.29, 1]}
+                    {"type": "text", "id": "home_title", "text": "仙剑奇侠传三", "fontSize": 36, "position": [28, 20], "size": [812, 56], "color": [0.96, 0.89, 0.74, 1]},
+                    {"type": "text", "id": "home_hint", "text": "开始游戏后按 Tab 打开菜单", "fontSize": 22, "position": [28, 78], "size": [812, 36], "color": [0.96, 0.89, 0.74, 1]},
+                    {"type": "button", "id": "diagnostics", "text": "诊断面板", "fontSize": 24, "position": [28, 134], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "auto", "text": "自动推进对白", "fontSize": 24, "position": [441, 134], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "new", "text": "开始新游戏", "fontSize": 24, "position": [28, 232], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "saves", "text": "存档与读档", "fontSize": 24, "position": [441, 232], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "scenes", "text": "切换 PAL3 场景", "fontSize": 24, "position": [28, 302], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "story", "text": "从指定剧情开始", "fontSize": 24, "position": [441, 302], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "transparent_sticks", "text": "摇杆全透明 · 关闭", "fontSize": 24, "position": [234, 384], "size": [400, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "resume", "text": "返回游戏", "fontSize": 24, "position": [339, 512], "size": [190, 59], "normalColor": [0.11, 0.22, 0.29, 1]}
                   ]
                 },
                 {
                   "type": "canvas",
                   "id": "scenes_page",
                   "children": [
-                    {"type": "text", "text": "切换 PAL3 场景", "fontSize": 26, "position": [20, 14], "size": [580, 40], "color": [0.96, 0.89, 0.74, 1]},
-                    {"type": "text", "text": "在当前 UE 世界中加载 PAL3 地图", "fontSize": 16, "position": [20, 56], "size": [580, 26], "color": [0.96, 0.89, 0.74, 1]},
-                    {"type": "button", "id": "scene_0", "text": "渝州 · 唐家堡方向", "fontSize": 17, "position": [130, 95], "size": [360, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "scene_1", "text": "渝州西南 · 客栈", "fontSize": 17, "position": [130, 146], "size": [360, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "scene_2", "text": "宾化", "fontSize": 17, "position": [130, 197], "size": [360, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "scene_3", "text": "镇江", "fontSize": 17, "position": [130, 248], "size": [360, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "scene_back", "text": "返回", "fontSize": 17, "position": [242, 366], "size": [136, 42], "normalColor": [0.11, 0.22, 0.29, 1]}
+                    {"type": "text", "text": "切换 PAL3 场景", "fontSize": 36, "position": [28, 20], "size": [812, 56], "color": [0.96, 0.89, 0.74, 1]},
+                    {"type": "text", "text": "在当前 UE 世界中加载 PAL3 地图", "fontSize": 22, "position": [28, 78], "size": [812, 36], "color": [0.96, 0.89, 0.74, 1]},
+                    {"type": "button", "id": "scene_0", "text": "渝州 · 唐家堡方向", "fontSize": 24, "position": [182, 133], "size": [504, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "scene_1", "text": "渝州西南 · 客栈", "fontSize": 24, "position": [182, 204], "size": [504, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "scene_2", "text": "宾化", "fontSize": 24, "position": [182, 276], "size": [504, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "scene_3", "text": "镇江", "fontSize": 24, "position": [182, 347], "size": [504, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "scene_back", "text": "返回", "fontSize": 24, "position": [339, 512], "size": [190, 59], "normalColor": [0.11, 0.22, 0.29, 1]}
                   ]
                 },
                 {
                   "type": "canvas",
                   "id": "story_page",
                   "children": [
-                    {"type": "text", "text": "从指定剧情开始", "fontSize": 26, "position": [20, 14], "size": [580, 40], "color": [0.96, 0.89, 0.74, 1]},
-                    {"type": "text", "text": "载入该段剧情对应的地图、进度与队伍", "fontSize": 16, "position": [20, 56], "size": [580, 26], "color": [0.96, 0.89, 0.74, 1]},
-                    {"type": "button", "id": "story_0", "text": "剧情 1", "fontSize": 17, "position": [20, 95], "size": [285, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "story_1", "text": "剧情 2", "fontSize": 17, "position": [315, 95], "size": [285, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "story_2", "text": "剧情 3", "fontSize": 17, "position": [20, 145], "size": [285, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "story_3", "text": "剧情 4", "fontSize": 17, "position": [315, 145], "size": [285, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "story_4", "text": "剧情 5", "fontSize": 17, "position": [20, 195], "size": [285, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "story_5", "text": "剧情 6", "fontSize": 17, "position": [315, 195], "size": [285, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "story_6", "text": "剧情 7", "fontSize": 17, "position": [20, 245], "size": [285, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "story_7", "text": "剧情 8", "fontSize": 17, "position": [315, 245], "size": [285, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "prev", "text": "上一页", "fontSize": 17, "position": [20, 314], "size": [100, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "text", "id": "story_page_number", "text": "1 / 1", "fontSize": 14, "position": [125, 325], "size": [90, 22], "color": [0.96, 0.89, 0.74, 1]},
-                    {"type": "button", "id": "next", "text": "下一页", "fontSize": 17, "position": [500, 314], "size": [100, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "story_back", "text": "返回", "fontSize": 17, "position": [242, 366], "size": [136, 42], "normalColor": [0.11, 0.22, 0.29, 1]}
+                    {"type": "text", "text": "从指定剧情开始", "fontSize": 36, "position": [28, 20], "size": [812, 56], "color": [0.96, 0.89, 0.74, 1]},
+                    {"type": "text", "text": "载入该段剧情对应的地图、进度与队伍", "fontSize": 22, "position": [28, 78], "size": [812, 36], "color": [0.96, 0.89, 0.74, 1]},
+                    {"type": "button", "id": "story_0", "text": "剧情 1", "fontSize": 24, "position": [28, 133], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "story_1", "text": "剧情 2", "fontSize": 24, "position": [441, 133], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "story_2", "text": "剧情 3", "fontSize": 24, "position": [28, 203], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "story_3", "text": "剧情 4", "fontSize": 24, "position": [441, 203], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "story_4", "text": "剧情 5", "fontSize": 24, "position": [28, 273], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "story_5", "text": "剧情 6", "fontSize": 24, "position": [441, 273], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "story_6", "text": "剧情 7", "fontSize": 24, "position": [28, 343], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "story_7", "text": "剧情 8", "fontSize": 24, "position": [441, 343], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "prev", "text": "上一页", "fontSize": 24, "position": [28, 440], "size": [140, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "text", "id": "story_page_number", "text": "1 / 1", "fontSize": 20, "position": [175, 455], "size": [126, 31], "color": [0.96, 0.89, 0.74, 1]},
+                    {"type": "button", "id": "next", "text": "下一页", "fontSize": 24, "position": [700, 440], "size": [140, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "story_back", "text": "返回", "fontSize": 24, "position": [339, 512], "size": [190, 59], "normalColor": [0.11, 0.22, 0.29, 1]}
                   ]
                 },
                 {
                   "type": "canvas",
                   "id": "saves_page",
                   "children": [
-                    {"type": "text", "text": "存档与读档", "fontSize": 26, "position": [20, 14], "size": [580, 40], "color": [0.96, 0.89, 0.74, 1]},
-                    {"type": "text", "text": "读取存档", "fontSize": 17, "position": [20, 55], "size": [338, 28], "color": [0.96, 0.89, 0.74, 1]},
-                    {"type": "text", "id": "save_heading", "text": "写入存档", "fontSize": 17, "position": [372, 55], "size": [228, 28], "color": [0.96, 0.89, 0.74, 1]},
-                    {"type": "button", "id": "load_0", "text": "自动存档", "fontSize": 17, "position": [20, 86], "size": [338, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "text", "id": "empty_0", "text": "自动存档 · 空", "fontSize": 17, "position": [20, 86], "size": [338, 42], "color": [0.96, 0.89, 0.74, 1]},
-                    {"type": "button", "id": "load_1", "text": "存档 1", "fontSize": 17, "position": [20, 132], "size": [338, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "text", "id": "empty_1", "text": "存档 1 · 空", "fontSize": 17, "position": [20, 132], "size": [338, 42], "color": [0.96, 0.89, 0.74, 1]},
-                    {"type": "button", "id": "save_1", "text": "写入 1", "fontSize": 17, "position": [372, 132], "size": [228, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "load_2", "text": "存档 2", "fontSize": 17, "position": [20, 178], "size": [338, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "text", "id": "empty_2", "text": "存档 2 · 空", "fontSize": 17, "position": [20, 178], "size": [338, 42], "color": [0.96, 0.89, 0.74, 1]},
-                    {"type": "button", "id": "save_2", "text": "写入 2", "fontSize": 17, "position": [372, 178], "size": [228, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "load_3", "text": "存档 3", "fontSize": 17, "position": [20, 224], "size": [338, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "text", "id": "empty_3", "text": "存档 3 · 空", "fontSize": 17, "position": [20, 224], "size": [338, 42], "color": [0.96, 0.89, 0.74, 1]},
-                    {"type": "button", "id": "save_3", "text": "写入 3", "fontSize": 17, "position": [372, 224], "size": [228, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "load_4", "text": "存档 4", "fontSize": 17, "position": [20, 270], "size": [338, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "text", "id": "empty_4", "text": "存档 4 · 空", "fontSize": 17, "position": [20, 270], "size": [338, 42], "color": [0.96, 0.89, 0.74, 1]},
-                    {"type": "button", "id": "save_4", "text": "写入 4", "fontSize": 17, "position": [372, 270], "size": [228, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "load_5", "text": "存档 5", "fontSize": 17, "position": [20, 316], "size": [338, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "text", "id": "empty_5", "text": "存档 5 · 空", "fontSize": 17, "position": [20, 316], "size": [338, 42], "color": [0.96, 0.89, 0.74, 1]},
-                    {"type": "button", "id": "save_5", "text": "写入 5", "fontSize": 17, "position": [372, 316], "size": [228, 42], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "saves_back", "text": "返回", "fontSize": 17, "position": [242, 366], "size": [136, 42], "normalColor": [0.11, 0.22, 0.29, 1]}
+                    {"type": "text", "text": "存档与读档", "fontSize": 36, "position": [28, 20], "size": [812, 56], "color": [0.96, 0.89, 0.74, 1]},
+                    {"type": "text", "text": "读取存档", "fontSize": 24, "position": [28, 77], "size": [473, 39], "color": [0.96, 0.89, 0.74, 1]},
+                    {"type": "text", "id": "save_heading", "text": "写入存档", "fontSize": 24, "position": [521, 77], "size": [319, 39], "color": [0.96, 0.89, 0.74, 1]},
+                    {"type": "button", "id": "load_0", "text": "自动存档", "fontSize": 24, "position": [28, 120], "size": [473, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "text", "id": "empty_0", "text": "自动存档 · 空", "fontSize": 24, "position": [28, 120], "size": [473, 59], "color": [0.96, 0.89, 0.74, 1]},
+                    {"type": "button", "id": "load_1", "text": "存档 1", "fontSize": 24, "position": [28, 185], "size": [473, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "text", "id": "empty_1", "text": "存档 1 · 空", "fontSize": 24, "position": [28, 185], "size": [473, 59], "color": [0.96, 0.89, 0.74, 1]},
+                    {"type": "button", "id": "save_1", "text": "写入 1", "fontSize": 24, "position": [521, 185], "size": [319, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "load_2", "text": "存档 2", "fontSize": 24, "position": [28, 249], "size": [473, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "text", "id": "empty_2", "text": "存档 2 · 空", "fontSize": 24, "position": [28, 249], "size": [473, 59], "color": [0.96, 0.89, 0.74, 1]},
+                    {"type": "button", "id": "save_2", "text": "写入 2", "fontSize": 24, "position": [521, 249], "size": [319, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "load_3", "text": "存档 3", "fontSize": 24, "position": [28, 314], "size": [473, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "text", "id": "empty_3", "text": "存档 3 · 空", "fontSize": 24, "position": [28, 314], "size": [473, 59], "color": [0.96, 0.89, 0.74, 1]},
+                    {"type": "button", "id": "save_3", "text": "写入 3", "fontSize": 24, "position": [521, 314], "size": [319, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "load_4", "text": "存档 4", "fontSize": 24, "position": [28, 378], "size": [473, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "text", "id": "empty_4", "text": "存档 4 · 空", "fontSize": 24, "position": [28, 378], "size": [473, 59], "color": [0.96, 0.89, 0.74, 1]},
+                    {"type": "button", "id": "save_4", "text": "写入 4", "fontSize": 24, "position": [521, 378], "size": [319, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "load_5", "text": "存档 5", "fontSize": 24, "position": [28, 442], "size": [473, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "text", "id": "empty_5", "text": "存档 5 · 空", "fontSize": 24, "position": [28, 442], "size": [473, 59], "color": [0.96, 0.89, 0.74, 1]},
+                    {"type": "button", "id": "save_5", "text": "写入 5", "fontSize": 24, "position": [521, 442], "size": [319, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "saves_back", "text": "返回", "fontSize": 24, "position": [339, 512], "size": [190, 59], "normalColor": [0.11, 0.22, 0.29, 1]}
                   ]
                 }
               ]
             },
-            {"type": "text", "id": "menu_status", "text": "", "fontSize": 16, "position": [20, 426], "size": [580, 28], "color": [0.96, 0.89, 0.74, 1], "zorder": 1}
+            {"type": "text", "id": "menu_status", "text": "", "fontSize": 22, "position": [28, 596], "size": [812, 39], "color": [0.96, 0.89, 0.74, 1], "zorder": 1}
           ]
         }
       }

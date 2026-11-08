@@ -3,7 +3,7 @@
 # GameDefaultMap/EditorStartupMap.
 import unreal
 
-MAP_PATH = "/Game/Maps/LV_Pal3"
+MAP_PATH = "/Game/PAL3/Maps/LV_Pal3"
 LEVEL_PATH = MAP_PATH + ".LV_Pal3"
 
 les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)

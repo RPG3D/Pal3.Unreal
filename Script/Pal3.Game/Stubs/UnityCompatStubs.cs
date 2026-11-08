@@ -940,6 +940,8 @@ namespace Engine.Renderer
 
         private UnrealSharp.Engine.AActor? _actor;
         private UnrealSharp.ProceduralMeshComponent.UProceduralMeshComponent? _mesh;
+        private UnityEngine.Mesh? _animatedMesh;
+        private UnityEngine.Bounds? _localBounds;
 
         // Default lit material for every section: the ported game's own materials are
         // still stubs, and UE skips sections whose material is null.
@@ -986,7 +988,17 @@ namespace Engine.Renderer
             return new UnityEngine.Bounds(Engine.Core.Implementation.UnityUeConvert.ToUnityPosition(origin),
                 Engine.Core.Implementation.UnityUeConvert.ToUnityPosition(extent) * 2f);
         }
-        public UnityEngine.Bounds GetMeshBounds() => default;
+        public UnityEngine.Bounds GetMeshBounds() =>
+            _localBounds ??= CalculateLocalBounds(_animatedMesh?.vertices);
+
+        private static UnityEngine.Bounds CalculateLocalBounds(UnityEngine.Vector3[]? vertices)
+        {
+            if (vertices is not { Length: > 0 }) return default;
+
+            var bounds = new UnityEngine.Bounds(vertices[0], UnityEngine.Vector3.zero);
+            for (int i = 1; i < vertices.Length; ++i) bounds.Encapsulate(vertices[i]);
+            return bounds;
+        }
         public string FingerprintMesh()
         {
             if (_mesh == null) return string.Empty;
@@ -1040,11 +1052,11 @@ namespace Engine.Renderer
             }
 
             var ueVertices = new UnrealSharp.CoreUObject.FVector[vertexCount];
-            void CopyVertices()
+            void CopyVertices(UnityEngine.Vector3[] source)
             {
                 for (int i = 0; i < vertexCount; i++)
                 {
-                    ueVertices[i] = Engine.Core.Implementation.UnityUeConvert.ToUePosition(vertices[i]);
+                    ueVertices[i] = Engine.Core.Implementation.UnityUeConvert.ToUePosition(source[i]);
                 }
             }
 
@@ -1079,7 +1091,7 @@ namespace Engine.Renderer
                     }
                 }
 
-                CopyVertices();
+                CopyVertices(vertices);
 
                 var ueNormals = new System.Collections.Generic.List<UnrealSharp.CoreUObject.FVector>(
                     hasNormals ? vertexCount : 0);
@@ -1168,12 +1180,16 @@ namespace Engine.Renderer
             }
 
             UnityEngine.Mesh result = new();
+            _animatedMesh = isDynamic ? result : null;
+            _localBounds = isDynamic ? null : CalculateLocalBounds(vertices);
             if (isDynamic)
             {
+                result.vertices = vertices;
                 result.OnMeshDataChanged = () =>
                 {
-                    if (_mesh == null) return;
-                    CopyVertices();
+                    if (_mesh == null || result.vertices.Length != vertexCount) return;
+                    _localBounds = null;
+                    CopyVertices(result.vertices);
                     UnrealSharp.SharpDemo.UPal3DebugOverlay.UpdateProceduralVertices(_mesh, 0, ueVertices);
                     ++UploadCount;
                     ++ReuploadCount;
@@ -1202,6 +1218,8 @@ namespace Engine.Renderer
                 _mesh.DestroyComponent(_actor);
             }
             _mesh = null;
+            _animatedMesh = null;
+            _localBounds = null;
         }
 
         public void Destroy() => Dispose();
@@ -1454,8 +1472,9 @@ namespace Pal3.Game.Data
     public sealed class UnityTexture2D : ITexture2D
     {
         private readonly UnityEngine.Texture2D _texture;
-        private readonly byte[]? _rgba;   // managed copy: GetPixel (water opacity etc.)
-        public UnrealSharp.Engine.UTexture2D? UeTexture { get; }
+        private byte[]? _rgba;   // managed copy: GetPixel (water opacity etc.)
+        private bool _destroyed;
+        public UnrealSharp.Engine.UTexture2D? UeTexture { get; private set; }
 
         public UnityTexture2D(UnityEngine.Texture2D texture)
         {
@@ -1468,6 +1487,7 @@ namespace Pal3.Game.Data
             _texture = new UnityEngine.Texture2D(width, height);
             _rgba = rgba;
             UeTexture = UnrealSharp.SharpDemo.UPal3AssetHelper.CreateTextureFromRgba(width, height, rgba);
+            Pal3TransientAssets.Track(this, UeTexture);
             if (UeTexture == null && TextureCreateFailures++ < 8)
             {
                 UnityEngine.Debug.LogWarning($"[UnityTexture2D] UE texture failed {width}x{height} "
@@ -1480,7 +1500,7 @@ namespace Pal3.Game.Data
         public int Width => _texture?.width ?? 0;
         public int Height => _texture?.height ?? 0;
         public object NativeObject => UeTexture ?? (object?)_texture ?? this;
-        public bool IsNativeObjectDisposed => false;
+        public bool IsNativeObjectDisposed => _destroyed;
 
         public void SetWrapMode(WrapMode wrapMode) { }
         public (float r, float g, float b, float a) GetPixel(int x, int y)
@@ -1525,7 +1545,13 @@ namespace Pal3.Game.Data
         }
         public ISprite CreateSprite(float x, float y, float width, float height, float pivotX, float pivotY)
             => new UnitySprite(this);
-        public void Destroy() { }
+        public void Destroy()
+        {
+            _destroyed = true;
+            Pal3TransientAssets.Release(UeTexture);
+            UeTexture = null;
+            _rgba = null;
+        }
     }
 
     public sealed class UnitySprite : ISprite
@@ -1548,11 +1574,11 @@ namespace Pal3.Game.Data
     {
         private readonly UnityEngine.Material? _material;
         private readonly string _shaderName = "";
-        public UnrealSharp.Engine.UMaterialInterface? UeMaterial { get; set; }
+        public UnrealSharp.Engine.UMaterialInterface? UeMaterial { get; private set; }
 
         public UnityMaterial(UnityEngine.Material material, bool isClone) { _material = material; }
 
-        // Runtime material: MID of /Game/Pal3/M_Pal3Tex (Pal3Tex texture param).
+        // Runtime material: MID of /Game/PAL3/M_Pal3Tex (Pal3Tex texture param).
         public UnityMaterial() : this("")
         {
         }
@@ -1562,6 +1588,7 @@ namespace Pal3.Game.Data
             _shaderName = shaderName ?? "";
             _blendMode = IsTransparentShader(_shaderName) ? 2 : 0;
             UeMaterial = UnrealSharp.SharpDemo.UPal3AssetHelper.CreatePal3MaterialBlend(_blendMode);
+            Pal3TransientAssets.Track(this, UeMaterial);
         }
 
         // "RealToon/.../Fade Transparency", "Pal3/Transparent" and
@@ -1596,21 +1623,32 @@ namespace Pal3.Game.Data
         private int _blendMode;
         private float _cutout;
         private UnrealSharp.Engine.UTexture2D? _mainTexture;
-        private static UnrealSharp.Engine.UTexture2D? _whiteTexture;
+        private static UnityTexture2D? _whiteTexture;
+        private static readonly HashSet<UnrealSharp.TWeakObjectPtr<UnrealSharp.Engine.UMaterialInterface>> LocalLightMaterials = new();
+        private bool _tracksLocalLight;
 
         private static UnrealSharp.Engine.UTexture2D? GetWhiteTexture()
         {
-            // Rooted by the C++ helper; one shared instance for cleared slots.
-            _whiteTexture ??= UnrealSharp.SharpDemo.UPal3AssetHelper.CreateTextureFromRgba(
-                1, 1, new byte[] { 255, 255, 255, 255 });
-            return _whiteTexture;
+            _whiteTexture ??= new UnityTexture2D(1, 1, new byte[] { 255, 255, 255, 255 });
+            return _whiteTexture.UeTexture;
+        }
+
+        internal static void ReleaseSharedAssets()
+        {
+            _whiteTexture?.Destroy();
+            _whiteTexture = null;
+            LocalLightMaterials.Clear();
         }
 
         private void SwitchBlend(int mode)
         {
             if (_blendMode == mode) return;
+            var previousMaterial = UeMaterial;
             _blendMode = mode;
             UeMaterial = UnrealSharp.SharpDemo.UPal3AssetHelper.CreatePal3MaterialBlend(mode);
+            _tracksLocalLight = false;
+            Pal3TransientAssets.Track(this, UeMaterial);
+            Pal3TransientAssets.Release(previousMaterial);
             if (_mainTexture != null && UeMaterial != null)
             {
                 UnrealSharp.SharpDemo.UPal3AssetHelper.BindTexture(
@@ -1620,7 +1658,7 @@ namespace Pal3.Game.Data
         }
 
 
-        // The Unity "Pal3/Opaque" shader is ported to /Game/Pal3/M_Pal3Tex:
+        // The Unity "Pal3/Opaque" shader is ported to /Game/PAL3/M_Pal3Tex:
         //   emissive = MainTex * TintColor * lerp(1, ShadowTex/(1-Exposure), HasShadowTex)
         // The ported game only speaks Unity property ids, so map the handful of
         // parameters the material actually declares.
@@ -1668,7 +1706,39 @@ namespace Pal3.Game.Data
                 new UnrealSharp.Core.FName("TintColor"),
                 new UnrealSharp.CoreUObject.FLinearColor(
                     _tint.R * scale.r, _tint.G * scale.g, _tint.B * scale.b, _tint.A));
+            if (!_tracksLocalLight)
+            {
+                _tracksLocalLight = true;
+                LocalLightMaterials.Add(new(UeMaterial));
+                if (UnityEngine.SceneLighting.LocalLightPosition is { } localLight)
+                    ApplyLocalLight(UeMaterial, EncodeLocalLight(localLight));
+            }
         }
+
+        internal static void SetSceneLocalLight(UnityEngine.Vector3? position)
+        {
+            bool changed = UnityEngine.SceneLighting.LocalLightPosition != position;
+            UnityEngine.SceneLighting.LocalLightPosition = position;
+            var parameter = EncodeLocalLight(position);
+            LocalLightMaterials.RemoveWhere(reference =>
+            {
+                if (reference.Object is not { } material) return true;
+                if (changed) ApplyLocalLight(material, parameter);
+                return false;
+            });
+        }
+
+        private static UnrealSharp.CoreUObject.FLinearColor EncodeLocalLight(UnityEngine.Vector3? position)
+        {
+            if (position is not { } localLight) return new(0, 0, 0, 0);
+            var uePosition = Engine.Core.Implementation.UnityUeConvert.ToUePosition(localLight);
+            return new((float)uePosition.X, (float)uePosition.Y, (float)uePosition.Z, 430f);
+        }
+
+        private static void ApplyLocalLight(UnrealSharp.Engine.UMaterialInterface material,
+            UnrealSharp.CoreUObject.FLinearColor parameter)
+            => UnrealSharp.SharpDemo.UPal3AssetHelper.SetVectorParameter(material,
+                new UnrealSharp.Core.FName("LocalLight"), parameter);
 
 
         public void SetMainTexture(ITexture2D texture) => SetTexture(0, texture);
@@ -1730,7 +1800,12 @@ namespace Pal3.Game.Data
         public static int BindFailures;
         public void SetMainTextureScale(float x, float y) { }
         public void SetVector4(int propertyId, UnityEngine.Vector4 value) { }
-        public void Destroy() { }
+        public void Destroy()
+        {
+            Pal3TransientAssets.Release(UeMaterial);
+            UeMaterial = null;
+            _mainTexture = null;
+        }
 
         private static string PropertyIdToName(int id) => id.ToString();
     }

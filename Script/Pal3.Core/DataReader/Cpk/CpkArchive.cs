@@ -211,7 +211,7 @@ namespace Pal3.Core.DataReader.Cpk
                 using FileStream stream = new(_filePath, FileMode.Open, FileAccess.Read);
                 stream.Seek(entity.StartPos, SeekOrigin.Begin);
                 byte[] buffer = new byte[entity.PackedSize];
-                _ = stream.Read(buffer.AsSpan());
+                stream.ReadExactly(buffer);
                 return entity.IsCompressed() ?
                     DecompressDataInArchive(buffer.AsSpan(), entity.OriginSize) :
                     buffer;

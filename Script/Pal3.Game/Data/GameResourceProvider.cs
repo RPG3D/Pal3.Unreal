@@ -42,7 +42,6 @@ namespace Pal3.Game.Data
     /// Also manages the lifecycle of the resource it provides.
     /// </summary>
     public sealed class GameResourceProvider : IDisposable,
-        ICommandExecutor<ScenePreLoadingNotification>,
         ICommandExecutor<SettingChangedNotification>
     {
         private const string CACHE_FOLDER_NAME = "CacheData";
@@ -615,71 +614,13 @@ namespace Pal3.Game.Data
             return cursorTexture;
         }
 
-        private string _currentCityName;
-        public void Execute(ScenePreLoadingNotification notification)
+        internal void ClearSceneCaches()
         {
-            string newCityName = notification.NewSceneInfo.CityName.ToLower();
-
-            if (string.IsNullOrEmpty(_currentCityName))
-            {
-                _currentCityName = newCityName;
-                return;
-            }
-
-            if (!newCityName.Equals(_currentCityName, StringComparison.OrdinalIgnoreCase))
-            {
-                DisposeTemporaryInMemoryGameResources();
-                _currentCityName = newCityName;
-            }
-
-            // Unloads assets that are not used (textures etc.)
-            Resources.UnloadUnusedAssets();
-        }
-
-        /// <summary>
-        /// Dispose temporary in-memory resources that are only used in current scene block.
-        /// </summary>
-        private void DisposeTemporaryInMemoryGameResources()
-        {
-            // Clean up texture cache after exiting current scene block
             _textureCache?.DisposeAll();
-
-            // Clean up sprite cache after exiting current scene block
-            foreach (ISprite sprite in _spriteCache.Values)
-            {
-                sprite.Destroy();
-            }
             _spriteCache.Clear();
-
-            // Dispose in-memory game resource files
-            foreach (KeyValuePair<Type, Dictionary<string, object>> fileCache in _gameResourceFileCache)
-            {
-                if (fileCache.Key == typeof(Mv3File))
-                {
-                    // Dispose non-main actor mv3 files
-                    // All main actor names start with "1"
-                    string mainActorMv3 = $"{FileConstants.GetActorFolderName()}{DIR_SEPARATOR}1".ToLower();
-                    string[] mv3FilesToDispose = fileCache.Value.Keys
-                        .Where(mv3FilePath => !mv3FilePath.Contains(mainActorMv3))
-                        .ToArray();
-                    foreach (string mv3File in mv3FilesToDispose)
-                    {
-                        fileCache.Value.Remove(mv3File);
-                    }
-                }
-                else if (fileCache.Key == typeof(ActorActionConfig) ||
-                         fileCache.Key.IsSubclassOf(typeof(ActorActionConfig)))
-                {
-                    // These files are used/cached across scenes
-                    // Do not dispose them since they will be used in next scene block
-                }
-                else // Dispose all other files during scene block transition
-                {
-                    fileCache.Value.Clear();
-                }
-            }
-
-            // clear all vfx prefabs in cache
+            // The music player may still own a clip across the transition.
+            _audioClipCache.Clear();
+            _gameResourceFileCache.Clear();
             _vfxEffectPrefabCache.Clear();
         }
 

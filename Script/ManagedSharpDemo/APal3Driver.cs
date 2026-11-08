@@ -12,7 +12,10 @@ using UnrealSharp.Engine;
 using Engine.Core.Abstraction;
 using Engine.Core.Implementation;
 using Engine.Extensions;
+using Engine.Services;
 using Pal3.Game;
+using Pal3.Game.Camera;
+using UnrealSharp.InputCore;
 
 namespace ManagedSharpDemo
 {
@@ -21,6 +24,8 @@ namespace ManagedSharpDemo
     {
         public APal3Driver()
         {
+            _startMenu = new(_touchStick);
+            _automation = new(_touchStick);
             // AActor ticks by default (CanEverTick/StartWithTickEnabled) - nothing to enable.
         }
 
@@ -111,7 +116,7 @@ namespace ManagedSharpDemo
 
             var pc = UGameplayStatics.GetPlayerController(0);
             bool menuHasInput = true;
-            if (pc != null)
+            if (pc != null && !_bootRecovery.Tick(pc, deltaTime))
             {
                 string touchClick = _touchButtons.ConsumeClick();
                 menuHasInput = _startMenu.Tick(pc, touchClick == Pal3TouchButtons.Menu) ||
@@ -128,6 +133,7 @@ namespace ManagedSharpDemo
 
             Engine.Diagnostics.ManagedDiagnostics.Heartbeat();
             GameEntityScriptRuntime.TickAll(deltaTime);
+            Pal3.Game.Data.Pal3TransientAssets.Tick();
             UnrealSharp.SharpDemo.UPal3AudioHelper.TickAudio();
             Pal3Boot.TickSmokeProbe(deltaTime);
             _automation.Poll(CloseStartMenu);
@@ -204,11 +210,13 @@ namespace ManagedSharpDemo
 
         // UE keyboard and the on-screen stick feed the same PlayerInputActions.
         private UnityEngine.Vector2 _lastMovement;
+        private float _lastCameraScroll;
         private readonly Pal3TouchStick _touchStick = new();
         private readonly Pal3TouchButtons _touchButtons = new();
+        private readonly Pal3BootRecovery _bootRecovery = new();
         private readonly Pal3InteractionHint _interactionHint = new();
-        private readonly Pal3StartMenu _startMenu = new();
-        private readonly Pal3Automation _automation = new();
+        private readonly Pal3StartMenu _startMenu;
+        private readonly Pal3Automation _automation;
         private readonly Pal3Hud _hud = new();
         private readonly Pal3DialogueChoices _dialogueChoices = new();
 
@@ -232,15 +240,39 @@ namespace ManagedSharpDemo
             _interactionHint.Dispose();
             _hud.Dispose();
             _startMenu.RemoveWidget();
+            _bootRecovery.Dispose();
             JsonUiDemo.Hide();
+            Pal3Boot.ReleaseTransientAssets();
             base.EndPlay(endPlayReason);
         }
 
         private void PollInput(APlayerController pc, bool menuHasInput, string touchClick)
         {
-            var touchMovement = _touchStick.Tick(pc, menuHasInput);
+            bool gameplayEnabled = !menuHasInput && Pal3Boot.HasPlayerControl();
+            bool cameraEnabled = gameplayEnabled && ServiceLocator.Instance.Get<CameraManager>().CanRotateByUser;
+            var touch = _touchStick.Tick(pc, gameplayEnabled, cameraEnabled);
             var actions = Pal3Boot.InputActions;
             if (actions == null) return;
+
+            var gameplay = actions.Gameplay;
+            float cameraX = _automation.GetCameraAxis(cameraEnabled);
+            float scroll = 0f;
+            if (cameraEnabled)
+            {
+                float keyboardX = (pc.IsInputKeyDown(Keys.R) ? 1f : 0f) - (pc.IsInputKeyDown(Keys.Q) ? 1f : 0f);
+                if (keyboardX != 0f) cameraX = keyboardX;
+                else if (cameraX == 0f)
+                    cameraX = touch.CameraX != 0f ? touch.CameraX : pc.GetInputAnalogKeyState(Keys.Gamepad_RightX);
+                scroll = MathF.Sign(pc.GetInputAnalogKeyState(Keys.MouseWheelAxis));
+            }
+            const float cameraDeadZone = 0.25f;
+            gameplay.RotateCameraClockwise.inProgress = cameraX > cameraDeadZone;
+            gameplay.RotateCameraCounterClockwise.inProgress = cameraX < -cameraDeadZone;
+            if (scroll != _lastCameraScroll)
+            {
+                gameplay.OnScroll.InjectValue(scroll);
+                _lastCameraScroll = scroll;
+            }
 
             if (!menuHasInput)
             {
@@ -251,7 +283,7 @@ namespace ManagedSharpDemo
                     actions.Cutscene.Continue.SimulatePerformed();
                 }
 
-                if ((touchClick == Pal3TouchButtons.Interact && Pal3Boot.HasPlayerControl()) ||
+                if ((touchClick == Pal3TouchButtons.Interact && gameplayEnabled) ||
                     pc.WasInputKeyJustPressed(UnrealSharp.InputCore.Keys.E))
                 {
                     actions.Gameplay.Interact.SimulatePerformed();
@@ -272,7 +304,7 @@ namespace ManagedSharpDemo
                     pc.IsInputKeyDown(UnrealSharp.InputCore.Keys.Left)) x -= 1f;
             }
 
-            var movement = x != 0f || y != 0f ? new UnityEngine.Vector2(x, y) : touchMovement;
+            var movement = x != 0f || y != 0f ? new UnityEngine.Vector2(x, y) : touch.Movement;
             if (movement != _lastMovement)
             {
                 actions.Gameplay.Movement.InjectValue(movement);

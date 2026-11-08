@@ -2,16 +2,28 @@
   "root": {
     "type": "canvas",
     "children": [
-      { "type": "border", "id": "stick_base", "anchor": "bottom_left", "position": [44, -38],
-        "size": [160, 160], "cornerRadius": 80, "color": [0.08, 0.12, 0.17, 0.65],
+      { "type": "border", "id": "stick_base", "anchor": "bottom_left", "position": [84, -74],
+        "size": [320, 320], "cornerRadius": 160, "color": [0.08, 0.12, 0.17, 0.46],
         "child": {
           "type": "canvas",
           "children": [
-            { "type": "border", "id": "stick_thumb", "anchor": "center", "size": [64, 64],
-              "cornerRadius": 32, "color": [0.82, 0.87, 0.92, 0.82] }
+            { "type": "border", "id": "stick_thumb", "anchor": "center", "size": [128, 128],
+              "cornerRadius": 64, "color": [0.82, 0.87, 0.92, 0.62] }
           ]
         }
-      }
+      },
+      { "type": "border", "id": "camera_base", "anchor": "bottom_right", "position": [-260, -74],
+        "size": [320, 320], "cornerRadius": 160, "color": [0.08, 0.12, 0.17, 0.46],
+        "child": {
+          "type": "canvas",
+          "children": [
+            { "type": "border", "id": "camera_thumb", "anchor": "center", "size": [128, 128],
+              "cornerRadius": 64, "color": [0.82, 0.87, 0.92, 0.62] }
+          ]
+        }
+      },
+      { "type": "text", "id": "camera_label", "text": "镜头", "fontSize": 22, "align": "center",
+        "anchor": "bottom_right", "position": [-357, -398], "size": [126, 30], "color": [1, 1, 1, 0.78] }
     ]
   }
 }

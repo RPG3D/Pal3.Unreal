@@ -2,14 +2,14 @@
 # texture parameter "Pal3Tex". Run via: UnrealEditor-Cmd.exe <uproject> -run=pythonscript -script=<this>
 import unreal
 
-MAT_PATH = "/Game/Pal3/M_Pal3Tex"
+MAT_PATH = "/Game/PAL3/M_Pal3Tex"
 
 if unreal.EditorAssetLibrary.does_asset_exist(MAT_PATH):
     unreal.log("[Pal3Mat] material already exists: " + MAT_PATH)
 else:
-    unreal.EditorAssetLibrary.make_directory("/Game/Pal3")
+    unreal.EditorAssetLibrary.make_directory("/Game/PAL3")
     tools = unreal.AssetToolsHelpers.get_asset_tools()
-    mat = tools.create_asset("M_Pal3Tex", "/Game/Pal3", unreal.Material, None)
+    mat = tools.create_asset("M_Pal3Tex", "/Game/PAL3", unreal.Material, None)
     if mat is None:
         raise RuntimeError("create_asset(M_Pal3Tex) failed")
     mel = unreal.MaterialEditingLibrary

@@ -18,7 +18,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "PAL3|Assets")
 	static UTexture2D* CreateTextureFromRgba(int32 Width, int32 Height, const TArray<uint8>& Rgba);
 
-	/** Creates a dynamic material instance of /Game/Pal3/M_Pal3Tex. */
+	UFUNCTION(BlueprintCallable, Category = "SharpDemo|Assets")
+	static void ReleaseTransientAsset(UObject* Asset);
+
+	UFUNCTION(BlueprintCallable, Category = "SharpDemo|Assets")
+	static void RequestTransientAssetCollection();
+
+	/** Creates a dynamic material instance of /Game/PAL3/M_Pal3Tex. */
 	UFUNCTION(BlueprintCallable, Category = "PAL3|Assets")
 	static UMaterialInterface* CreatePal3Material();
 

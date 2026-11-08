@@ -43,6 +43,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "RuntimeWidgetLayout")
 	bool SetElementRenderTranslation(const FString& ElementId, FVector2D Translation);
 
+	UFUNCTION(BlueprintCallable, Category = "RuntimeWidgetLayout")
+	bool SetElementRenderOpacity(const FString& ElementId, float Opacity);
+
 	/** Selects a direct child by id, independent of its order in the JSON. */
 	UFUNCTION(BlueprintCallable, Category = "RuntimeWidgetLayout")
 	bool SetSwitcherPage(const FString& SwitcherId, const FString& PageId);

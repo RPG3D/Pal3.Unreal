@@ -1,0 +1,19 @@
+{
+  "root": { "type": "canvas", "children": [
+    { "type": "border", "anchor": "bottom_center", "position": [0, -24], "size": [1180, 228],
+      "color": [0.035, 0.045, 0.07, 0.94],
+      "child": { "type": "canvas", "children": [
+        { "type": "image", "id": "leftPortrait", "preserveAspect": true, "position": [14, 14], "size": [180, 200] },
+        { "type": "image", "id": "rightPortrait", "preserveAspect": true, "position": [986, 14], "size": [180, 200] },
+        { "type": "scrollbox", "id": "plainScroll", "position": [28, 17], "size": [1124, 169],
+          "child": { "type": "text", "id": "plain", "fontSize": 23, "align": "left", "wrap": true, "color": [0.98, 0.93, 0.81, 1] } },
+        { "type": "scrollbox", "id": "withLeftScroll", "position": [210, 17], "size": [942, 169],
+          "child": { "type": "text", "id": "withLeft", "fontSize": 23, "align": "left", "wrap": true, "color": [0.98, 0.93, 0.81, 1] } },
+        { "type": "scrollbox", "id": "withRightScroll", "position": [28, 17], "size": [942, 169],
+          "child": { "type": "text", "id": "withRight", "fontSize": 23, "align": "left", "wrap": true, "color": [0.98, 0.93, 0.81, 1] } },
+        { "type": "text", "id": "keyboard_continue", "text": "空格 / 回车继续", "fontSize": 15, "align": "right",
+          "color": [0.64, 0.65, 0.72, 1], "position": [800, 192], "size": [165, 24] }
+      ]}
+    }
+  ]}
+}

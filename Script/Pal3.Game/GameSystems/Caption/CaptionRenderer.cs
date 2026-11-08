@@ -21,6 +21,7 @@ namespace Pal3.Game.GameSystems.Caption
     using UnityEngine;
     using UnityEngine.InputSystem;
     using UnityEngine.UI;
+    using UnrealSharp.Engine;
 
     public sealed class CaptionRenderer : IDisposable,
         #if PAL3A
@@ -28,7 +29,9 @@ namespace Pal3.Game.GameSystems.Caption
         #endif
         ICommandExecutor<UIDisplayCaptionCommand>
     {
-        private const float CAPTION_ANIMATION_DURATION = 10f;
+        private const float FadeInSeconds = 10f;
+        private const float AutoHoldSeconds = 2f;
+        private const float FadeOutSeconds = .75f;
 
         private readonly GameResourceProvider _gameResourceProvider;
         private readonly PlayerInputActions _playerInputActions;
@@ -36,6 +39,11 @@ namespace Pal3.Game.GameSystems.Caption
 
         private WaitUntilCanceled _skipCaptionWaiter;
         private bool _skipCaptionRequested;
+        private ITexture2D _texture;
+        private ISprite _sprite;
+
+        public UTexture2D DisplayTexture => (_texture as UnityTexture2D)?.UeTexture;
+        public float Opacity => _captionImage.color.a;
 
         public CaptionRenderer(GameResourceProvider gameResourceProvider,
             PlayerInputActions playerInputActions,
@@ -53,6 +61,7 @@ namespace Pal3.Game.GameSystems.Caption
 
         public void Dispose()
         {
+            FinishCaption();
             _playerInputActions.Cutscene.Continue.performed -= CutsceneContinueOnPerformed;
             CommandExecutorRegistry<ICommand>.Instance.UnRegister(this);
         }
@@ -65,46 +74,76 @@ namespace Pal3.Game.GameSystems.Caption
             _skipCaptionRequested = true;
         }
 
-        private IEnumerator AnimateCaptionAsync(string textureName)
+        private void StartCaption(string textureName)
         {
+            FinishCaption();
             _skipCaptionWaiter = new WaitUntilCanceled();
             Pal3Game.Instance.Execute(new ScriptRunnerAddWaiterRequest(_skipCaptionWaiter));
+            Pal3Game.Instance.StartCoroutine(AnimateCaptionAsync(textureName, _skipCaptionWaiter));
+        }
 
-            ITexture2D texture = _gameResourceProvider.GetCaptionTexture(textureName);
-            ISprite sprite = texture.CreateSprite(0f, 0f,
-                texture.Width, texture.Height,
-                0.5f, 0.5f);
+        private IEnumerator AnimateCaptionAsync(string textureName, WaitUntilCanceled waiter)
+        {
+            if (waiter != _skipCaptionWaiter) yield break;
+            try
+            {
+                _texture = _gameResourceProvider.GetCaptionTexture(textureName);
+                if (_texture == null) throw new InvalidOperationException("Caption texture is missing.");
+                _sprite = _texture.CreateSprite(0f, 0f, _texture.Width, _texture.Height, 0.5f, 0.5f);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"Could not display PAL3 caption {textureName}: {e.Message}");
+                FinishCaption();
+            }
+            if (waiter != _skipCaptionWaiter) yield break;
 
-            _captionImage.sprite = sprite.NativeObject as Sprite;
+            _captionImage.sprite = _sprite.NativeObject as Sprite;
             _captionImage.color = Color.clear;
 
-            yield return CoreAnimation.EnumerateValueAsync(0, 1, CAPTION_ANIMATION_DURATION,
-                AnimationCurveType.Linear, alpha =>
-                {
-                    _captionImage.color = new Color(1f, 1f, 1f, alpha);
-                });
+            yield return FadeAsync(waiter, 0f, 1f, FadeInSeconds);
 
+            if (waiter != _skipCaptionWaiter) yield break;
             _skipCaptionRequested = false;
             yield return CoroutineYieldInstruction.WaitUntil(() =>
-                _skipCaptionRequested || Pal3Boot.AutoDialogueEnabled);
+                waiter != _skipCaptionWaiter || _skipCaptionRequested || Pal3Boot.AutoDialogueEnabled);
 
+            if (waiter != _skipCaptionWaiter) yield break;
+            if (!_skipCaptionRequested)
+                yield return CoroutineYieldInstruction.WaitForSeconds(AutoHoldSeconds);
+            if (waiter != _skipCaptionWaiter) yield break;
+
+            yield return FadeAsync(waiter, 1f, 0f, FadeOutSeconds);
+            if (waiter == _skipCaptionWaiter) FinishCaption();
+        }
+
+        private IEnumerator FadeAsync(WaitUntilCanceled waiter, float from, float to, float seconds)
+            => CoreAnimation.EnumerateValueAsync(from, to, seconds, AnimationCurveType.Linear, alpha =>
+            {
+                if (waiter == _skipCaptionWaiter) _captionImage.color = new Color(1f, 1f, 1f, alpha);
+            });
+
+        private void FinishCaption()
+        {
             _captionImage.color = Color.clear;
-            texture.Destroy();
-            sprite.Destroy();
-
-            _skipCaptionWaiter.CancelWait();
+            _captionImage.sprite = null;
+            _texture?.Destroy();
+            _sprite?.Destroy();
+            _texture = null;
+            _sprite = null;
+            _skipCaptionWaiter?.CancelWait();
             _skipCaptionWaiter = null;
         }
 
         public void Execute(UIDisplayCaptionCommand command)
         {
-            Pal3Game.Instance.StartCoroutine(AnimateCaptionAsync(command.TextureName));
+            StartCaption(command.TextureName);
         }
 
         #if PAL3A
         public void Execute(UIDisplayNextCaptionCommand command)
         {
-            Pal3Game.Instance.StartCoroutine(AnimateCaptionAsync(command.TextureName));
+            StartCaption(command.TextureName);
         }
         #endif
     }

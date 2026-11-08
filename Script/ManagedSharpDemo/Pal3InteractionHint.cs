@@ -12,6 +12,7 @@ internal sealed class Pal3InteractionHint : IDisposable
 {
     private URuntimeJsonWidget? _widget;
     private PlayerGamePlayManager.InteractionTarget? _target;
+    private UnityEngine.Vector3? _crossing;
     private float _untilRefresh;
     private bool _layoutFailed;
 
@@ -20,6 +21,7 @@ internal sealed class Pal3InteractionHint : IDisposable
         if (inputBlocked || !Pal3Boot.HasPlayerControl())
         {
             _target = null;
+            _crossing = null;
             _untilRefresh = 0;
             SetVisible(false);
             return;
@@ -29,12 +31,14 @@ internal sealed class Pal3InteractionHint : IDisposable
         if (_untilRefresh <= 0)
         {
             _untilRefresh = .1f;
-            _target = ServiceLocator.Instance.Get<PlayerGamePlayManager>().GetInteractionTarget();
+            var gameplay = ServiceLocator.Instance.Get<PlayerGamePlayManager>();
+            _crossing = gameplay.GetRiverCrossingHint();
+            _target = _crossing.HasValue ? null : gameplay.GetInteractionTarget();
         }
 
-        if (_layoutFailed || _target is not { } target ||
+        if (_layoutFailed || (_crossing ?? _target?.HintPosition) is not { } hintPosition ||
             !UWidgetLayoutLibrary.ProjectWorldLocationToWidgetPosition(pc,
-                UnityUeConvert.ToUePosition(target.HintPosition), out var position, false))
+                UnityUeConvert.ToUePosition(hintPosition), out var position, false))
         {
             SetVisible(false);
             return;
@@ -48,11 +52,19 @@ internal sealed class Pal3InteractionHint : IDisposable
                 _layoutFailed = true;
                 return;
             }
-            if (Pal3TouchStick.IsSupported) _widget.SetElementText("prompt", "交互");
+        }
+        bool touch = Pal3TouchStick.IsSupported;
+        string prompt = _crossing.HasValue ? (touch ? "过河" : "E  过河") : (touch ? "交互" : "E  交互");
+        if (_prompt != prompt)
+        {
+            _widget.SetElementText("prompt", prompt);
+            _prompt = prompt;
         }
         _widget.SetElementRenderTranslation("target", position);
         SetVisible(true);
     }
+
+    private string? _prompt;
 
     private void SetVisible(bool visible)
     {

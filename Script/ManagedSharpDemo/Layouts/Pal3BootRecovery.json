@@ -1,0 +1,18 @@
+{
+  "root": {
+    "type": "canvas",
+    "children": [
+      { "type": "border", "anchor": "center", "size": [820, 360], "color": [0.035, 0.055, 0.075, 0.98],
+        "child": { "type": "canvas", "children": [
+          { "type": "text", "text": "需要原版游戏数据", "fontSize": 34, "position": [30, 20], "size": [760, 58] },
+          { "type": "text", "id": "boot_error", "wrap": true, "fontSize": 25,
+            "position": [40, 95], "size": [740, 140] },
+          { "type": "button", "id": "boot_permission", "text": "去授权", "fontSize": 25,
+            "position": [145, 255], "size": [240, 68] },
+          { "type": "button", "id": "boot_retry", "text": "重试", "fontSize": 25,
+            "position": [435, 255], "size": [240, 68] }
+        ] }
+      }
+    ]
+  }
+}

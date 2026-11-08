@@ -79,7 +79,6 @@ namespace Pal3.Game
             // Create and init Crc32 hash
             Crc32Hash crcHash = new ();
             crcHash.Init();
-            ServiceLocator.Instance.Register<Crc32Hash>(crcHash);
 
             // If toon materials are not present, it's an open source build
             bool isOpenSourceVersion = _toonOpaqueMaterial == null || _toonTransparentMaterial == null;
@@ -90,7 +89,6 @@ namespace Pal3.Game
             // Init settings
             GameSettings gameSettings = new (settingsStore, isOpenSourceVersion);
             gameSettings.InitOrLoadSettings();
-            ServiceLocator.Instance.Register<GameSettings>(gameSettings);
 
             // Init codepage
             int codepage = gameSettings.Language == Language.SimplifiedChinese ? 936 : 950;
@@ -101,10 +99,11 @@ namespace Pal3.Game
 
             if (gameDataFolderSearchLocations.Count == 0)
             {
-                EngineLogger.LogError("No game data folder search locations found");
+                Pal3Boot.ReportDataLoadFailure("找不到原版游戏数据目录。");
                 yield break;
             }
 
+            Exception firstFailure = null;
             while (gameDataFolderSearchLocations.Count > 0)
             {
                 string gameDataFolderPath = gameDataFolderSearchLocations.Dequeue();
@@ -116,10 +115,13 @@ namespace Pal3.Game
                     cpkFileSystem = fileSystem;
                     exception = ex;
                 });
+                firstFailure ??= exception;
 
                 if (cpkFileSystem != null) // Init file system successfully
                 {
                     ServiceLocator.Instance.Register<ICpkFileSystem>(cpkFileSystem);
+                    ServiceLocator.Instance.Register<Crc32Hash>(crcHash);
+                    ServiceLocator.Instance.Register<GameSettings>(gameSettings);
 
                     // Save game data folder path when file system initialized successfully,
                     // since it's possible that user changed the game data folder path
@@ -148,15 +150,16 @@ namespace Pal3.Game
                 }
                 else
                 {
-                    string errorMessage = exception switch
+                    string errorMessage = (firstFailure ?? exception) switch
                     {
                         null => "游戏数据加载失败，未能找到原游戏数据文件",
-                        DirectoryNotFoundException => $"游戏数据加载失败，原始游戏数据根目录不存在: {exception.Message}",
-                        FileNotFoundException => $"游戏数据加载失败，游戏原CPK数据文件不存在: {exception.Message}",
-                        _ => $"游戏数据加载失败，错误信息：{exception}"
+                        DirectoryNotFoundException missingDirectory => $"找不到原版游戏数据目录：{missingDirectory.Message}",
+                        FileNotFoundException missing => $"找不到游戏数据文件：{missing.Message}",
+                        Exception failure => $"无法读取原版游戏数据：{failure.Message}"
                     };
 
                     loadingText.text = errorMessage;
+                    Pal3Boot.ReportDataLoadFailure(errorMessage);
                     yield break; // Stop initialization if failed to init file system
                 }
             }

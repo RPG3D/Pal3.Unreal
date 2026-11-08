@@ -4,14 +4,21 @@
 
 #include "Blueprint/UserWidget.h"
 #include "Engine/Engine.h"
+#include "Engine/Font.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
+#include "Misc/ConfigCacheIni.h"
 #include "Misc/FileHelper.h"
+#include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 
 namespace
 {
+constexpr const TCHAR* FontConfigSection = TEXT("RuntimeWidgetLayout.Fonts");
+TMap<FName, FString> FontMappings;
+FString DefaultFontOverride;
+
 URuntimeJsonWidget* CreateWidgetInViewport(UObject* WorldContextObject,
 	const FString& Json, int32 ZOrder, bool bInteractive)
 {
@@ -58,6 +65,60 @@ URuntimeJsonWidget* CreateWidgetInViewport(UObject* WorldContextObject,
 		*PC->GetName(), PC->bShowMouseCursor ? 1 : 0, ZOrder, *Widget->GetPathName());
 	return Widget;
 }
+}
+
+void URuntimeJsonWidgetLibrary::AddFontMapping(FName Alias, const FString& FontAssetPath)
+{
+	if (!Alias.IsNone() && !FontAssetPath.IsEmpty())
+	{
+		FontMappings.Add(Alias, FontAssetPath);
+	}
+}
+
+void URuntimeJsonWidgetLibrary::SetDefaultFont(const FString& AliasOrAssetPath)
+{
+	DefaultFontOverride = AliasOrAssetPath;
+}
+
+UFont* URuntimeJsonWidgetLibrary::ResolveFont(const FString& AliasOrAssetPath)
+{
+	FString Font = AliasOrAssetPath;
+	if (Font.IsEmpty())
+	{
+		Font = DefaultFontOverride;
+		if (Font.IsEmpty())
+		{
+			GConfig->GetString(FontConfigSection, TEXT("Default"), Font, GGameIni);
+		}
+	}
+
+	if (Font.IsEmpty()) return nullptr;
+	if (!Font.Contains(TEXT("/")))
+	{
+		if (const FString* Override = FontMappings.Find(FName(*Font)))
+		{
+			Font = *Override;
+		}
+		else
+		{
+			FString MappedPath;
+			if (!GConfig->GetString(FontConfigSection, *Font, MappedPath, GGameIni)) return nullptr;
+			Font = MoveTemp(MappedPath);
+		}
+	}
+
+	if (FPackageName::IsValidLongPackageName(Font))
+	{
+		Font = FString::Printf(TEXT("%s.%s"), *Font, *FPackageName::GetShortName(Font));
+	}
+	return LoadObject<UFont>(nullptr, *Font, nullptr, LOAD_NoWarn | LOAD_Quiet);
+}
+
+int32 URuntimeJsonWidgetLibrary::ResolveFontSize(int32 LayoutSize)
+{
+	int32 Offset = 0;
+	GConfig->GetInt(FontConfigSection, TEXT("FontSizeOffset"), Offset, GGameIni);
+	return static_cast<int32>(FMath::Clamp<int64>(static_cast<int64>(LayoutSize) + Offset, 1, MAX_int32));
 }
 
 URuntimeJsonWidget* URuntimeJsonWidgetLibrary::CreateJsonWidgetFromFile(UObject* WorldContextObject,

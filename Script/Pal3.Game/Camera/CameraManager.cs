@@ -420,6 +420,9 @@ namespace Pal3.Game.Camera
             return _cameraTransform;
         }
 
+        public bool CanRotateByUser => _cameraFollowPlayer && !_cameraAnimationInProgress && _freeToRotate &&
+            _lookAtGameEntity.IsNullOrDisposed();
+
         private void ApplySceneSettings(ScnSceneInfo sceneInfo,
             int? initTransformOption = null, Quaternion? initRotation = null)
         {

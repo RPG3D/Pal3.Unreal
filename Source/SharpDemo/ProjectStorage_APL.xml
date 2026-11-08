@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root xmlns:android="http://schemas.android.com/apk/res/android">
+    <androidManifestUpdates>
+        <addPermission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+        <addAttribute tag="application" name="android:requestLegacyExternalStorage" value="true" />
+    </androidManifestUpdates>
+    <gameActivityClassAdditions>
+        <insert><![CDATA[
+    public boolean AndroidThunkJava_HasSharedStorageAccess()
+    {
+        if (android.os.Build.VERSION.SDK_INT >= 30)
+            return android.os.Environment.isExternalStorageManager();
+        return checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+            == android.content.pm.PackageManager.PERMISSION_GRANTED;
+    }
+
+    public boolean AndroidThunkJava_RequestSharedStorageAccess()
+    {
+        runOnUiThread(() ->
+        {
+            if (android.os.Build.VERSION.SDK_INT < 30)
+            {
+                requestPermissions(new String[] { android.Manifest.permission.READ_EXTERNAL_STORAGE }, 23814);
+                return;
+            }
+
+            try
+            {
+                startActivity(new android.content.Intent(
+                    android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    android.net.Uri.fromParts("package", getPackageName(), null)));
+            }
+            catch (android.content.ActivityNotFoundException exception)
+            {
+                try
+                {
+                    startActivity(new android.content.Intent(
+                        android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+                }
+                catch (android.content.ActivityNotFoundException unavailable)
+                {
+                    android.util.Log.w("UE", "Shared storage settings are unavailable", unavailable);
+                }
+            }
+        });
+        return true;
+    }
+        ]]></insert>
+    </gameActivityClassAdditions>
+</root>

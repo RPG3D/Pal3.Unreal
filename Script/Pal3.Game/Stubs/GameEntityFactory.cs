@@ -445,10 +445,7 @@ public sealed class TextureCache : ITextureCache
 
     public void DisposeAll()
     {
-        foreach ((ITexture2D texture, _) in _cache.Values)
-        {
-            texture?.Destroy();
-        }
+        // Evict only the cache's references. UI and actors can share these textures.
         _cache.Clear();
     }
 }

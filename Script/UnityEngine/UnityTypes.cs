@@ -447,6 +447,7 @@ namespace UnityEngine
 
         /// <summary>Composite multiplier applied to every PAL3 texture.</summary>
         public static Color SurfaceScale = Color.white;
+        public static Vector3? LocalLightPosition;
 
         public static void Set(Color mainLightColor, float mainLightIntensity,
             Color ambientColor, float ambientIntensity)
@@ -468,7 +469,11 @@ namespace UnityEngine
             SurfaceScale = new Color(Clamp01(r * WarmR), Clamp01(g * WarmG), Clamp01(b * WarmB), 1f);
         }
 
-        public static void Reset() => SurfaceScale = Color.white;
+        public static void Reset()
+        {
+            SurfaceScale = Color.white;
+            LocalLightPosition = null;
+        }
 
         private static float Clamp01(float v) => v < 0f ? 0f : (v > 1f ? 1f : v);
     }

@@ -100,9 +100,11 @@ MyGame.exe -debughangdetection -log
 
 主菜单布局位于 `Script/ManagedSharpDemo/Layouts/Pal3StartMenu.json`。首页、场景、剧情和存读档是 `menu_pages` 下的四个页面。布局模块将 `type: "switcher"` 创建为 UMG `WidgetSwitcher`，C# 通过 `SetSwitcherPage(switcherId, pageId)` 选择直接子页，并更新按钮文字和可见性。
 
+文本和按钮的 `fontAsset` 可填写字体别名（如 `FZWB`）、包路径（如 `/Game/PAL3/Fonts/Pal3Weibei_Font`）或完整对象路径。省略时使用 `DefaultGame.ini` 中 `[RuntimeWidgetLayout.Fonts]` 的 `Default`。同一配置段的 `FontSizeOffset` 会加到每个 JSON 文本和按钮标签的字号上，当前为 `2`。C# 和蓝图可用 `AddFontMapping` 注册或覆盖别名。蓝图用 `SetDefaultFont`，C# 给 `DefaultFont` 属性赋值。运行时设置影响随后创建的控件。字体资产未安装时回退到 UE 默认字体。
+
 该布局目录通过 `DirectoriesToAlwaysStageAsUFS` 随 UE 打包。C# 向 `CreateJsonWidgetFromFile` 传相对项目根目录的路径，由 UE 文件层读取开发目录或已挂载 Pak。开发时 `PAL3_MENU_LAYOUT` 也可指定绝对路径。
 
-JSON 作为独立源文件维护，构建时嵌入程序集。调布局时，可以在启动 UE 的 PowerShell 里设置文件覆盖路径，然后重新打开游戏内菜单或重进 PIE 来读取修改。调整位置和样式时保留现有 ID，C# 用这些 ID 绑定按钮和数据。修改 JSON 只需要发布托管代码。若新增或修改原生 `UFUNCTION`，先重编原生模块并更新绑定。增量构建漏发 `RuntimeWidgetLayout.dll` 时按[构建说明](../README.md#windows-开发启动)单独发布 glue。
+布局作为独立 JSON 文件发布。开发环境修改后，重新创建对应控件即可读取新文件，例如关闭并重开主菜单，或重新进入 PIE。调整位置和样式时保留现有 ID，C# 用这些 ID 绑定按钮和数据。更新 APK 里的布局时，重新 Stage 并打包 UFS 文件。若新增或修改原生 `UFUNCTION`，先重编原生模块并更新绑定。增量构建漏发 `RuntimeWidgetLayout.dll` 时按[构建说明](../README.md#windows-开发启动)单独发布 glue。
 
 ```powershell
 $env:PAL3_MENU_LAYOUT = 'D:/UEProject/SharpDemo/Script/ManagedSharpDemo/Layouts/Pal3StartMenu.json'
@@ -129,6 +131,7 @@ $env:PAL3_AUTOMATION_DIR = 'D:/UEProject/SharpDemo/Saved/Pal3Automation'
 ```
 
 - `status` 包括 PAL3 场景、主线变量、队伍、玩家地块和动作、当前对白，以及待运行和运行中的脚本。每条脚本带最近命令、字节偏移和当前 waiter。
+- PAL3 尚未启动时，`status` 返回 `bootError` 和 `storagePermissionRequired`。补齐数据或授权后，可用 `retry-boot` 调用与启动界面「重试」共用的入口。
 - 菜单切图、剧情跳转、读档和剧情脚本切图使用分帧加载。UE 游戏线程逐批创建纹理、网格、角色和物件，单帧分配约 8 ms，单个批次可能超出预算。加载期间 JSON UMG 显示当前阶段。
 - `scene`、`checkpoint` 和 `load` 返回时可能仍在加载。用 `status` 读取 `loadingScene`、`loadingPhase`、`loadingProgress` 和 `sceneLoadError`，或用 `wait -State Gameplay -City <city> -Scene <scene>` 等待可操作场景。进度条按阶段及已处理的批次推进。日志中的 `Scene loaded across` 记录帧数、总耗时和最慢批次。
 - `wait` 可按状态、场景、脚本 ID、最近命令、waiter、玩家动作和对白子串等待。它轮询当前状态，已经结束的短动作需要在发生前开始等待。`advance` 等效于一次手动继续，遇到打字动画可能先补全文字。
@@ -141,7 +144,7 @@ $env:PAL3_AUTOMATION_DIR = 'D:/UEProject/SharpDemo/Saved/Pal3Automation'
 独立游戏启动时加 `-RCWebControlEnable`。客户端指定活动世界里的 `APal3Driver` 对象路径，通过 UE RC 的 `/remote/object/call` 调托管 `ExecutePal3Command`。以下为独立运行的对象路径示例。PIE 使用其活动世界的对象路径。
 
 ```powershell
-$driver = '/Game/Maps/LV_Pal3.LV_Pal3:PersistentLevel.Pal3Driver_C_0'
+$driver = '/Game/PAL3/Maps/LV_Pal3.LV_Pal3:PersistentLevel.Pal3Driver_C_0'
 .\tools\pal3-play.ps1 checkpoint 1 -ObjectPath $driver
 .\tools\pal3-play.ps1 wait -State Gameplay -ObjectPath $driver
 .\tools\pal3-play.ps1 move 'right 0.75' -ObjectPath $driver
@@ -150,7 +153,11 @@ $driver = '/Game/Maps/LV_Pal3.LV_Pal3:PersistentLevel.Pal3Driver_C_0'
 .\tools\pal3-play.ps1 status -ObjectPath $driver
 ```
 
-`move` 将限时的相机相对方向交给 PAL3 移动逻辑，使用导航和动作切换，最多 5 秒。`interact` 走 PAL3 的玩家交互命令，`advance` 直接通知对白和字幕服务。三者均通过游戏命令执行。景天的位置和 `playerHasControl` 可从 `status` 读取。PIE 路径示例为 `/Game/Maps/UEDPIE_0_LV_Pal3.LV_Pal3:PersistentLevel.Pal3Driver_C_0`，多实例以当前世界的实际对象路径为准。RC 默认端口为 30010，运行多个进程时分别设置端口并传 `-RemoteUrl`。
+`move` 将限时的相机相对方向交给 PAL3 移动逻辑，使用导航和动作切换，最多 5 秒。`interact` 走 PAL3 的玩家交互命令，`advance` 直接通知对白和字幕服务。三者均通过游戏命令执行。景天的位置和 `playerHasControl` 可从 `status` 读取。PIE 路径示例为 `/Game/PAL3/Maps/UEDPIE_0_LV_Pal3.LV_Pal3:PersistentLevel.Pal3Driver_C_0`，多实例以当前世界的实际对象路径为准。RC 默认端口为 30010，运行多个进程时分别设置端口并传 `-RemoteUrl`。
+
+`rotate-camera 'right 0.5'` 使用与镜头摇杆共用的输入路径，向右转半秒。也可传 `left`，最长 5 秒。`status` 中的 `cameraCanRotate` 和 `cameraYaw` 用来确认机位是否允许旋转以及实际转过的角度。
+
+启用移动端触控布局后，`touch-sticks true` 可将两个摇杆设为全透明，`touch-sticks false` 恢复半透明显示。
 
 ### 回归原版剧情选项
 
@@ -201,6 +208,8 @@ $driver = '/Game/Maps/LV_Pal3.LV_Pal3:PersistentLevel.Pal3Driver_C_0'
 | `[Pal3Driver] ... audio=...` | `decoded` 和 `failed` 为累计计数，`active` 为音频实例数，`pcmBytes` 为这些活跃实例的 PCM 字节数 |
 
 在同一场景状态取基线，重复进出菜单、移动或切图后回到同样状态，再抓完整堆快照和进程私有提交量。CSV 中的 `bytes` 为对象自身占用，用于按类型对比。Windows 可用 `Get-Process -Id <PID>` 读取 `PrivateMemorySize64`，再与 UE 的 `memreport -full`、`obj list class=AudioComponent` 等原生诊断交叉检查。托管堆持平但进程提交量继续增长时，优先查原生对象、缓冲和绑定参数的生命周期。
+
+切换 PAL3 地图时，旧场景销毁后会清空资源缓存。当前界面、角色和音乐播放器仍可持有各自使用中的资源。UE 版按条目读取 CPK，避免整包常驻。用 `scene` 往返两个地图，在同一个地图比较日志 `[Pal3Driver]` 的 `retained` 和 `pendingRelease`。`retained` 是仍由托管侧持有的动态贴图和材质数，`pendingRelease` 是正在等待渲染线程完成的引用数。两者与 `texCreated` 的累计计数口径不同。原生对象最终由 UE GC 回收。
 
 Mono 日志默认使用 `warning`。在开发构建的启动命令行加 `-MonoTraceDebug` 可追踪装载和 GC 细节。
 

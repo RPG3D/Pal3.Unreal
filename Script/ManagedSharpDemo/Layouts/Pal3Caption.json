@@ -1,0 +1,7 @@
+{
+  "root": { "type": "canvas", "children": [
+    { "type": "border", "anchor": "full", "color": [0, 0, 0, 1] },
+    { "type": "image", "id": "caption", "anchor": "center", "position": [150, 0],
+      "size": [980, 620], "preserveAspect": true }
+  ]}
+}

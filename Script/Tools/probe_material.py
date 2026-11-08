@@ -1,5 +1,5 @@
 import unreal
-MAT_PATH = "/Game/Pal3/M_Pal3Tex"
+MAT_PATH = "/Game/PAL3/M_Pal3Tex"
 lines = []
 if unreal.EditorAssetLibrary.does_asset_exist(MAT_PATH):
     mat = unreal.EditorAssetLibrary.load_asset(MAT_PATH)

@@ -83,6 +83,9 @@ namespace Pal3.Game
             _probeLifetime = 0f;
             _summaryLogged = false;
             _fullBootStarted = false;
+            _resourceInitializer = null;
+            BootError = null;
+            StoragePermissionRequired = false;
             s_InputActions = null;
             WaitingForMenuStart = false;
             IsGameReady = false;
@@ -117,8 +120,15 @@ namespace Pal3.Game
             // Singleton services last (Pal3Game, ServiceLocator) — they are rebuilt
             // lazily by the upcoming boot.
             Engine.Utilities.SessionStateRegistry.ResetAll();
+            ReleaseTransientAssets();
 
             Debug.Log("[Pal3Boot] Session state reset (PIE restart safe)");
+        }
+
+        public static void ReleaseTransientAssets()
+        {
+            UnityMaterial.ReleaseSharedAssets();
+            Pal3TransientAssets.ReleaseSession();
         }
 
         /// <summary>Starts the lifecycle/coroutine smoke probe. Call from the UE driver actor.</summary>
@@ -183,8 +193,12 @@ namespace Pal3.Game
         /// PAL3_DATA_PATH environment variable.
         /// </summary>
         private const string DefaultDataPath = @"E:\Program Files (x86)\Steam\steamapps\common\PAL3\";
+        private const string AndroidDataPath = "/sdcard/Download/PAL3";
 
         private static bool _fullBootStarted;
+        private static IGameEntity? _resourceInitializer;
+        public static string? BootError { get; private set; }
+        public static bool StoragePermissionRequired { get; private set; }
 
         /// <summary>
         /// Boots the real game: GameResourceInitializer mounts the CPK file system
@@ -230,10 +244,29 @@ namespace Pal3.Game
         public static void RunFullBoot()
         {
             if (_fullBootStarted) return;
-            _fullBootStarted = true;
 
             string dataPath = Environment.GetEnvironmentVariable("PAL3_DATA_PATH");
-            if (string.IsNullOrEmpty(dataPath)) dataPath = DefaultDataPath;
+            bool isAndroid = UnrealSharp.Engine.UGameplayStatics.PlatformName == "Android";
+            if (string.IsNullOrWhiteSpace(dataPath)) dataPath = isAndroid ? AndroidDataPath : DefaultDataPath;
+
+            StoragePermissionRequired = isAndroid && dataPath == AndroidDataPath &&
+                !UnrealSharp.SharpDemo.UProjectStorageLibrary.HasSharedStorageAccess();
+            if (StoragePermissionRequired)
+            {
+                BootError = "读取 Download/PAL3 需要文件访问权限。请点击「去授权」。";
+                return;
+            }
+
+            if (isAndroid && dataPath == AndroidDataPath &&
+                !System.IO.File.Exists(System.IO.Path.Combine(dataPath, FileConstants.BaseDataCpkFileRelativePath)))
+            {
+                BootError = "找不到 Download/PAL3/basedata/basedata.cpk。请放入原版游戏数据后重试。";
+                return;
+            }
+
+            _fullBootStarted = true;
+            BootError = null;
+            _resourceInitializer?.Destroy();
 
             Debug.Log($"[Pal3Boot] Full boot starting, game data folder: {dataPath}");
 
@@ -250,6 +283,7 @@ namespace Pal3.Game
             UnityEngine.Object.InstantiateHook = InstantiateHook;
 
             IGameEntity entity = GameEntityFactory.Create("GameResourceInitializer");
+            _resourceInitializer = entity;
             GameResourceInitializer initializer = entity.AddComponent<GameResourceInitializer>();
 
             // Stand-in for the Unity "starting component" prefab: a stub GameObject
@@ -261,6 +295,13 @@ namespace Pal3.Game
                 .GetField("startingComponent",
                     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
                 ?.SetValue(initializer, startingPrefab);
+        }
+
+        internal static void ReportDataLoadFailure(string message)
+        {
+            BootError = message;
+            _fullBootStarted = false;
+            Debug.LogWarning($"[Pal3Boot] {message}");
         }
 
         /// <summary>
@@ -290,10 +331,6 @@ namespace Pal3.Game
                         object component = TryGetEngineSingleton(scriptType)
                             ?? Activator.CreateInstance(scriptType, nonPublic: true)!;
                         GameEntityScriptRuntime.Activate(component);
-                        if (component is Pal3Game)
-                        {
-                            OnGameSingletonReady();
-                        }
                     }
                 }
                 return new GameObject(prefab.name);
@@ -322,13 +359,16 @@ namespace Pal3.Game
         /// and enter the game exactly like <c>MainMenu.StartNewGame()</c> does. This is
         /// the headless verifier for the port.
         /// </summary>
-        private static void OnGameSingletonReady()
+        internal static void OnGameSingletonReady()
         {
             IsGameReady = true;
+            _resourceInitializer = null;
             // Pal3Game.Update/LateUpdate are dispatched by GameEntityScriptRuntime's
             // active-script loop (Activate registered the singleton); no extra hook.
 
-            if (Environment.GetEnvironmentVariable("PAL3_AUTOSTART") == "1" && StartNewGameNow())
+            bool autostart = Environment.GetEnvironmentVariable("PAL3_AUTOSTART") == "1" ||
+                UnrealSharp.Engine.SystemLibrary.ParseParam(UnrealSharp.Engine.SystemLibrary.CommandLine, "PAL3Autostart");
+            if (autostart && StartNewGameNow())
             {
                 AutoDialogueEnabled = true;
                 return;

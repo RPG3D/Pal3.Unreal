@@ -12,6 +12,7 @@ namespace Pal3.Game.GamePlay
     using Core.Contract.Constants;
     using Core.Contract.Enums;
     using Core.DataReader.Nav;
+    using Core.Primitives;
     using Engine.Animation;
     using Engine.Core.Abstraction;
     using Engine.Core.Implementation;
@@ -31,6 +32,92 @@ namespace Pal3.Game.GamePlay
         private const float MAX_JUMP_DISTANCE = 8f;
         private const float MAX_JUMP_Y_DIFFERENTIAL = 3.5f;
         private const float JUMP_HEIGHT = 6f;
+
+        private bool TryCrossRiver()
+        {
+            if (!TryGetRiverLanding(out Vector2Int landing, out int layer)) return false;
+
+            var movement = _playerActorMovementController;
+            Vector3 position = _sceneManager.GetCurrentScene().GetTilemap().GetWorldPosition(landing, layer);
+            Vector3 direction = position - movement.GetWorldPosition();
+            direction.y = 0f;
+            movement.CancelMovement();
+            _playerActorGameEntity.Transform.Forward = direction.normalized;
+            _playerActorGameEntity.Transform.Position = position;
+            _playerActorActionController.PerformAction(ActorActionType.Stand);
+            return true;
+        }
+
+        public Vector3? GetRiverCrossingHint()
+        {
+            if (!TryGetRiverLanding(out _, out _)) return null;
+            var bounds = _playerActorActionController.GetRendererBounds();
+            return bounds.center + Vector3.up * (bounds.extents.y + .25f);
+        }
+
+        private bool TryGetRiverLanding(out Vector2Int landing, out int layer)
+        {
+            landing = default;
+            layer = 0;
+            var scene = _sceneManager.GetCurrentScene();
+            if (scene == null || _sceneManager.IsLoading || _playerActorGameEntity.IsNullOrDisposed() ||
+                _gameStateManager.GetCurrentState() != GameState.Gameplay ||
+                !scene.GetSceneInfo().IsCity("m01")) return false;
+
+            layer = _playerActorMovementController.GetCurrentLayerIndex();
+            Vector2Int origin = _playerActorMovementController.GetTilePosition();
+            Tilemap tilemap = scene.GetTilemap();
+            if (!tilemap.TryGetTile(origin, layer, out var originTile) || !originTile.IsWalkable()) return false;
+
+            float bestDistance = MAX_JUMP_DISTANCE * MAX_JUMP_DISTANCE;
+            bool found = false;
+            foreach (int id in scene.GetAllActivatedSceneObjects())
+            {
+                var info = scene.GetSceneObject(id).ObjectInfo;
+                GameBoxRect rect = info.TileMapTriggerRect;
+                if (info.Type != SceneObjectType.JumpableArea || info.LayerIndex != layer ||
+                    !rect.IsPointInsideRect(origin.x, origin.y)) continue;
+
+                // Each SCN region spans a short stretch of river. Flood its walkable
+                // cells to exclude the bank the player is already standing on.
+                var reachable = new HashSet<Vector2Int> { origin };
+                var pending = new Queue<Vector2Int>();
+                pending.Enqueue(origin);
+                while (pending.TryDequeue(out var tile))
+                {
+                    foreach (var offset in RiverWalkOffsets)
+                    {
+                        var next = tile + offset;
+                        if (rect.IsPointInsideRect(next.x, next.y) &&
+                            tilemap.TryGetTile(next, layer, out var step) && step.IsWalkable() && reachable.Add(next))
+                            pending.Enqueue(next);
+                    }
+                }
+
+                Vector3 start = tilemap.GetWorldPosition(origin, layer);
+                for (int y = rect.Top; y <= rect.Bottom; y++)
+                for (int x = rect.Left; x <= rect.Right; x++)
+                {
+                    var candidate = new Vector2Int(x, y);
+                    if (reachable.Contains(candidate) || !tilemap.TryGetTile(candidate, layer, out var tile) ||
+                        !tile.IsWalkable() || tile.DistanceToNearestObstacle < 2) continue;
+                    Vector3 delta = tilemap.GetWorldPosition(candidate, layer) - start;
+                    if (MathF.Abs(delta.y) > MAX_JUMP_Y_DIFFERENTIAL) continue;
+                    float distance = delta.x * delta.x + delta.z * delta.z;
+                    if (distance < MIN_JUMP_DISTANCE * MIN_JUMP_DISTANCE || distance >= bestDistance) continue;
+                    bestDistance = distance;
+                    landing = candidate;
+                    found = true;
+                }
+            }
+
+            return found;
+        }
+
+        private static readonly Vector2Int[] RiverWalkOffsets =
+        {
+            new(1, 0), new(-1, 0), new(0, 1), new(0, -1)
+        };
 
         private int _jumpableAreaEnterCount;
 

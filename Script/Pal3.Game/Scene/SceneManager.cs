@@ -373,6 +373,7 @@ namespace Pal3.Game.Scene
 
         private void DisposeCurrentScene(bool notifyLeaving = true)
         {
+            bool hadScene = _currentSceneRoot != null || _currentCombatSceneRoot != null;
             _temporarilyDisabledRenderers.Clear();
             _temporarilyDisabledGameObjects.Clear();
 
@@ -389,11 +390,20 @@ namespace Pal3.Game.Scene
                 _currentCombatScene = null;
             }
 
+            if (_currentCombatSceneRoot != null)
+            {
+                _currentCombatSceneRoot.Destroy();
+                _currentCombatSceneRoot = null;
+            }
+
             if (_currentSceneRoot != null)
             {
                 _currentSceneRoot.Destroy();
                 _currentSceneRoot = null;
             }
+
+            _resourceProvider.ClearSceneCaches();
+            if (hadScene) Pal3TransientAssets.CollectAfterSceneUnload();
         }
 
         public void Execute(SceneLoadCommand command) => BeginLoadScene(command.SceneCityName, command.SceneName);

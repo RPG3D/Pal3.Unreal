@@ -200,6 +200,7 @@ namespace Engine.Core.Implementation
                 // (Unity semantics: outer resumes the same frame the inner ends).
                 if (r.Callers.Count > 0)
                 {
+                    _byEnumerator.Remove(r.Current);
                     r.Current = r.Callers.Pop();
                     continue;
                 }

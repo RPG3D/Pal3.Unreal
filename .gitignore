@@ -89,6 +89,10 @@ Plugins/UnrealSharp/
 
 Content/ParagonShinbi/
 
+# Locally supplied PAL3 font and its generated composite asset.
+/Content/PAL3/Fonts/Pal3Weibei.uasset
+/Content/PAL3/Fonts/Pal3Weibei_Font.uasset
+
 # Don't include launchSettings (contains local dev paths)
 /Script/Properties/launchSettings.json
 /Script/ProjectGlue
@@ -111,6 +115,7 @@ Content/ParagonShinbi/
 /Automation_SharpDemo.sln
 /Automation_SharpDemo.slnx
 /SharpDemo.slnx
+/SharpDemo.mixed.slnx
 /SharpDemo.code-workspace
 /Script/ManagedSharpDemo.sln.DotSettings.user
 /Script/ManagedSharpDemo.sln.bak

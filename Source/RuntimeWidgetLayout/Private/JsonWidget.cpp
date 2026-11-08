@@ -1,8 +1,10 @@
 // JsonWidget.cpp — JSON → UMG tree builder.
 #include "JsonWidget.h"
 #include "JsonButton.h"
+#include "JsonWidgetLibrary.h"
 
 #include "Blueprint/WidgetTree.h"
+#include "Engine/Font.h"
 #include "Blueprint/SlateBlueprintLibrary.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
 #include "Components/Border.h"
@@ -10,6 +12,8 @@
 #include "Components/CanvasPanelSlot.h"
 #include "Components/Image.h"
 #include "Components/ProgressBar.h"
+#include "Components/ScaleBox.h"
+#include "Components/ScrollBox.h"
 #include "Components/TextBlock.h"
 #include "Components/WidgetSwitcher.h"
 #include "Dom/JsonObject.h"
@@ -194,7 +198,12 @@ namespace
 		Text->SetAutoWrapText(bWrap);
 
 		FSlateFontInfo Font = Text->GetFont();
-		Font.Size = (int32)GetNumber(Element, TEXT("fontSize"), Font.Size);
+		Font.Size = URuntimeJsonWidgetLibrary::ResolveFontSize((int32)GetNumber(Element, TEXT("fontSize"), Font.Size));
+		if (UFont* FontAsset = URuntimeJsonWidgetLibrary::ResolveFont(GetString(Element, TEXT("fontAsset"))))
+		{
+			Font.FontObject = FontAsset;
+			Font.TypefaceFontName = NAME_None;
+		}
 		Text->SetFont(Font);
 
 		FLinearColor Color(1.0f, 1.0f, 1.0f, 1.0f);
@@ -350,6 +359,7 @@ bool URuntimeJsonWidget::SetElementText(const FString& ElementId, const FString&
 	if (UTextBlock* TextBlock = Cast<UTextBlock>(Element))
 	{
 		TextBlock->SetText(FText::FromString(Text));
+		if (UScrollBox* ScrollBox = Cast<UScrollBox>(TextBlock->GetParent())) ScrollBox->ScrollToStart();
 		return true;
 	}
 	return false;
@@ -411,12 +421,22 @@ bool URuntimeJsonWidget::SetSwitcherPage(const FString& SwitcherId, const FStrin
 	return true;
 }
 
+bool URuntimeJsonWidget::SetElementRenderOpacity(const FString& ElementId, float Opacity)
+{
+	if (UWidget* Element = ElementsById.FindRef(ElementId).Get())
+	{
+		Element->SetRenderOpacity(FMath::Clamp(Opacity, 0.f, 1.f));
+		return true;
+	}
+	return false;
+}
+
 bool URuntimeJsonWidget::SetElementVisible(const FString& ElementId, bool bVisible)
 {
 	if (UWidget* Element = ElementsById.FindRef(ElementId).Get())
 	{
 		Element->SetVisibility(bVisible
-			? (Element->IsA<UButton>() ? ESlateVisibility::Visible : ESlateVisibility::SelfHitTestInvisible)
+			? (Element->IsA<UButton>() || Element->IsA<UScrollBox>() ? ESlateVisibility::Visible : ESlateVisibility::SelfHitTestInvisible)
 			: ESlateVisibility::Collapsed);
 		return true;
 	}
@@ -434,6 +454,7 @@ bool URuntimeJsonWidget::SetElementImage(const FString& ElementId, UTexture2D* T
 			Brush.SetResourceObject(Texture);
 			Brush.DrawAs = ESlateBrushDrawType::Image;
 			Brush.SetUVRegion(FBox2f(FVector2f(U0, V0), FVector2f(U1, V1)));
+			Brush.SetImageSize(FVector2D(Texture->GetSizeX() * (U1 - U0), Texture->GetSizeY() * (V1 - V0)));
 		}
 		else
 		{
@@ -526,7 +547,28 @@ UWidget* URuntimeJsonWidget::BuildElement(const TSharedPtr<FJsonObject>& Element
 	}
 	else if (Type.Equals(TEXT("image"), ESearchCase::IgnoreCase))
 	{
-		Result = Tree->ConstructWidget<UImage>(UImage::StaticClass());
+		UImage* Image = Tree->ConstructWidget<UImage>(UImage::StaticClass());
+		bool bPreserveAspect = false;
+		Element->TryGetBoolField(TEXT("preserveAspect"), bPreserveAspect);
+		if (bPreserveAspect)
+		{
+			UScaleBox* ScaleBox = Tree->ConstructWidget<UScaleBox>(UScaleBox::StaticClass());
+			ScaleBox->SetStretch(EStretch::ScaleToFit);
+			ScaleBox->AddChild(Image);
+			if (!Id.IsEmpty()) ElementsById.Add(Id, Image);
+			return ScaleBox;
+		}
+		Result = Image;
+	}
+	else if (Type.Equals(TEXT("scrollbox"), ESearchCase::IgnoreCase))
+	{
+		UScrollBox* ScrollBox = Tree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
+		const TSharedPtr<FJsonObject>* ChildField = nullptr;
+		if (Element->TryGetObjectField(TEXT("child"), ChildField) && ChildField)
+		{
+			if (UWidget* Child = BuildElement(*ChildField, Tree)) ScrollBox->AddChild(Child);
+		}
+		Result = ScrollBox;
 	}
 	else if (Type.Equals(TEXT("button"), ESearchCase::IgnoreCase))
 	{

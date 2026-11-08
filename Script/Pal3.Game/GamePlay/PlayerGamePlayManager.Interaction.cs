@@ -51,6 +51,8 @@ namespace Pal3.Game.GamePlay
 
         public void Execute(PlayerInteractionRequest _)
         {
+            if (TryCrossRiver()) return;
+
             if (IsPlayerActorInsideJumpableArea())
             {
                 Pal3Game.Instance.StartCoroutine(JumpAsync());
