@@ -114,6 +114,13 @@ namespace Pal3.Core.FileSystem
                 $"The file <{fileVirtualPath}> does not exist in any of the CPK archives");
         }
 
+        public void CopyTo(string fileVirtualPath, Stream destination)
+        {
+            if (!FileExistsInternal(fileVirtualPath, out uint crc, out string archiveName))
+                throw new FileNotFoundException($"The file <{fileVirtualPath}> does not exist in any of the CPK archives");
+            _cpkArchives[archiveName].CopyTo(crc, destination);
+        }
+
         private bool FileExistsInternal(string fileVirtualPath,
             out uint filePathCrcHash,
             out string archiveName)

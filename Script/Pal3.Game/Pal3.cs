@@ -59,7 +59,6 @@ namespace Pal3.Game
     using UnityEngine.InputSystem.LowLevel;
     using UnityEngine.Rendering.PostProcessing;
     using UnityEngine.UI;
-    using UnityEngine.Video;
     using Video;
     using PostProcessManager = Effect.PostProcessing.PostProcessManager;
 
@@ -78,10 +77,6 @@ namespace Pal3.Game
 
         // Audio
         [SerializeField] private AudioSource musicSource;
-
-        // Video
-        [SerializeField] private Canvas videoPlayerCanvas;
-        [SerializeField] private VideoPlayer videoPlayer;
 
         // Information
         [SerializeField] private CanvasGroup noteCanvasGroup;
@@ -300,9 +295,7 @@ namespace Pal3.Game
             ServiceLocator.Instance.Register(_videoManager =
                 new VideoManager(_gameResourceProvider,
                     _gameStateManager,
-                    _inputActions,
-                    videoPlayerCanvas,
-                    videoPlayer)
+                    _inputActions)
             );
 
             ServiceLocator.Instance.Register(_audioManager =

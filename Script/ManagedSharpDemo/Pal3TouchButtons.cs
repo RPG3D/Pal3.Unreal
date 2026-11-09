@@ -10,7 +10,7 @@ namespace ManagedSharpDemo;
 internal sealed class Pal3TouchButtons : IDisposable
 {
     private URuntimeJsonWidget? _widget;
-    private (bool Menu, bool Interact, bool Continue) _visible;
+    private (bool Menu, bool Interact, bool Continue, bool Skip) _visible;
 
     public const string Menu = "touch_menu";
     public const string Interact = "touch_interact";
@@ -25,7 +25,7 @@ internal sealed class Pal3TouchButtons : IDisposable
         {
             Menu when _visible.Menu => id,
             ActionButton when _visible.Interact => Interact,
-            ActionButton when _visible.Continue => Continue,
+            ActionButton when _visible.Continue || _visible.Skip => Continue,
             _ => ""
         };
     }
@@ -35,25 +35,28 @@ internal sealed class Pal3TouchButtons : IDisposable
         if (!Pal3TouchStick.IsSupported) return;
 
         var services = ServiceLocator.Instance;
-        GameState? state = !inputBlocked && Pal3Boot.IsGameReady && !Pal3Boot.WaitingForMenuStart &&
+        GameState? state = !inputBlocked && Pal3Boot.IsGameReady &&
             !services.Get<SceneManager>().IsLoading
             ? services.Get<GameStateManager>().GetCurrentState() : null;
+        if (Pal3Boot.WaitingForMenuStart && state != GameState.VideoPlaying) state = null;
         var visible = (Menu: state is GameState.Gameplay or GameState.Cutscene or GameState.Combat,
             Interact: state == GameState.Gameplay && Pal3Boot.HasPlayerControl(),
-            Continue: state == GameState.Cutscene);
+            Continue: state == GameState.Cutscene,
+            Skip: state == GameState.VideoPlaying);
         if (_visible == visible) return;
 
         if (_widget == null)
         {
-            _widget = Pal3UiLayout.Create("Pal3TouchButtons", 80);
+            // Keep Skip above the shared loading screen while a video is being prepared.
+            _widget = Pal3UiLayout.Create("Pal3TouchButtons", 130);
             if (_widget == null) return;
         }
 
         _visible = visible;
         _widget.SetElementVisible(Menu, visible.Menu);
-        _widget.SetElementVisible(ActionButton, visible.Interact || visible.Continue);
-        _widget.SetElementText(ActionButton, visible.Continue ? "继续" : "交互");
-        _widget.Visibility = visible.Menu ? ESlateVisibility.SelfHitTestInvisible : ESlateVisibility.Collapsed;
+        _widget.SetElementVisible(ActionButton, visible.Interact || visible.Continue || visible.Skip);
+        _widget.SetElementText(ActionButton, visible.Skip ? "跳过" : visible.Continue ? "继续" : "交互");
+        _widget.Visibility = visible.Menu || visible.Skip ? ESlateVisibility.SelfHitTestInvisible : ESlateVisibility.Collapsed;
     }
 
     public void Dispose()

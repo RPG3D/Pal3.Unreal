@@ -45,6 +45,11 @@ namespace ManagedSharpDemo
             bool tab = toggleRequested || pc.WasInputKeyJustPressed(Keys.Tab);
             GameState? state = Pal3Boot.IsGameReady
                 ? ServiceLocator.Instance.Get<GameStateManager>().GetCurrentState() : null;
+            if (state == GameState.VideoPlaying)
+            {
+                Close(pc);
+                return false;
+            }
             bool canTransition = atTitle || state == GameState.Gameplay;
             bool canOpen = canTransition || state is GameState.Cutscene or GameState.Combat;
             if (!canOpen)

@@ -15,6 +15,7 @@ using Engine.Extensions;
 using Engine.Services;
 using Pal3.Game;
 using Pal3.Game.Camera;
+using Pal3.Game.State;
 using UnrealSharp.InputCore;
 
 namespace ManagedSharpDemo
@@ -233,6 +234,7 @@ namespace ManagedSharpDemo
         public override void EndPlay(EEndPlayReason endPlayReason)
         {
             _automation.Stop();
+            if (Pal3Boot.IsGameReady) ServiceLocator.Instance.Get<Pal3.Game.Video.VideoManager>().Dispose();
             UnrealSharp.SharpDemo.UPal3AudioHelper.StopAllAudio();
             _dialogueChoices.Dispose();
             _touchStick.Dispose();
@@ -274,7 +276,14 @@ namespace ManagedSharpDemo
                 _lastCameraScroll = scroll;
             }
 
-            if (!menuHasInput)
+            if (!menuHasInput && Pal3Boot.IsGameReady &&
+                ServiceLocator.Instance.Get<GameStateManager>().GetCurrentState() == GameState.VideoPlaying)
+            {
+                if (touchClick == Pal3TouchButtons.Continue || pc.WasInputKeyJustPressed(Keys.Escape) ||
+                    pc.WasInputKeyJustPressed(Keys.SpaceBar) || pc.WasInputKeyJustPressed(Keys.Enter))
+                    actions.VideoPlaying.SkipVideo.SimulatePerformed();
+            }
+            else if (!menuHasInput)
             {
                 if (touchClick == Pal3TouchButtons.Continue ||
                     pc.WasInputKeyJustPressed(UnrealSharp.InputCore.Keys.SpaceBar) ||

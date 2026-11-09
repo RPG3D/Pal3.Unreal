@@ -16,6 +16,11 @@
 			"Name": "RuntimeWidgetLayout",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "RuntimeBinkVideo",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
 		}
 	],
 	"Plugins": [
@@ -37,6 +42,13 @@
 		{
 			"Name": "RemoteControl",
 			"Enabled": true
+		},
+		{
+			"Name": "ElectraPlayer",
+			"Enabled": true,
+			"PlatformAllowList": [
+				"Android"
+			]
 		},
 		{
 			"Name": "Bridge",

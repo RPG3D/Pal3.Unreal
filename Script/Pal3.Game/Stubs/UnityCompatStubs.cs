@@ -758,32 +758,6 @@ namespace UnityEngine.Rendering
     public enum CompareFunction { Disabled = 0, Never = 1, Less = 2, Equal = 3, LessEqual = 4, Greater = 5, NotEqual = 6, GreaterEqual = 7, Always = 8 }
 }
 
-namespace UnityEngine.Video
-{
-    public class VideoPlayer
-    {
-        public bool isPlaying;
-        public bool isPrepared;
-        public bool isLooping;
-        public bool waitForFirstFrame;
-        public string url = "";
-        public long frame;
-        public RenderTexture? targetTexture;
-        public uint width;
-        public uint height;
-
-        public event Action<VideoPlayer>? loopPointReached;
-        public event Action<VideoPlayer>? started;
-        public event Action<VideoPlayer>? prepared;
-        public event Action<VideoPlayer>? errorReceived;
-
-        public void Play() { isPlaying = true; }
-        public void Stop() { isPlaying = false; }
-        public void Pause() { }
-        public void Prepare() { isPrepared = true; }
-    }
-}
-
 namespace UnityEngine.Events
 {
     public delegate void UnityAction();
@@ -1844,11 +1818,6 @@ namespace Pal3.Game.Data
         }
     }
 
-    public static class UnitySupportedVideoFormats
-    {
-        public static HashSet<string> GetSupportedVideoFormats(UnityEngine.RuntimePlatform platform)
-            => new HashSet<string> { ".mp4", ".mov", ".webm" };
-    }
 }
 
 namespace Pal3.Game.Settings

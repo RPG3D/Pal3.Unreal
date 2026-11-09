@@ -510,29 +510,70 @@ namespace Pal3.Game.Data
             }
         }
 
-        public string GetVideoFilePath(string videoName)
+        public string GetVideoCachePath(string videoName)
         {
-            string videoFolder = $"{_fileSystem.GetRootPath()}{FileConstants.MovieFolderName}{Path.DirectorySeparatorChar}";
+            if (string.IsNullOrEmpty(videoName) ||
+                !videoName.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'))
+                throw new ArgumentException($"Invalid video name: {videoName}", nameof(videoName));
 
-            if (!Directory.Exists(videoFolder))
+            return Path.Combine(Application.persistentDataPath, "Movies", videoName.ToLowerInvariant() + ".mp4");
+        }
+
+        public (string Path, bool NeedsConversion) PrepareVideoSource(string videoName, string cachePath)
+        {
+            string movieFolder = Path.Combine(_fileSystem.GetRootPath(), FileConstants.MovieFolderName);
+            if (Directory.Exists(movieFolder))
             {
-                throw new DirectoryNotFoundException($"Video directory does not exists: {videoFolder}");
+                string? readyVideo = Directory.EnumerateFiles(movieFolder, "*", SearchOption.AllDirectories)
+                    .FirstOrDefault(file => Path.GetFileNameWithoutExtension(file).Equals(videoName, StringComparison.OrdinalIgnoreCase) &&
+                        Path.GetExtension(file).ToLowerInvariant() is ".mp4" or ".mov" or ".webm");
+                if (readyVideo != null) return (readyVideo, false);
             }
 
-            HashSet<string> supportedVideoFormats = UnitySupportedVideoFormats.GetSupportedVideoFormats(Application.platform);
+            return (StageOriginalVideo(videoName, cachePath, movieFolder), true);
+        }
 
-            foreach (FileInfo file in new DirectoryInfo(videoFolder).GetFiles($"*.*", SearchOption.AllDirectories))
+        private string StageOriginalVideo(string videoName, string cachePath, string movieFolder)
+        {
+            string sourceName = videoName + ".bik";
+            string staged = cachePath + "." + Guid.NewGuid().ToString("N") + ".staged.bik";
+            Directory.CreateDirectory(Path.GetDirectoryName(cachePath)!);
+            try
             {
-                string fileExtension = Path.GetExtension(file.Name).ToLower();
-                if (supportedVideoFormats.Contains(fileExtension) &&
-                    Path.GetFileNameWithoutExtension(file.Name).Equals(videoName, StringComparison.OrdinalIgnoreCase))
+                string? loose = Directory.Exists(movieFolder)
+                    ? Directory.EnumerateFiles(movieFolder).FirstOrDefault(file =>
+                        Path.GetFileName(file).Equals(sourceName, StringComparison.OrdinalIgnoreCase))
+                    : null;
+                if (loose != null)
                 {
-                    return file.FullName;
+                    File.Copy(loose, staged);
+                    return staged;
                 }
-            }
 
-            throw new FileNotFoundException($"Cannot find video file: {videoName} under path: {videoFolder}. " +
-                                $"Supported video formats are: {string.Join(" ", supportedVideoFormats)}");
+                var crc = new Crc32Hash();
+                crc.Init();
+                // Keep movie indexes separate from the mounted scene archives on the game thread.
+                var movies = new CpkFileSystem(_fileSystem.GetRootPath(), crc, _codepage);
+                foreach (string cpk in FileConstants.MovieCpkFileNames)
+                {
+                    string relative = FileConstants.GetMovieCpkFileRelativePath(cpk);
+                    if (File.Exists(Path.Combine(_fileSystem.GetRootPath(), relative)))
+                        movies.Mount(relative, _codepage);
+                }
+                string? entry = movies.Search(sourceName).FirstOrDefault(path =>
+                    path.Split(CpkConstants.DirectorySeparatorChar)[^1]
+                        .Equals(sourceName, StringComparison.OrdinalIgnoreCase));
+                if (entry == null) throw new FileNotFoundException($"Original PAL3 video {sourceName} was not found.");
+
+                using FileStream output = new(staged, FileMode.CreateNew, FileAccess.Write);
+                movies.CopyTo(entry, output);
+                return staged;
+            }
+            catch
+            {
+                File.Delete(staged);
+                throw;
+            }
         }
 
         public (ITexture2D texture, bool hasAlphaChannel)[] GetEffectTextures(GraphicsEffectType effect, string texturePathFormat)

@@ -64,6 +64,8 @@ try {
 
 PAL3 的宿主地图、材质和字体资产放在 `Content/PAL3`，由 `DefaultGame.ini` 的 `DirectoriesToAlwaysCook` 指定 Cook 目录。JSON-UMG 默认字体在同一文件的 `[RuntimeWidgetLayout.Fonts]` 中配置，目前指向方正魏碑。其他机器可将字体文件命名为 `Pal3Weibei.ttf`，在编辑器中导入 `Content/PAL3/Fonts`，并选择同时创建 Font 资产。未导入时使用 UE 默认字体。
 
+原版过场保存在 `movie/movie.cpk` 和 `movie/movie_end.cpk`。首次播放时，游戏在后台把对应 Bink 1 转成 MP4，加载界面显示准备阶段和转码进度。转码结果写入 UE 的 `Saved/Movies`，之后直接播放缓存。没有缓存时，游戏也会查找用户数据目录 `movie` 下的同名 MP4、MOV 或 WebM，具体格式支持取决于平台播放器。Windows 需要支持 libx264 的 FFmpeg，可将 `RUNTIME_BINK_FFMPEG` 设为 `ffmpeg.exe` 的绝对路径，或把程序放到 `Binaries/ThirdParty/FFmpeg/Win64/ffmpeg.exe`。Android 使用 [FFmpegKit Min 8.1.7](https://github.com/ffmpegkit-maintained/ffmpeg)（LGPL-3.0）、MediaCodec 和 Electra。准备或播放中都可跳过，失败时剧情继续。原版视频和转码文件均由用户的数据目录及应用缓存提供。
+
 启动前设置 `PAL3_AUTOSTART=1` 或传入 `-PAL3Autostart`，可跳过标题菜单，直接进入开场并启用自动对白。独立测试需要隔离存档时，用 `PAL3_SAVE_DIR` 指向测试目录。
 
 ## 玩法与调试入口

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+    <buildGradleAdditions>
+        <insert><![CDATA[
+dependencies {
+    implementation 'dev.ffmpegkit-maintained:ffmpeg-kit-min:8.1.7'
+    // This AAR's Maven metadata omits FFmpegKit's Java exception formatter.
+    implementation 'com.arthenica:smart-exception-java:0.2.1'
+}
+        ]]></insert>
+    </buildGradleAdditions>
+    <gameActivityClassAdditions>
+        <insert><![CDATA[
+    private final Object runtimeBinkConversionLock = new Object();
+
+    public boolean AndroidThunkJava_ConvertBink(String input, String output, String progress)
+    {
+        synchronized (runtimeBinkConversionLock)
+        {
+            try
+            {
+                // Keep process signal handlers owned by the host. In particular, Android Mono needs SIGXCPU to resume threads after GC.
+                for (com.arthenica.ffmpegkit.Signal signal : com.arthenica.ffmpegkit.Signal.values())
+                    com.arthenica.ffmpegkit.FFmpegKitConfig.ignoreSignal(signal);
+                com.arthenica.ffmpegkit.FFmpegSession session =
+                    com.arthenica.ffmpegkit.FFmpegKit.executeWithArguments(new String[] {
+                        "-nostdin", "-loglevel", "error", "-progress", progress, "-y", "-i", input,
+                        "-map", "0:v:0", "-map", "0:a:0?",
+                        "-c:v", "h264_mediacodec", "-ndk_codec", "0",
+                        "-pix_fmt", "yuv420p", "-b:v", "3M", "-c:a", "aac",
+                        "-movflags", "+faststart", output
+                    });
+                if (com.arthenica.ffmpegkit.ReturnCode.isSuccess(session.getReturnCode()))
+                    return true;
+                android.util.Log.w("UE", "Bink conversion failed: " + session.getOutput());
+            }
+            catch (RuntimeException | LinkageError error)
+            {
+                android.util.Log.w("UE", "Bink converter unavailable", error);
+            }
+            return false;
+        }
+    }
+        ]]></insert>
+    </gameActivityClassAdditions>
+</root>

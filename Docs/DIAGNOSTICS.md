@@ -159,6 +159,8 @@ $driver = '/Game/PAL3/Maps/LV_Pal3.LV_Pal3:PersistentLevel.Pal3Driver_C_0'
 
 启用移动端触控布局后，`touch-sticks true` 可将两个摇杆设为全透明，`touch-sticks false` 恢复半透明显示。
 
+`video 1A` 优先播放 UE `Saved/Movies/1a.mp4`，缺少缓存时在运行时从原版数据转码。用 `wait -State VideoPlaying` 确认进入视频流程，用 `advance` 跳过，或等待播放完成后恢复原来的状态。Windows FFmpeg 配置见[项目 README](../README.md)。
+
 ### 回归原版剧情选项
 
 ```powershell

@@ -181,6 +181,46 @@ namespace Pal3.Core.DataReader.Cpk
         /// <returns>File content in byte array</returns>
         public byte[] ReadAllBytes(uint fileVirtualPathCrcHash)
         {
+            CpkTableEntity entity = GetFileEntity(fileVirtualPathCrcHash);
+
+            if (_isArchiveInMemory)
+            {
+                Span<byte> rawData = _inMemoryArchiveData.AsSpan()
+                    .Slice((int)entity.StartPos, length: (int)entity.PackedSize);
+                return entity.IsCompressed() ?
+                    DecompressDataInArchive(rawData, entity.OriginSize) :
+                    rawData.ToArray();
+            }
+            using FileStream stream = new(_filePath, FileMode.Open, FileAccess.Read);
+            stream.Seek(entity.StartPos, SeekOrigin.Begin);
+            byte[] buffer = new byte[entity.PackedSize];
+            stream.ReadExactly(buffer);
+            return entity.IsCompressed() ? DecompressDataInArchive(buffer.AsSpan(), entity.OriginSize) : buffer;
+        }
+
+        public void CopyTo(uint fileVirtualPathCrcHash, Stream destination)
+        {
+            CpkTableEntity entity = GetFileEntity(fileVirtualPathCrcHash);
+            if (entity.IsCompressed() || _isArchiveInMemory)
+            {
+                destination.Write(ReadAllBytes(fileVirtualPathCrcHash));
+                return;
+            }
+
+            using FileStream stream = new(_filePath, FileMode.Open, FileAccess.Read);
+            stream.Seek(entity.StartPos, SeekOrigin.Begin);
+            byte[] buffer = new byte[64 * 1024];
+            for (uint remaining = entity.PackedSize; remaining > 0;)
+            {
+                int size = (int)Math.Min(remaining, (uint)buffer.Length);
+                stream.ReadExactly(buffer.AsSpan(0, size));
+                destination.Write(buffer, 0, size);
+                remaining -= (uint)size;
+            }
+        }
+
+        private CpkTableEntity GetFileEntity(uint fileVirtualPathCrcHash)
+        {
             if (!_isInitialized)
             {
                 throw new InvalidOperationException("Initialize the archive before accessing its content");
@@ -198,24 +238,7 @@ namespace Pal3.Core.DataReader.Cpk
                     $"Cannot read file <{fileVirtualPathCrcHash}> since it is a directory");
             }
 
-            if (_isArchiveInMemory)
-            {
-                Span<byte> rawData = _inMemoryArchiveData.AsSpan()
-                    .Slice((int)entity.StartPos, length: (int)entity.PackedSize);
-                return entity.IsCompressed() ?
-                    DecompressDataInArchive(rawData, entity.OriginSize) :
-                    rawData.ToArray();
-            }
-            else
-            {
-                using FileStream stream = new(_filePath, FileMode.Open, FileAccess.Read);
-                stream.Seek(entity.StartPos, SeekOrigin.Begin);
-                byte[] buffer = new byte[entity.PackedSize];
-                stream.ReadExactly(buffer);
-                return entity.IsCompressed() ?
-                    DecompressDataInArchive(buffer.AsSpan(), entity.OriginSize) :
-                    buffer;
-            }
+            return entity;
         }
 
         private byte[] DecompressDataInArchive(Span<byte> compressedData, uint originSize)

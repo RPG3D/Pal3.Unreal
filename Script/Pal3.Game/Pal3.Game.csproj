@@ -16,6 +16,10 @@
     <Reference Include="RuntimeWidgetLayout">
       <HintPath>..\..\Binaries\Managed\net10.0\RuntimeWidgetLayout.dll</HintPath>
     </Reference>
+    <Reference Include="RuntimeBinkVideo">
+      <HintPath>..\..\Binaries\Managed\net10.0\RuntimeBinkVideo.dll</HintPath>
+      <HintPath Condition="'$(UETargetType)' == 'Game' and Exists('$(PublishDir)/RuntimeBinkVideo.dll')">$(PublishDir)/RuntimeBinkVideo.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Pal3.Core\Pal3.Core.csproj" />

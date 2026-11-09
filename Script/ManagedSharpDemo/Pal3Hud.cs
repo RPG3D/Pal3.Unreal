@@ -34,7 +34,7 @@ namespace ManagedSharpDemo
         private URuntimeJsonWidget? _caption;
         private UTexture2D? _captionTexture;
         private string? _loadingText;
-        private float _loadingProgress = -1f;
+        private float _loadingProgress = float.NaN;
         private int _logVersion = -1;
         private float _diagnosticsTimer;
         private string _lastDialogue = "";
@@ -60,8 +60,26 @@ namespace ManagedSharpDemo
 
         private void UpdateLoading()
         {
-            var scene = Pal3Boot.IsGameReady ? ServiceLocator.Instance.Get<SceneManager>() : null;
-            if (scene is not { IsLoading: true })
+            string? phase = null;
+            float progress = -1f;
+            if (Pal3Boot.IsGameReady)
+            {
+                var services = ServiceLocator.Instance;
+                var scene = services.Get<SceneManager>();
+                var video = services.Get<Pal3.Game.Video.VideoManager>();
+                if (scene.IsLoading)
+                {
+                    phase = scene.LoadingPhase;
+                    progress = scene.LoadingProgress;
+                }
+                else if (video.IsPreparing)
+                {
+                    phase = video.PreparationPhase;
+                    progress = video.PreparationProgress;
+                }
+            }
+
+            if (phase == null)
             {
                 if (_loading != null) SetVisible(_loading, false);
                 return;
@@ -75,16 +93,17 @@ namespace ManagedSharpDemo
             }
 
             SetVisible(_loading, true);
-            if (_loadingText != scene.LoadingPhase)
+            if (_loadingText != phase)
             {
-                _loadingText = scene.LoadingPhase;
+                _loadingText = phase;
                 _loading.SetElementText("loading_phase", _loadingText);
             }
-            if (_loadingProgress != scene.LoadingProgress)
+            if (_loadingProgress != progress)
             {
-                _loadingProgress = scene.LoadingProgress;
-                _loading.SetElementProgress("loading_progress", _loadingProgress);
-                _loading.SetElementText("loading_percent", $"{(int)(Math.Clamp(_loadingProgress, 0f, 1f) * 100)}%");
+                _loadingProgress = progress;
+                _loading.SetElementVisible("loading_percent", progress >= 0);
+                _loading.SetElementProgress("loading_progress", Math.Clamp(progress, 0f, 1f));
+                if (progress >= 0) _loading.SetElementText("loading_percent", $"{(int)(Math.Clamp(progress, 0f, 1f) * 100)}%");
             }
         }
 

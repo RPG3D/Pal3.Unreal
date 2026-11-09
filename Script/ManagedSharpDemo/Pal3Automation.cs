@@ -150,8 +150,18 @@ namespace ManagedSharpDemo
                     return new { visible = JsonUiDemo.IsVisible };
                 case "advance":
                     if (!Pal3Boot.IsGameReady) throw new InvalidOperationException("PAL3 is not ready.");
+                    if (ServiceLocator.Instance.Get<GameStateManager>().GetCurrentState() == GameState.VideoPlaying)
+                    {
+                        ServiceLocator.Instance.Get<Pal3.Game.Video.VideoManager>().Skip();
+                        return Snapshot();
+                    }
                     ServiceLocator.Instance.Get<DialogueManager>().RequestContinue();
                     ServiceLocator.Instance.Get<CaptionRenderer>().RequestContinue();
+                    return Snapshot();
+                case "video":
+                    if (!Pal3Boot.IsGameReady || string.IsNullOrWhiteSpace(request.Argument))
+                        throw new InvalidOperationException("Use video <clip name> after PAL3 starts.");
+                    Pal3Game.Instance.Execute(new PlayVideoCommand(request.Argument));
                     return Snapshot();
                 case "choose":
                     if (!Pal3Boot.IsGameReady || !int.TryParse(request.Argument, out int choice) || choice < 1 ||
@@ -377,10 +387,11 @@ namespace ManagedSharpDemo
             var saves = services.Get<SaveManager>();
             var caption = services.Get<CaptionRenderer>();
             bool playerHasControl = Pal3Boot.HasPlayerControl();
+            var gameState = services.Get<GameStateManager>().GetCurrentState();
             return new
             {
                 state = sceneManager.IsLoading ? "Loading" :
-                    Pal3Boot.WaitingForMenuStart ? "Title" : services.Get<GameStateManager>().GetCurrentState().ToString(),
+                    Pal3Boot.WaitingForMenuStart && gameState != GameState.VideoPlaying ? "Title" : gameState.ToString(),
                 city = info?.CityName,
                 scene = info?.SceneName,
                 story = services.Get<IUserVariableStore<ushort, int>>().Get(ScriptConstants.MainStoryVariableId),
