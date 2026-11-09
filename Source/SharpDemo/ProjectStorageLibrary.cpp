@@ -1,6 +1,7 @@
 #include "ProjectStorageLibrary.h"
 
 #include "HAL/PlatformFile.h"
+#include "Misc/ConfigCacheIni.h"
 #include "Misc/Paths.h"
 
 #if PLATFORM_ANDROID
@@ -27,6 +28,12 @@ FString UProjectStorageLibrary::ResolveWritableSavedDirectory()
 {
 	return IPlatformFile::GetPlatformPhysical().ConvertToAbsolutePathForExternalAppForWrite(
 		*FPaths::ProjectSavedDir());
+}
+
+float UProjectStorageLibrary::GetEngineConfigFloat(const FString& Section, const FString& Key, float DefaultValue)
+{
+	float Value = DefaultValue;
+	return GConfig && GConfig->GetFloat(*Section, *Key, Value, GEngineIni) ? Value : DefaultValue;
 }
 
 bool UProjectStorageLibrary::HasSharedStorageAccess()

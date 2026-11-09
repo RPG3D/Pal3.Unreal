@@ -428,15 +428,9 @@ namespace UnityEngine
     /// <summary>
     /// Scene lighting approximation for the UE port.
     ///
-    /// The Unity build renders with RealToon + HDRP: GameScene sets a dim main
-    /// directional light plus an ambient colour (dark blue at night) and the toon
-    /// shader folds both into a dark, low-key image. The UE port uses one unlit
-    /// material (M_Pal3Tex), so without this the scene renders at full texture
-    /// brightness - flat and blown out versus the reference.
-    ///
-    /// GameScene publishes the lighting here; UnityMaterial multiplies every tint by
-    /// <see cref="SurfaceScale"/> so the port keeps the original night/day mood. The
-    /// constants approximate a Lambert/toon response (ambient*0.25 + light*0.2).
+    /// GameScene publishes the original ambient and directional colors here.
+    /// UnityMaterial applies their calibrated linear gain to the unlit UE materials.
+    /// The baked shadow textures and local lights are applied separately.
     /// </summary>
     public static class SceneLighting
     {
@@ -450,28 +444,28 @@ namespace UnityEngine
         public static Vector3? LocalLightPosition;
 
         public static void Set(Color mainLightColor, float mainLightIntensity,
-            Color ambientColor, float ambientIntensity)
+            Color ambientColor, float ambientIntensity, bool isNight, float sceneBrightness)
         {
             MainLightColor = mainLightColor;
             MainLightIntensity = mainLightIntensity;
             AmbientColor = ambientColor;
             AmbientIntensity = ambientIntensity;
 
-            // Calibrated against the Unity reference capture (same camera/scene):
-            // the HDRP + RealToon image is ~5x darker in linear space than raw
-            // textures, with a warm white-balance. The factors below reproduce that
-            // exposure and warm cast on top of the unlit UE material.
-            float r = ambientColor.r * ambientIntensity * 0.050f + mainLightColor.r * mainLightIntensity * 0.030f;
-            float g = ambientColor.g * ambientIntensity * 0.050f + mainLightColor.g * mainLightIntensity * 0.030f;
-            float b = ambientColor.b * ambientIntensity * 0.050f + mainLightColor.b * mainLightIntensity * 0.030f;
-
-            const float WarmR = 1.20f, WarmG = 1.10f, WarmB = 0.62f;
-            SurfaceScale = new Color(Clamp01(r * WarmR), Clamp01(g * WarmG), Clamp01(b * WarmB), 1f);
+            // Lift daytime ambient fill more than night, so baked daylight stays
+            // readable while a night scene still has room for the local light.
+            float ambient = ambientIntensity * (isNight ? 0.065f : 0.16f);
+            float direct = mainLightIntensity * (isNight ? 0.035f : 0.075f);
+            Color balance = isNight ? new Color(1.20f, 1.10f, 0.62f) : new Color(1.05f, 1.00f, 0.90f);
+            SurfaceScale = new Color(
+                Clamp01((ambientColor.r * ambient + mainLightColor.r * direct) * balance.r) * sceneBrightness,
+                Clamp01((ambientColor.g * ambient + mainLightColor.g * direct) * balance.g) * sceneBrightness,
+                Clamp01((ambientColor.b * ambient + mainLightColor.b * direct) * balance.b) * sceneBrightness,
+                1f);
         }
 
-        public static void Reset()
+        public static void Reset(float sceneBrightness = 1f)
         {
-            SurfaceScale = Color.white;
+            SurfaceScale = new Color(sceneBrightness, sceneBrightness, sceneBrightness, 1f);
             LocalLightPosition = null;
         }
 

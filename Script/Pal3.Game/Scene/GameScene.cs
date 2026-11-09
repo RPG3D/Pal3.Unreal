@@ -150,9 +150,13 @@ namespace Pal3.Game.Scene
 
             UnityMaterial.SetSceneLocalLight(null);
             // MIDs copy the current scene tint as they are created.
-            UnityEngine.SceneLighting.Reset();
+            string platform = UnrealSharp.Engine.UGameplayStatics.PlatformName;
+            float sceneBrightness = UnrealSharp.SharpDemo.UProjectStorageLibrary.GetEngineConfigFloat(
+                "Pal3.Lighting", $"{platform}SceneBrightness", 1f);
+            if (!float.IsFinite(sceneBrightness) || sceneBrightness <= 0f) sceneBrightness = 1f;
+            UnityEngine.SceneLighting.Reset(sceneBrightness);
             if (_isLightingEnabled || scnFile.SceneInfo.Is("q01", "yn09a") || scnFile.SceneInfo.Is("q01", "yn09"))
-                SetupEnvironmentLighting();
+                SetupEnvironmentLighting(sceneBrightness);
             if (scnFile.SceneInfo.Is("q01", "yn09a") && SceneObjects.TryGetValue(16, out var lamp))
                 UpdateOpeningRoomLamp(lamp, ShouldActivateInitially(lamp));
 
@@ -317,7 +321,7 @@ namespace Pal3.Game.Scene
             }
         }
 
-        private void SetupEnvironmentLighting()
+        private void SetupEnvironmentLighting(float sceneBrightness)
         {
             Vector3 mainLightPosition = new Vector3(0, 20f, 0);
             Quaternion mainLightRotation = ScnFile.SceneInfo.SceneType == SceneType.InDoor ?
@@ -388,15 +392,16 @@ namespace Pal3.Game.Scene
                 mainLightEntity.Transform.Rotation = mainLightRotationOverride;
             }
 
-            // Port diagnostic: the Unity reference renders this scene with RealToon +
-            // HDRP, so these values are the only way to reproduce the exposure.
+            bool isNight = IsNightScene();
             UnityEngine.SceneLighting.Set(_mainLight.color, _mainLight.intensity,
-                RenderSettings.ambientLight, RenderSettings.ambientIntensity);
+                RenderSettings.ambientLight, RenderSettings.ambientIntensity, isNight, sceneBrightness);
+            UnityEngine.Color surfaceScale = UnityEngine.SceneLighting.SurfaceScale;
 
-            EngineLogger.Log($"[Lighting] night={IsNightScene()} type={ScnFile.SceneInfo.SceneType} "
+            EngineLogger.Log($"[Lighting] night={isNight} type={ScnFile.SceneInfo.SceneType} "
                 + $"color=({_mainLight.color.r:F2},{_mainLight.color.g:F2},{_mainLight.color.b:F2}) "
                 + $"intensity={_mainLight.intensity:F2} "
                 + $"ambient=({RenderSettings.ambientLight.r:F2},{RenderSettings.ambientLight.g:F2},{RenderSettings.ambientLight.b:F2})x{RenderSettings.ambientIntensity:F2} "
+                + $"gain={sceneBrightness:F2} surface=({surfaceScale.r:F3},{surfaceScale.g:F3},{surfaceScale.b:F3}) "
                 + $"rot=({mainLightEntity.Transform.Rotation.eulerAngles.x:F0},{mainLightEntity.Transform.Rotation.eulerAngles.y:F0})");
         }
 

@@ -134,6 +134,7 @@ $env:PAL3_AUTOMATION_DIR = 'D:/UEProject/SharpDemo/Saved/Pal3Automation'
 - PAL3 尚未启动时，`status` 返回 `bootError` 和 `storagePermissionRequired`。补齐数据或授权后，可用 `retry-boot` 调用与启动界面「重试」共用的入口。
 - 菜单切图、剧情跳转、读档和剧情脚本切图使用分帧加载。UE 游戏线程逐批创建纹理、网格、角色和物件，单帧分配约 8 ms，单个批次可能超出预算。加载期间 JSON UMG 显示当前阶段。
 - `scene`、`checkpoint` 和 `load` 返回时可能仍在加载。用 `status` 读取 `loadingScene`、`loadingPhase`、`loadingProgress` 和 `sceneLoadError`，或用 `wait -State Gameplay -City <city> -Scene <scene>` 等待可操作场景。进度条按阶段及已处理的批次推进。日志中的 `Scene loaded across` 记录帧数、总耗时和最慢批次。
+- `[Lighting]` 记录场景的昼夜标记、环境光、平台 `gain` 和材质实际使用的 `surface` 线性 RGB 增益。整体倍率从 `Config/DefaultEngine.ini` 的 `[Pal3.Lighting]` 读取，键名为平台名加 `SceneBrightness`。当前仅配置 `AndroidSceneBrightness=1.4`，未配置的平台使用 `1.0`。烘焙阴影贴图与景天房间的局部烛光仍分别作用。
 - `wait` 可按状态、场景、脚本 ID、最近命令、waiter、玩家动作和对白子串等待。它轮询当前状态，已经结束的短动作需要在发生前开始等待。`advance` 等效于一次手动继续，遇到打字动画可能先补全文字。
 - UI 和自动化共用开始、选段及切图路径。UE 日志里的 `[PAL3 transition]` 记录目标、同步分发耗时、失败详情或分发后的状态。后续剧情是否到达预期位置，以 `wait` 或 `status` 为准。
 - 诊断面板和对白栏由 C# 管状态，JSON 管布局。游戏中按 Tab 打开主菜单，可开关诊断面板和自动对白。RuntimeWidgetLayout 提供通用的挂载、按键事件、文本、显隐和贴图接口。RC 仍支持 `start`、`advance`、`auto`、`overlay`、`demo`，以及 Actor 查询和控制台命令。
