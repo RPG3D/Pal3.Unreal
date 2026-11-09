@@ -67,7 +67,7 @@ namespace Pal3.Game.Camera
         private const float SCENE_IN_DOOR_ROOM_FLOOR_HEIGHT = 1.6f;
         private const float CAMERA_DEFAULT_DISTANCE = 46f;
         private const float CAMERA_IN_DOOR_DISTANCE = 34f;
-        private const float CAMERA_ROTATION_SPEED_PER_SECOND_KEYBOARD = 120f;
+        private const float CAMERA_ROTATION_MAX_SPEED_PER_SECOND = 120f;
         private const float CAMERA_ROTATION_SPEED_PER_SECOND_MOUSE_SCROLL = 520f;
         private const float CAMERA_ROTATION_SPEED_DRAG = 10f;
         private const float CAMERA_SMOOTH_FOLLOW_TIME = 0.2f;
@@ -214,14 +214,10 @@ namespace Pal3.Game.Camera
 
         private void RotateCameraBasedOnUserInput(float deltaTime)
         {
-            if (_inputActions.Gameplay.RotateCameraClockwise.inProgress)
-            {
-                RotateToOrbitPoint(deltaTime * CAMERA_ROTATION_SPEED_PER_SECOND_KEYBOARD);
-            }
-            else if (_inputActions.Gameplay.RotateCameraCounterClockwise.inProgress)
-            {
-                RotateToOrbitPoint(-deltaTime * CAMERA_ROTATION_SPEED_PER_SECOND_KEYBOARD);
-            }
+            float rotationAxis = _inputActions.Gameplay.RotateCameraClockwise.ReadValue<float>() -
+                                 _inputActions.Gameplay.RotateCameraCounterClockwise.ReadValue<float>();
+            if (rotationAxis != 0f)
+                RotateToOrbitPoint(rotationAxis * CAMERA_ROTATION_MAX_SPEED_PER_SECOND * deltaTime);
 
             float mouseScroll = _inputActions.Gameplay.OnScroll.ReadValue<float>();
             if (mouseScroll != 0)

@@ -178,11 +178,11 @@ namespace ManagedSharpDemo
                     RequirePlayerControl();
                     if (!ServiceLocator.Instance.Get<CameraManager>().CanRotateByUser)
                         throw new InvalidOperationException("This PAL3 camera is locked.");
-                    var (turn, duration) = ParseTimedDirection(request.Argument);
+                    var (turn, duration, strength) = ParseTimedDirection(request.Argument, allowStrength: true);
                     _cameraAxis = turn switch
                     {
-                        "left" => -1f,
-                        "right" => 1f,
+                        "left" => -strength,
+                        "right" => strength,
                         _ => throw new ArgumentException("Camera direction must be left or right.")
                     };
                     _cameraUntil = GameTimeProvider.Instance.TimeSinceStartup + duration;
@@ -266,21 +266,29 @@ namespace ManagedSharpDemo
             return GameTimeProvider.Instance.TimeSinceStartup < _cameraUntil ? _cameraAxis : 0f;
         }
 
-        private static (string Direction, float Seconds) ParseTimedDirection(string? argument)
+        private static (string Direction, float Seconds, float Strength) ParseTimedDirection(string? argument,
+            bool allowStrength = false)
         {
             var tokens = argument?.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (tokens is not { Length: 2 } ||
+            if (tokens == null || tokens.Length < 2 || tokens.Length > (allowStrength ? 3 : 2) ||
                 !float.TryParse(tokens[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float seconds) ||
                 !float.IsFinite(seconds) || seconds <= 0f || seconds > 5f)
             {
                 throw new ArgumentException("Use a direction and a duration in seconds, e.g. 'right 1' (max 5 seconds).");
             }
-            return (tokens[0].ToLowerInvariant(), seconds);
+            float strength = 1f;
+            if (tokens.Length == 3 &&
+                (!float.TryParse(tokens[2], NumberStyles.Float, CultureInfo.InvariantCulture, out strength) ||
+                 !(strength >= 0f && strength <= 1f)))
+            {
+                throw new ArgumentException("Camera stick strength must be between 0 and 1.");
+            }
+            return (tokens[0].ToLowerInvariant(), seconds, strength);
         }
 
         private static void ScheduleMovement(string? argument)
         {
-            var (input, seconds) = ParseTimedDirection(argument);
+            var (input, seconds, _) = ParseTimedDirection(argument);
             UnityEngine.Vector2 direction = input switch
             {
                 "up" => new(0, 1),

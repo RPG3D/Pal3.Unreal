@@ -156,7 +156,7 @@ $driver = '/Game/PAL3/Maps/LV_Pal3.LV_Pal3:PersistentLevel.Pal3Driver_C_0'
 
 `move` 将限时的相机相对方向交给 PAL3 移动逻辑，使用导航和动作切换，最多 5 秒。`interact` 走 PAL3 的玩家交互命令，`advance` 直接通知对白和字幕服务。三者均通过游戏命令执行。景天的位置和 `playerHasControl` 可从 `status` 读取。PIE 路径示例为 `/Game/PAL3/Maps/UEDPIE_0_LV_Pal3.LV_Pal3:PersistentLevel.Pal3Driver_C_0`，多实例以当前世界的实际对象路径为准。RC 默认端口为 30010，运行多个进程时分别设置端口并传 `-RemoteUrl`。
 
-`rotate-camera 'right 0.5'` 使用与镜头摇杆共用的输入路径，向右转半秒。也可传 `left`，最长 5 秒。`status` 中的 `cameraCanRotate` 和 `cameraYaw` 用来确认机位是否允许旋转以及实际转过的角度。
+`rotate-camera 'right 0.5'` 使用与镜头摇杆共用的输入路径，以满杆向右转半秒。也可传 `left`，最长 5 秒。可加第三个参数测试 `0–1` 的摇杆偏移，例如 `rotate-camera 'right 0.5 0.5'`。`status` 中的 `cameraCanRotate` 和 `cameraYaw` 用来确认机位是否允许旋转以及实际转过的角度。
 
 启用移动端触控布局后，`touch-sticks true` 可将两个摇杆设为全透明，`touch-sticks false` 恢复半透明显示。
 

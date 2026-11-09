@@ -211,6 +211,7 @@ namespace ManagedSharpDemo
 
         // UE keyboard and the on-screen stick feed the same PlayerInputActions.
         private UnityEngine.Vector2 _lastMovement;
+        private float _lastCameraAxis;
         private float _lastCameraScroll;
         private readonly Pal3TouchStick _touchStick = new();
         private readonly Pal3TouchButtons _touchButtons = new();
@@ -268,8 +269,14 @@ namespace ManagedSharpDemo
                 scroll = MathF.Sign(pc.GetInputAnalogKeyState(Keys.MouseWheelAxis));
             }
             const float cameraDeadZone = 0.25f;
-            gameplay.RotateCameraClockwise.inProgress = cameraX > cameraDeadZone;
-            gameplay.RotateCameraCounterClockwise.inProgress = cameraX < -cameraDeadZone;
+            float cameraStrength = Math.Clamp((MathF.Abs(cameraX) - cameraDeadZone) / (1f - cameraDeadZone), 0f, 1f);
+            float cameraAxis = MathF.CopySign(cameraStrength, cameraX);
+            if (cameraAxis != _lastCameraAxis)
+            {
+                gameplay.RotateCameraClockwise.InjectValue(MathF.Max(0f, cameraAxis));
+                gameplay.RotateCameraCounterClockwise.InjectValue(MathF.Max(0f, -cameraAxis));
+                _lastCameraAxis = cameraAxis;
+            }
             if (scroll != _lastCameraScroll)
             {
                 gameplay.OnScroll.InjectValue(scroll);
