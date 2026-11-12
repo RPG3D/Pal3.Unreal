@@ -1,6 +1,7 @@
 #include "Pal3DebugOverlay.h"
 
 #include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "ProceduralMeshComponent.h"

@@ -28,7 +28,9 @@ SharpDemo 用于验证 UnrealSharp 在 UE5 上的 **Mono 与移动端 CoreCLR �
 
 - 准备与项目关联的 UE 源码构建、UnrealSharp 子模块及其运行时 SDK、可用的 .NET 10 SDK。托管项目目标为 `net10.0`，编辑器使用 `DotNetRuntimeEditor=Mono`。
 - 从原版游戏安装目录读取 PAL3 数据。启动 UE 前设置 `PAL3_DATA_PATH`，指向包含游戏资源的安装根目录。
+- macOS 调试时默认读取项目的 `Saved/PAL3`，也可以把该目录设为指向 Steam 游戏目录的符号链接。如果那里没有 `basedata/basedata.cpk`，则读取 `~/Library/Application Support/Steam/steamapps/common/PAL3`。
 - Android 默认读取内部共享存储的 `Download/PAL3`。保留原版的目录结构和文件名大小写，例如 `Download/PAL3/basedata/basedata.cpk`。首次启动缺权限时，点击「去授权」，在 Android 11 及以上的系统设置中开启「所有文件访问权限」。返回游戏后会重新检查。缺少数据文件时，补齐后点击「重试」。
+- iOS 默认读取 SharpDemo 的 `Documents/PAL3`。安装后，在「文件」App 的「我的 iPad/iPhone」下将原版 `PAL3` 文件夹复制到 SharpDemo，保留 `basedata`、`scene`、`music` 等目录。可将预先转换的 `pal3op.mp4` 放在 `PAL3/movie` 播放开场动画。
 - 新检出还需要本地托管依赖。在 `Script/Pal3.Core/Libraries` 放入 `Newtonsoft.Json.dll` 和 `INIFileParser.dll`。它们未纳入仓库，可从本地 PAL3.Unity 的 `Assets/Packages` 中取 `Newtonsoft.Json.13.0.3` 和 `ini-parser-netstandard.2.5.2` 的 `lib/netstandard2.0` 版本。
 
 在项目根目录的 PowerShell 运行，路径按本机环境调整。

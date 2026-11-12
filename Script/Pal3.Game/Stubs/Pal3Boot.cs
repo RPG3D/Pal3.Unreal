@@ -241,13 +241,36 @@ namespace Pal3.Game
             UnrealSharp.Log.UnrealLogger.Log("Pal3", $"[camera] Pal3Camera actor created at {CameraActor.ActorLocation}");
         }
 
+        private static string GetMacDataPath()
+        {
+            string localPath = System.IO.Path.Combine(Application.persistentDataPath, "PAL3");
+            if (System.IO.File.Exists(System.IO.Path.Combine(localPath, FileConstants.BaseDataCpkFileRelativePath)))
+            {
+                return localPath;
+            }
+
+            return System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                "Library", "Application Support", "Steam", "steamapps", "common", "PAL3");
+        }
+
         public static void RunFullBoot()
         {
             if (_fullBootStarted) return;
 
             string dataPath = Environment.GetEnvironmentVariable("PAL3_DATA_PATH");
-            bool isAndroid = UnrealSharp.Engine.UGameplayStatics.PlatformName == "Android";
-            if (string.IsNullOrWhiteSpace(dataPath)) dataPath = isAndroid ? AndroidDataPath : DefaultDataPath;
+            string platform = UnrealSharp.Engine.UGameplayStatics.PlatformName;
+            bool isAndroid = platform == "Android";
+            bool usesDefaultIosPath = platform == "IOS" && string.IsNullOrWhiteSpace(dataPath);
+            if (string.IsNullOrWhiteSpace(dataPath))
+            {
+                dataPath = platform switch
+                {
+                    "Android" => AndroidDataPath,
+                    "IOS" => System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "PAL3"),
+                    "Mac" => GetMacDataPath(),
+                    _ => DefaultDataPath,
+                };
+            }
 
             StoragePermissionRequired = isAndroid && dataPath == AndroidDataPath &&
                 !UnrealSharp.SharpDemo.UProjectStorageLibrary.HasSharedStorageAccess();
@@ -261,6 +284,13 @@ namespace Pal3.Game
                 !System.IO.File.Exists(System.IO.Path.Combine(dataPath, FileConstants.BaseDataCpkFileRelativePath)))
             {
                 BootError = "找不到 Download/PAL3/basedata/basedata.cpk。请放入原版游戏数据后重试。";
+                return;
+            }
+
+            if (usesDefaultIosPath &&
+                !System.IO.File.Exists(System.IO.Path.Combine(dataPath, FileConstants.BaseDataCpkFileRelativePath)))
+            {
+                BootError = "找不到 PAL3/basedata/basedata.cpk。请在「文件」App 的 SharpDemo 文件夹中放入原版 PAL3 数据后重试。";
                 return;
             }
 

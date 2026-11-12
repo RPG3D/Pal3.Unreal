@@ -6,6 +6,7 @@
 #include "Engine/World.h"
 #include "Components/AudioComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Misc/EngineVersionComparison.h"
 #include "Sound/SoundGenerator.h"
 #include "dr_libs_mp3decoder.h"
 
@@ -224,11 +225,13 @@ namespace
 		}
 
 		bool IsFinished() const override { return PlaysRemaining == 0; }
+#if !UE_VERSION_OLDER_THAN(5, 8, 0)
 		int32 GetNumChannels() const override { return Channels; }
+#endif
 
 	private:
 		TSharedRef<const TArray<uint8>, ESPMode::ThreadSafe> Pcm;
-		int32 Channels;
+		[[maybe_unused]] int32 Channels;
 		int32 PlaysRemaining;
 		int32 SampleOffset = 0;
 	};

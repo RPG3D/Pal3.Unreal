@@ -18,9 +18,17 @@ IMPLEMENT_MODULE(FDefaultModuleImpl, RuntimeBinkVideo)
 URuntimeBinkVideoWidget* URuntimeBinkVideoWidget::OpenVideo(UObject* WorldContextObject, const FString& Path, int32 ZOrder,
 	FVector2D VerticalUvRange, bool bFillViewport)
 {
+	FString PlaybackPath = Path;
+#if PLATFORM_IOS
+	// The iOS platform file accepts /var/ as an absolute sandbox path.
+	if (PlaybackPath.StartsWith(TEXT("/private/var/"), ESearchCase::CaseSensitive))
+	{
+		PlaybackPath.RightChopInline(8, EAllowShrinking::No);
+	}
+#endif
 	APlayerController* Controller = UGameplayStatics::GetPlayerController(WorldContextObject, 0);
-	if (!Controller || Path.IsEmpty() || FPaths::IsRelative(Path) ||
-		!FPlatformFileManager::Get().GetPlatformFile().FileExists(*Path))
+	if (!Controller || PlaybackPath.IsEmpty() || FPaths::IsRelative(PlaybackPath) ||
+		!FPlatformFileManager::Get().GetPlatformFile().FileExists(*PlaybackPath))
 	{
 		return nullptr;
 	}
@@ -37,7 +45,7 @@ URuntimeBinkVideoWidget* URuntimeBinkVideoWidget::OpenVideo(UObject* WorldContex
 	Widget->Player = NewObject<UMediaPlayer>(Widget);
 	Widget->Player->PlayOnOpen = true;
 #if PLATFORM_ANDROID
-	if (FPaths::GetExtension(Path).Equals(TEXT("mp4"), ESearchCase::IgnoreCase))
+	if (FPaths::GetExtension(PlaybackPath).Equals(TEXT("mp4"), ESearchCase::IgnoreCase))
 	{
 		Widget->Player->SetDesiredPlayerName(FName(TEXT("ElectraPlayer")));
 	}
@@ -61,7 +69,7 @@ URuntimeBinkVideoWidget* URuntimeBinkVideoWidget::OpenVideo(UObject* WorldContex
 	Widget->OpenDeadline = FPlatformTime::Seconds() + 12.0;
 	Widget->SetVisibility(ESlateVisibility::HitTestInvisible);
 	Widget->AddToViewport(ZOrder);
-	if (!Widget->Player->OpenFile(Path))
+	if (!Widget->Player->OpenFile(PlaybackPath))
 	{
 		Widget->CloseVideo();
 		return nullptr;
