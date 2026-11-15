@@ -195,11 +195,11 @@ namespace Pal3.Game.Script
         {
             bool won = RandomGenerator.Range(0f, 1f) > 0.35f;
             #if PAL3
-            Pal3Game.Instance.Execute(won
+            Pal3.Instance.Execute(won
                 ? new UIDisplayNoteCommand("你战胜了重楼")
                 : new UIDisplayNoteCommand("你输给了重楼"));
             #elif PAL3A
-            Pal3Game.Instance.Execute(won
+            Pal3.Instance.Execute(won
                 ? new UIDisplayNoteCommand("你战胜了景小楼")
                 : new UIDisplayNoteCommand("你输给了景小楼"));
             #endif

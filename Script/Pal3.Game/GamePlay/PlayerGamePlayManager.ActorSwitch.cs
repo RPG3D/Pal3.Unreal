@@ -55,7 +55,7 @@ namespace Pal3.Game.GamePlay
                 targetPlayerActorId = (targetPlayerActorId + playerActorIdLength + (next ? +1 : -1)) % playerActorIdLength;
             } while (!actorsInTeam.Contains((PlayerActorId) targetPlayerActorId));
 
-            Pal3Game.Instance.Execute(new ActorEnablePlayerControlCommand(targetPlayerActorId));
+            Pal3.Instance.Execute(new ActorEnablePlayerControlCommand(targetPlayerActorId));
         }
     }
 }

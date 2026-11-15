@@ -50,9 +50,9 @@ namespace Pal3.Game.Scene.SceneObjects
         {
             if (!IsInteractableBasedOnTimesCount()) yield break;
 
-            Pal3Game.Instance.Execute(new ActorStopActionAndStandCommand(ActorConstants.PlayerActorVirtualID));
-            Pal3Game.Instance.Execute(new PlayerActorLookAtSceneObjectCommand(ObjectInfo.Id));
-            Pal3Game.Instance.Execute(new ActorPerformActionCommand(ActorConstants.PlayerActorVirtualID,
+            Pal3.Instance.Execute(new ActorStopActionAndStandCommand(ActorConstants.PlayerActorVirtualID));
+            Pal3.Instance.Execute(new PlayerActorLookAtSceneObjectCommand(ObjectInfo.Id));
+            Pal3.Instance.Execute(new ActorPerformActionCommand(ActorConstants.PlayerActorVirtualID,
                     ActorConstants.ActionToNameMap[ActorActionType.Check], 1));
 
             PlaySfx("wg011");
@@ -73,14 +73,14 @@ namespace Pal3.Game.Scene.SceneObjects
             {
                 if (ObjectInfo.Parameters[i] != 0)
                 {
-                    Pal3Game.Instance.Execute(new InventoryAddItemCommand(ObjectInfo.Parameters[i], 1));
+                    Pal3.Instance.Execute(new InventoryAddItemCommand(ObjectInfo.Parameters[i], 1));
                 }
             }
 
             #if PAL3A
             if (ObjectInfo.Parameters[5] != 0) // money
             {
-                Pal3Game.Instance.Execute(new InventoryAddMoneyCommand(ObjectInfo.Parameters[5]));
+                Pal3.Instance.Execute(new InventoryAddMoneyCommand(ObjectInfo.Parameters[5]));
             }
             #endif
 

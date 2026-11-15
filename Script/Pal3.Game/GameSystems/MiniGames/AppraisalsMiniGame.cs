@@ -32,7 +32,7 @@ namespace Pal3.Game.GameSystems.MiniGames
 
         public void Execute(MiniGameStartAppraisalsCommand command)
         {
-            Pal3Game.Instance.Execute(new UIDisplayNoteCommand("鉴宝小游戏暂未实现，现已跳过"));
+            Pal3.Instance.Execute(new UIDisplayNoteCommand("鉴宝小游戏暂未实现，现已跳过"));
         }
     }
 }

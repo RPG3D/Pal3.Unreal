@@ -142,8 +142,8 @@ namespace Pal3.Game.Video
 
             _gameStateManager.TryGoToState(GameState.VideoPlaying);
             _waiter = new WaitUntilCanceled();
-            Pal3Game.Instance.Execute(new ScriptRunnerAddWaiterRequest(_waiter));
-            Pal3Game.Instance.StartCoroutine(PrepareAndPlay(command.Name, path, _waiter));
+            Pal3.Instance.Execute(new ScriptRunnerAddWaiterRequest(_waiter));
+            Pal3.Instance.StartCoroutine(PrepareAndPlay(command.Name, path, _waiter));
         }
 
         private IEnumerator PrepareAndPlay(string name, string path, WaitUntilCanceled waiter)
@@ -158,7 +158,7 @@ namespace Pal3.Game.Video
                     string cachePath = path;
                     preparation = new Preparation(Task.Run(() => _resourceProvider.PrepareVideoSource(name, cachePath)));
                     _preparations.Add(cachePath, preparation);
-                    Pal3Game.Instance.StartCoroutine(PrepareVideo(cachePath, preparation));
+                    Pal3.Instance.StartCoroutine(PrepareVideo(cachePath, preparation));
                 }
 
                 _activePreparation = preparation;
@@ -243,6 +243,6 @@ namespace Pal3.Game.Video
         }
 
         private static void ShowSkippedNote(string message)
-            => Pal3Game.Instance.Execute(new UIDisplayNoteCommand(message));
+            => Pal3.Instance.Execute(new UIDisplayNoteCommand(message));
     }
 }

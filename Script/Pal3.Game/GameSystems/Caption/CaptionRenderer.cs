@@ -78,8 +78,8 @@ namespace Pal3.Game.GameSystems.Caption
         {
             FinishCaption();
             _skipCaptionWaiter = new WaitUntilCanceled();
-            Pal3Game.Instance.Execute(new ScriptRunnerAddWaiterRequest(_skipCaptionWaiter));
-            Pal3Game.Instance.StartCoroutine(AnimateCaptionAsync(textureName, _skipCaptionWaiter));
+            Pal3.Instance.Execute(new ScriptRunnerAddWaiterRequest(_skipCaptionWaiter));
+            Pal3.Instance.StartCoroutine(AnimateCaptionAsync(textureName, _skipCaptionWaiter));
         }
 
         private IEnumerator AnimateCaptionAsync(string textureName, WaitUntilCanceled waiter)

@@ -16,7 +16,7 @@ namespace Pal3.Game.Command
         static CommandExecutorRegistry()
         {
             // Process-wide static registry: it survives PIE stop/start. Without this
-            // reset the new session's Pal3Game adds a second set of executors next to
+            // reset the new session's Pal3 adds a second set of executors next to
             // the previous session's (destroyed) ones, and e.g. the old SceneManager
             // also receives SceneLoadCommand — the second boot hung inside it.
             Engine.Utilities.SessionStateRegistry.RegisterReset(() => _instance = null!);

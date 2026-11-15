@@ -168,7 +168,7 @@ namespace Pal3.Game.Dev
             _deferredExecutionCommands.Add("CameraSetTransform -33.24 -19.48 688.0 308.31 240.44 480.61");
             _deferredExecutionCommands.Add("CameraFadeIn");
             _sceneManager.LoadTitleScene("q01", "yn09a");
-            Pal3Game.Instance.Execute(new PlayScriptMusicCommand(AudioConstants.ThemeMusicName, -1));
+            Pal3.Instance.Execute(new PlayScriptMusicCommand(AudioConstants.ThemeMusicName, -1));
             #elif PAL3A
             // 南宫煌房间
             _deferredExecutionCommands.Add("PlayerEnableInput 0");
@@ -176,7 +176,7 @@ namespace Pal3.Game.Dev
             _deferredExecutionCommands.Add("CameraSetTransform -21.69 -22.48 688.0 182.87 263.07 531.61");
             _deferredExecutionCommands.Add("CameraFadeIn");
             _sceneManager.LoadTitleScene("q02", "qn08y");
-            Pal3Game.Instance.Execute(new PlayScriptMusicCommand(AudioConstants.ThemeMusicName, -1));
+            Pal3.Instance.Execute(new PlayScriptMusicCommand(AudioConstants.ThemeMusicName, -1));
             #endif
 
             if (!_initViewCameraOrbitAnimationCts.IsCancellationRequested)
@@ -184,7 +184,7 @@ namespace Pal3.Game.Dev
                 _initViewCameraOrbitAnimationCts.Cancel();
             }
             _initViewCameraOrbitAnimationCts = new CancellationTokenSource();
-            Pal3Game.Instance.StartCoroutine(StartCameraOrbitAnimationAsync(_initViewCameraOrbitAnimationCts.Token));
+            Pal3.Instance.StartCoroutine(StartCameraOrbitAnimationAsync(_initViewCameraOrbitAnimationCts.Token));
 
             _gameStateManager.TryGoToState(GameState.UI);
         }
@@ -192,9 +192,9 @@ namespace Pal3.Game.Dev
         private IEnumerator StartCameraOrbitAnimationAsync(CancellationToken cancellationToken)
         {
             #if PAL3
-            Pal3Game.Instance.Execute(new CameraSetFieldOfViewCommand(14f));
+            Pal3.Instance.Execute(new CameraSetFieldOfViewCommand(14f));
             #elif PAL3A
-            Pal3Game.Instance.Execute(new CameraSetFieldOfViewCommand(16f));
+            Pal3.Instance.Execute(new CameraSetFieldOfViewCommand(16f));
             #endif
 
             yield return CoroutineYieldInstruction.WaitUntil(() => _deferredExecutionCommands.Count == 0);
@@ -210,19 +210,19 @@ namespace Pal3.Game.Dev
             while (_isInInitView && !cancellationToken.IsCancellationRequested)
             {
                 #if PAL3
-                Pal3Game.Instance.Execute(new CameraOrbitHorizontalCommand(
+                Pal3.Instance.Execute(new CameraOrbitHorizontalCommand(
                     -46.67f, -30.73f, 688.0f, animationDuration, 1, 0));
                 #elif PAL3A
-                Pal3Game.Instance.Execute(new CameraOrbitHorizontalCommand(
+                Pal3.Instance.Execute(new CameraOrbitHorizontalCommand(
                     -39.99f, -27.73f, 688.0f, animationDuration, 1, 0));
                 #endif
                 yield return waitDuration;
                 if (!_isInInitView || cancellationToken.IsCancellationRequested) { yield break; }
                 #if PAL3
-                Pal3Game.Instance.Execute(new CameraOrbitHorizontalCommand(
+                Pal3.Instance.Execute(new CameraOrbitHorizontalCommand(
                     -33.24f, -19.48f, 688.0f, animationDuration, 1, 0));
                 #elif PAL3A
-                Pal3Game.Instance.Execute(new CameraOrbitHorizontalCommand(
+                Pal3.Instance.Execute(new CameraOrbitHorizontalCommand(
                     -21.69f, -22.48f, 688.0f, animationDuration, 1, 0));
                 #endif
                 yield return waitDuration;
@@ -232,7 +232,7 @@ namespace Pal3.Game.Dev
         public void ShowMenu()
         {
             _gameStateManager.TryGoToState(GameState.UI);
-            Pal3Game.Instance.Execute(new ActorStopActionAndStandCommand(ActorConstants.PlayerActorVirtualID));
+            Pal3.Instance.Execute(new ActorStopActionAndStandCommand(ActorConstants.PlayerActorVirtualID));
             SetupMainMenuButtons();
 
             _mainMenuCanvasGroup.alpha = 1f;
@@ -269,7 +269,7 @@ namespace Pal3.Game.Dev
 
             CreateMenuButton("新的游戏", _ => delegate
             {
-                Pal3Game.Instance.Execute(new ResetGameStateCommand());
+                Pal3.Instance.Execute(new ResetGameStateCommand());
                 HideMenu();
                 StartNewGame();
             });
@@ -371,7 +371,7 @@ namespace Pal3.Game.Dev
                         _gameSettings.IsAmbientOcclusionEnabled = false;
                         _menuItems.FirstOrDefault(_ => _.GetComponentInChildren<TextMeshProUGUI>() is {text: ssaoEnabledText})!
                             .GetComponentInChildren<TextMeshProUGUI>().text = ssaoDisabledText;
-                        Pal3Game.Instance.Execute(new UIDisplayNoteCommand("环境光遮蔽已关闭"));
+                        Pal3.Instance.Execute(new UIDisplayNoteCommand("环境光遮蔽已关闭"));
                     }
 
                     if (_isInInitView)
@@ -385,7 +385,7 @@ namespace Pal3.Game.Dev
                         ExecuteCommandsFromSaveFile(saveFileContent);
                     }
 
-                    Pal3Game.Instance.Execute(new UIDisplayNoteCommand("实时光影已" +
+                    Pal3.Instance.Execute(new UIDisplayNoteCommand("实时光影已" +
                         (_gameSettings.IsRealtimeLightingAndShadowsEnabled ? "开启（注意性能和耗电影响）" : "关闭") + ""));
                 });
 
@@ -398,7 +398,7 @@ namespace Pal3.Game.Dev
                     {
                         if (!_gameSettings.IsAmbientOcclusionEnabled && !_gameSettings.IsRealtimeLightingAndShadowsEnabled)
                         {
-                            Pal3Game.Instance.Execute(new UIDisplayNoteCommand("请先开启实时光影，再开启环境光遮蔽"));
+                            Pal3.Instance.Execute(new UIDisplayNoteCommand("请先开启实时光影，再开启环境光遮蔽"));
                             return;
                         }
 
@@ -406,7 +406,7 @@ namespace Pal3.Game.Dev
 
                         buttonTextUGUI.text = GetSSAOButtonText();
 
-                        Pal3Game.Instance.Execute(new UIDisplayNoteCommand("环境光遮蔽已" +
+                        Pal3.Instance.Execute(new UIDisplayNoteCommand("环境光遮蔽已" +
                             (_gameSettings.IsAmbientOcclusionEnabled ? "开启（注意性能和耗电影响）" : "关闭") + ""));
                     });
                 }
@@ -422,7 +422,7 @@ namespace Pal3.Game.Dev
 
                 buttonTextUGUI.text = GetVsyncButtonText();
 
-                Pal3Game.Instance.Execute(new UIDisplayNoteCommand("垂直同步已" +
+                Pal3.Instance.Execute(new UIDisplayNoteCommand("垂直同步已" +
                     (_gameSettings.VSyncCount == 0 ? "关闭" : "开启") + ""));
             });
             #endif
@@ -440,7 +440,7 @@ namespace Pal3.Game.Dev
 
                 buttonTextUGUI.text = GetResolutionButtonText();
 
-                Pal3Game.Instance.Execute(new UIDisplayNoteCommand("渲染分辨率已" +
+                Pal3.Instance.Execute(new UIDisplayNoteCommand("渲染分辨率已" +
                     (MathF.Abs(_gameSettings.ResolutionScale - 1f) < 0.01f ? "调整为100%" :
                         (MathF.Abs(_gameSettings.ResolutionScale - 0.75f) < 0.01f ? "调整为75%" : "调整为50%"))));
             });
@@ -470,7 +470,7 @@ namespace Pal3.Game.Dev
             //
             //     buttonTextUGUI.text = antiAliasingText[_gameSettings.AntiAliasing];
             //
-            //     Pal3Game.Instance.Execute(_gameSettings.AntiAliasing == 0
+            //     Pal3.Instance.Execute(_gameSettings.AntiAliasing == 0
             //         ? new UIDisplayNoteCommand("抗锯齿已关闭")
             //         : new UIDisplayNoteCommand("抗锯齿已开启，等级：" + _gameSettings.AntiAliasing));
             // });
@@ -485,7 +485,7 @@ namespace Pal3.Game.Dev
 
                 buttonTextUGUI.text = GetMusicButtonText();
 
-                Pal3Game.Instance.Execute(new UIDisplayNoteCommand("音乐已" +
+                Pal3.Instance.Execute(new UIDisplayNoteCommand("音乐已" +
                     (_gameSettings.MusicVolume == 0f ? "关闭" : "开启") + ""));
             });
 
@@ -498,7 +498,7 @@ namespace Pal3.Game.Dev
 
                 buttonTextUGUI.text = GetSfxButtonText();
 
-                Pal3Game.Instance.Execute(new UIDisplayNoteCommand("音效已" +
+                Pal3.Instance.Execute(new UIDisplayNoteCommand("音效已" +
                     (_gameSettings.SfxVolume == 0f ? "关闭" : "开启") + ""));
             });
 
@@ -514,7 +514,7 @@ namespace Pal3.Game.Dev
 
                 buttonTextUGUI.text = GetLanguageButtonText();
 
-                Pal3Game.Instance.Execute(new UIDisplayNoteCommand("游戏版本已切换为" +
+                Pal3.Instance.Execute(new UIDisplayNoteCommand("游戏版本已切换为" +
                     (_gameSettings.Language == Language.SimplifiedChinese ? "简体中文版" : "繁体中文版") +
                     "\n注意：游戏版本需要与数据文件一致（否则会出现乱码），且重启游戏后才会生效"));
             });
@@ -529,7 +529,7 @@ namespace Pal3.Game.Dev
 
                 buttonTextUGUI.text = GetDebugInfoButtonText();
 
-                Pal3Game.Instance.Execute(new UIDisplayNoteCommand("调试信息已" +
+                Pal3.Instance.Execute(new UIDisplayNoteCommand("调试信息已" +
                     (_gameSettings.IsDebugInfoEnabled ? "开启" : "关闭") + ""));
             });
 
@@ -571,7 +571,7 @@ namespace Pal3.Game.Dev
                         buttonTextUGUI.text = string.Format(saveSlotButtonFormat, slotIndex,
                             _saveManager.GetSaveSlotLastWriteTime(slotIndex));
                     }
-                    Pal3Game.Instance.Execute(success
+                    Pal3.Instance.Execute(success
                         ? new UIDisplayNoteCommand("游戏保存成功")
                         : new UIDisplayNoteCommand("游戏保存失败"));
                 });
@@ -612,7 +612,7 @@ namespace Pal3.Game.Dev
                 }
                 else
                 {
-                    Pal3Game.Instance.Execute( new UIDisplayNoteCommand("存档文件不存在或读取失败"));
+                    Pal3.Instance.Execute( new UIDisplayNoteCommand("存档文件不存在或读取失败"));
                 }
             });
 
@@ -637,7 +637,7 @@ namespace Pal3.Game.Dev
                         }
                         else
                         {
-                            Pal3Game.Instance.Execute( new UIDisplayNoteCommand("存档文件不存在或读取失败"));
+                            Pal3.Instance.Execute( new UIDisplayNoteCommand("存档文件不存在或读取失败"));
                         }
                     });
                 }
@@ -680,7 +680,7 @@ namespace Pal3.Game.Dev
                 {
                     HideMenu();
                     _saveManager.IsAutoSaveEnabled = false; // Disable auto save during loading
-                    Pal3Game.Instance.Execute(new ResetGameStateCommand());
+                    Pal3.Instance.Execute(new ResetGameStateCommand());
                     ExecuteCommands(story.Value);
                 });
             }
@@ -811,7 +811,7 @@ namespace Pal3.Game.Dev
             _teamManager.AddActor(0);
 
             #if PAL3A // Add initial task
-            Pal3Game.Instance.Execute(new TaskOpenCommand(TaskConstants.InitTaskId));
+            Pal3.Instance.Execute(new TaskOpenCommand(TaskConstants.InitTaskId));
             #endif
 
             _gameStateManager.TryGoToState(GameState.Cutscene);
@@ -865,7 +865,7 @@ namespace Pal3.Game.Dev
             }
             else
             {
-                Pal3Game.Instance.StartCoroutine(ExecuteDeferredCommandsAfterSceneScriptFinishedAsync(
+                Pal3.Instance.StartCoroutine(ExecuteDeferredCommandsAfterSceneScriptFinishedAsync(
                     command.SceneScriptId));
             }
         }

@@ -64,7 +64,7 @@ namespace Pal3.Game.Effect
             // Even with a waiter, we need to make sure waiter's current execution mode is set
             // to synchronous otherwise the effect will be played before the pre-load is finished.
             #if PAL3
-            Pal3Game.Instance.StartCoroutine(_resourceProvider.PreLoadVfxEffectAsync(command.EffectGroupId));
+            Pal3.Instance.StartCoroutine(_resourceProvider.PreLoadVfxEffectAsync(command.EffectGroupId));
             #endif
         }
 
@@ -112,7 +112,7 @@ namespace Pal3.Game.Effect
             // Play SFX if any
             if (EffectConstants.EffectSfxInfo.TryGetValue(command.EffectGroupId, out var sfxName))
             {
-                Pal3Game.Instance.Execute(
+                Pal3.Instance.Execute(
                     new PlaySfxCommand(sfxName, 1));
             }
         }

@@ -89,7 +89,7 @@ namespace Pal3.Game.Scene.SceneObjects
         {
             if (ObjectInfo.LinkedObjectId != INVALID_SCENE_OBJECT_ID)
             {
-                Pal3Game.Instance.Execute(new ActorStopActionAndStandCommand(ActorConstants.PlayerActorVirtualID));
+                Pal3.Instance.Execute(new ActorStopActionAndStandCommand(ActorConstants.PlayerActorVirtualID));
                 ExecuteScriptIfAny();
                 yield return ActivateOrInteractWithObjectIfAnyAsync(ctx, ObjectInfo.LinkedObjectId);
             }

@@ -133,7 +133,7 @@ namespace Pal3.Game.GamePlay
 
             if (hitResult.colliderGameEntity.GetComponent<NavMesh>() != null)
             {
-                Pal3Game.Instance.StartCoroutine(JumpAsync(hitResult.hitPoint));
+                Pal3.Instance.StartCoroutine(JumpAsync(hitResult.hitPoint));
             }
         }
 

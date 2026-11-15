@@ -57,9 +57,9 @@ namespace Pal3.Game.Scene.SceneObjects
         public override IEnumerator InteractAsync(InteractionContext ctx)
         {
             #if PAL3
-            Pal3Game.Instance.Execute(new ActorStopActionAndStandCommand(ActorConstants.PlayerActorVirtualID));
-            Pal3Game.Instance.Execute(new ActorActivateCommand(ActorConstants.PlayerActorVirtualID, 0));
-            Pal3Game.Instance.Execute(new CameraFocusOnSceneObjectCommand(ObjectInfo.Id));
+            Pal3.Instance.Execute(new ActorStopActionAndStandCommand(ActorConstants.PlayerActorVirtualID));
+            Pal3.Instance.Execute(new ActorActivateCommand(ActorConstants.PlayerActorVirtualID, 0));
+            Pal3.Instance.Execute(new CameraFocusOnSceneObjectCommand(ObjectInfo.Id));
 
             PlaySfx("wg008");
 
@@ -67,7 +67,7 @@ namespace Pal3.Game.Scene.SceneObjects
 
             int portalToFlowerObjectId = ObjectInfo.Parameters[2];
 
-            Pal3Game.Instance.Execute(new CameraFocusOnSceneObjectCommand(portalToFlowerObjectId));
+            Pal3.Instance.Execute(new CameraFocusOnSceneObjectCommand(portalToFlowerObjectId));
 
             SceneObject portalToFlowerObject = ctx.CurrentScene.GetSceneObject(portalToFlowerObjectId);
 
@@ -80,15 +80,15 @@ namespace Pal3.Game.Scene.SceneObjects
             // Play reverse animation on portal to flower object
             yield return portalToFlowerObjectCvdModelRenderer.PlayAnimationAsync(-2f, 1, 1f, false);
 
-            Pal3Game.Instance.Execute(new ActorActivateCommand(ActorConstants.PlayerActorVirtualID, 1));
-            Pal3Game.Instance.Execute(new ActorSetTilePositionCommand(ActorConstants.PlayerActorVirtualID,
+            Pal3.Instance.Execute(new ActorActivateCommand(ActorConstants.PlayerActorVirtualID, 1));
+            Pal3.Instance.Execute(new ActorSetTilePositionCommand(ActorConstants.PlayerActorVirtualID,
                     ObjectInfo.Parameters[0],
                     ObjectInfo.Parameters[1]));
-            Pal3Game.Instance.Execute(new CameraFollowPlayerCommand(1));
+            Pal3.Instance.Execute(new CameraFollowPlayerCommand(1));
             #elif PAL3A
-            Pal3Game.Instance.Execute(new ActorStopActionAndStandCommand(ActorConstants.PlayerActorVirtualID));
-            Pal3Game.Instance.Execute(new ActorActivateCommand(ActorConstants.PlayerActorVirtualID, 0));
-            Pal3Game.Instance.Execute(new CameraFocusOnSceneObjectCommand(ObjectInfo.Id));
+            Pal3.Instance.Execute(new ActorStopActionAndStandCommand(ActorConstants.PlayerActorVirtualID));
+            Pal3.Instance.Execute(new ActorActivateCommand(ActorConstants.PlayerActorVirtualID, 0));
+            Pal3.Instance.Execute(new CameraFocusOnSceneObjectCommand(ObjectInfo.Id));
 
             PlaySfx("wg008");
 
@@ -99,9 +99,9 @@ namespace Pal3.Game.Scene.SceneObjects
                     0f,
                     ObjectInfo.Parameters[1]).ToUnityPosition();
 
-            Pal3Game.Instance.Execute(new ActorActivateCommand(ActorConstants.PlayerActorVirtualID, 1));
-            Pal3Game.Instance.Execute(new ActorSetWorldPositionCommand(ActorConstants.PlayerActorVirtualID, worldPosition.x, worldPosition.z));
-            Pal3Game.Instance.Execute(new CameraFollowPlayerCommand(1));
+            Pal3.Instance.Execute(new ActorActivateCommand(ActorConstants.PlayerActorVirtualID, 1));
+            Pal3.Instance.Execute(new ActorSetWorldPositionCommand(ActorConstants.PlayerActorVirtualID, worldPosition.x, worldPosition.z));
+            Pal3.Instance.Execute(new CameraFollowPlayerCommand(1));
             #endif
         }
 

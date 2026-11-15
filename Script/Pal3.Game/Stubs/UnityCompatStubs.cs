@@ -1,4 +1,4 @@
-﻿// Stubs for Unity/Engine types not yet ported to UnrealSharp compat layer.
+// Stubs for Unity/Engine types not yet ported to UnrealSharp compat layer.
 // These let Pal3.Game compile; UI/Input/Video/Renderer functionality is deferred (Batch 4).
 // Replace with real UE (UMG / EnhancedInput / Engine.Renderer UE impl) over time.
 // NOTE: stub members are minimal common surface; expand as CS1061 errors reveal real usage.
@@ -150,18 +150,6 @@ namespace UnityEngine
         public void Stop() { }
         public void Pause() { }
         public void Clear() { }
-    }
-
-    public class FpsCounter
-    {
-        public float GetFps() => 60f;
-        public int Fps => 60;
-    }
-
-    public class Coroutine
-    {
-        /// <summary>Opaque scheduler handle (see CoroutineScheduler).</summary>
-        internal object Handle;
     }
 
     public struct ColorBlock
@@ -355,8 +343,8 @@ namespace UnityEngine.InputSystem
         public static void EnableDevice(InputDevice device) { }
 
         /// <summary>
-        /// Drops subscribers from the previous PIE session. Pal3Game.Start subscribes
-        /// a handler that destroys the logo and calls Pal3Game.Instance (now the new
+        /// Drops subscribers from the previous PIE session. Pal3.Start subscribes
+        /// a handler that destroys the logo and calls Pal3.Instance (now the new
         /// session's instance) — stale handlers must never run again.
         /// </summary>
         public static void ResetForNewSession()
@@ -979,6 +967,7 @@ namespace Engine.Renderer
             long hash = UnrealSharp.SharpDemo.UPal3DebugOverlay.FingerprintMeshSection(_mesh, 0, out int vertexCount);
             return vertexCount == 0 ? string.Empty : $"{vertexCount}:{hash:x8}";
         }
+        public bool IsVertexAnimated => _animatedMesh != null;
         public Engine.Core.Abstraction.IMaterial[] GetMaterials() => Array.Empty<Engine.Core.Abstraction.IMaterial>();
 
         public UnityEngine.Mesh Render(
@@ -1199,16 +1188,6 @@ namespace Engine.Renderer
         public void Destroy() => Dispose();
     }
 
-    public class AnimatedBillboardRenderer
-    {
-        public void Init(Engine.Core.Abstraction.ISprite[] sprites, float frameRate) { }
-        public void Init(Engine.Core.Abstraction.ISprite[] sprites, float frameRate, Engine.Core.Abstraction.IMaterial material) { }
-        public System.Collections.IEnumerator PlayAnimationAsync(int loopCount) { yield break; }
-        public void StartAnimation(int loopCount) { }
-        public void StopAnimation() { }
-        public void Destroy() { }
-    }
-
     public class SkyBoxRenderer
     {
         public void Render(Engine.Core.Abstraction.IGameEntity cameraEntity, Engine.Core.Abstraction.IMaterial skyboxMaterial) { }
@@ -1289,7 +1268,8 @@ namespace Engine.Core.Implementation
         /// <summary>
         /// MonoBehaviour-style component lookup on the wrapped game entity.
         /// </summary>
-        public T[] GetComponentsInChildren<T>() where T : class => Array.Empty<T>();
+        public T[] GetComponentsInChildren<T>() where T : class =>
+            GameEntity?.GetComponentsInChildren<T>() ?? Array.Empty<T>();
 
         /// <summary>
         /// Destroys the wrapped game entity. Mirrors UnityEngine.Object.Destroy.
@@ -1388,7 +1368,7 @@ namespace IngameDebugConsole
         public event Action? OnLogWindowHidden;
         public UnityEngine.GameObject gameObject => new();
 
-        /// <summary>Drops the previous session's Pal3Game subscribers (PIE restart).</summary>
+        /// <summary>Drops the previous session's Pal3 subscribers (PIE restart).</summary>
         public static void ResetForNewSession()
         {
             _instance.OnLogWindowShown = null;
@@ -1518,7 +1498,8 @@ namespace Pal3.Game.Data
             return true;
         }
         public ISprite CreateSprite(float x, float y, float width, float height, float pivotX, float pivotY)
-            => new UnitySprite(this);
+            => new UnitySprite(this, new UnityEngine.Rect(x, y, width, height),
+                new UnityEngine.Vector2(pivotX, pivotY));
         public void Destroy()
         {
             _destroyed = true;
@@ -1533,7 +1514,15 @@ namespace Pal3.Game.Data
         public ITexture2D Texture { get; }
         public object NativeObject => this;
         public bool IsNativeObjectDisposed => false;
-        public UnitySprite(ITexture2D texture) { Texture = texture; }
+        public UnityEngine.Rect TextureRect { get; }
+        public UnityEngine.Vector2 Pivot { get; }
+
+        public UnitySprite(ITexture2D texture, UnityEngine.Rect textureRect, UnityEngine.Vector2 pivot)
+        {
+            Texture = texture;
+            TextureRect = textureRect;
+            Pivot = pivot;
+        }
         public void Destroy() { }
     }
 
@@ -1660,7 +1649,7 @@ namespace Pal3.Game.Data
             }
         }
 
-        public void SetColor(int propertyId, Pal3.Core.Primitives.Color value)
+        public void SetColor(int propertyId, global::Pal3.Core.Primitives.Color value)
         {
             if (UeMaterial == null) return;
             if (Engine.Services.ShaderUtility.GetPropertyNameById(propertyId) != "_TintColor") return;
@@ -1669,7 +1658,7 @@ namespace Pal3.Game.Data
         }
 
         // Game tint * scene lighting approximation (see UnityEngine.SceneLighting).
-        private Pal3.Core.Primitives.Color _tint = new(1f, 1f, 1f, 1f);
+        private global::Pal3.Core.Primitives.Color _tint = new(1f, 1f, 1f, 1f);
 
         private void ApplyTint()
         {
@@ -1826,7 +1815,7 @@ namespace Pal3.Game.Settings
     /// Stub transactional key-value store (Unity-era PlayerPrefs). Values are kept
     /// in memory for the session; nothing is persisted to disk yet.
     /// </summary>
-    public sealed class PlayerPrefsStore : Pal3.Core.Utilities.ITransactionalKeyValueStore
+    public sealed class PlayerPrefsStore : global::Pal3.Core.Utilities.ITransactionalKeyValueStore
     {
         // Process-wide seed values consulted when an instance has no value for a
         // key. Lets the bootstrapper (Pal3Boot.RunFullBoot) supply the PAL3 game

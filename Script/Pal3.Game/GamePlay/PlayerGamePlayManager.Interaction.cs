@@ -40,7 +40,7 @@ namespace Pal3.Game.GamePlay
             GameScene currentScene = _sceneManager.GetCurrentScene();
             if (currentScene.GetAllActivatedSceneObjects().Contains(command.SceneObjectId))
             {
-                Pal3Game.Instance.StartCoroutine(InteractWithSceneObjectAsync(
+                Pal3.Instance.StartCoroutine(InteractWithSceneObjectAsync(
                     currentScene.GetSceneObject(command.SceneObjectId), startedByPlayer: false));
             }
             else
@@ -55,7 +55,7 @@ namespace Pal3.Game.GamePlay
 
             if (IsPlayerActorInsideJumpableArea())
             {
-                Pal3Game.Instance.StartCoroutine(JumpAsync());
+                Pal3.Instance.StartCoroutine(JumpAsync());
             }
             else
             {
@@ -83,7 +83,7 @@ namespace Pal3.Game.GamePlay
         {
             if (GetInteractionTarget() is not { } target) return;
             var scene = _sceneManager.GetCurrentScene();
-            Pal3Game.Instance.StartCoroutine(target.IsActor
+            Pal3.Instance.StartCoroutine(target.IsActor
                 ? InteractWithActorAsync(target.Id, scene.GetActorGameEntity(target.Id))
                 : InteractWithSceneObjectAsync(scene.GetSceneObject(target.Id), startedByPlayer: true));
         }
@@ -168,8 +168,8 @@ namespace Pal3.Game.GamePlay
 
         private IEnumerator InteractWithActorAsync(int actorId, IGameEntity actorGameEntity)
         {
-            Pal3Game.Instance.Execute(new GameStateChangeRequest(GameState.Cutscene));
-            Pal3Game.Instance.Execute(new ActorStopActionAndStandCommand(ActorConstants.PlayerActorVirtualID));
+            Pal3.Instance.Execute(new GameStateChangeRequest(GameState.Cutscene));
+            Pal3.Instance.Execute(new ActorStopActionAndStandCommand(ActorConstants.PlayerActorVirtualID));
 
             GameActor targetActor = _sceneManager.GetCurrentScene().GetActor(actorId);
             Quaternion rotationBeforeInteraction = actorGameEntity.Transform.Rotation;
@@ -186,7 +186,7 @@ namespace Pal3.Game.GamePlay
             }
 
             // Look at the target actor
-            Pal3Game.Instance.Execute(new ActorLookAtActorCommand(_playerActor.Id, targetActor.Id));
+            Pal3.Instance.Execute(new ActorLookAtActorCommand(_playerActor.Id, targetActor.Id));
 
             bool shouldResetFacingAfterInteraction = false;
 
@@ -194,7 +194,7 @@ namespace Pal3.Game.GamePlay
             // and InitBehaviour is not set to Hold
             if (targetActor.Info.NoTurn == 0 && targetActor.Info.InitBehaviour != ActorBehaviourType.Hold)
             {
-                Pal3Game.Instance.Execute(new ActorLookAtActorCommand(targetActor.Id, _playerActor.Id));
+                Pal3.Instance.Execute(new ActorLookAtActorCommand(targetActor.Id, _playerActor.Id));
                 shouldResetFacingAfterInteraction = true;
             }
 
@@ -210,7 +210,7 @@ namespace Pal3.Game.GamePlay
             // Run dialogue script
             uint scriptId = targetActor.GetScriptId();
             var waiter = new WaitUntilScriptFinished(ScriptManager.GetScriptType(scriptId), scriptId);
-            Pal3Game.Instance.Execute(new ScriptExecuteCommand((int)scriptId));
+            Pal3.Instance.Execute(new ScriptExecuteCommand((int)scriptId));
 
             // Wait until the dialogue script is finished
             yield return waiter;

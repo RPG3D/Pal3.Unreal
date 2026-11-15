@@ -48,9 +48,6 @@ namespace Pal3.Game.Actor.Controllers
         private bool _canPerformHoldAnimation;
 
         private Mv3ModelRenderer _mv3ModelRenderer;
-
-        public string[] GetMeshPoseFingerprints() =>
-            _mv3ModelRenderer?.GetMeshPoseFingerprints() ?? Array.Empty<string>();
         private WaitUntilCanceled _animationLoopPointWaiter;
 
         private Bounds _rendererBounds;
@@ -267,7 +264,7 @@ namespace Pal3.Game.Actor.Controllers
             {
                 _animationLoopPointWaiter?.CancelWait();
                 _animationLoopPointWaiter = new WaitUntilCanceled();
-                Pal3Game.Instance.Execute(new ScriptRunnerAddWaiterRequest(_animationLoopPointWaiter));
+                Pal3.Instance.Execute(new ScriptRunnerAddWaiterRequest(_animationLoopPointWaiter));
                 _mv3ModelRenderer.ResumeAction();
             }
             else

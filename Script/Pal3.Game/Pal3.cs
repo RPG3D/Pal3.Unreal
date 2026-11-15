@@ -69,7 +69,7 @@ namespace Pal3.Game
     /// <summary>
     /// Pal3 game model
     /// </summary>
-    public sealed class Pal3Game : Singleton<Pal3Game>
+    public sealed class Pal3 : Singleton<Pal3>
     {
         // Camera
         [SerializeField] private UnityEngine.Camera mainCamera;

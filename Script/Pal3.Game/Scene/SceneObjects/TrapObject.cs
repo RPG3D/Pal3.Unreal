@@ -65,7 +65,7 @@ namespace Pal3.Game.Scene.SceneObjects
 
         public override IEnumerator InteractAsync(InteractionContext ctx)
         {
-            Pal3Game.Instance.Execute(new ActorStopActionAndStandCommand(ActorConstants.PlayerActorVirtualID));
+            Pal3.Instance.Execute(new ActorStopActionAndStandCommand(ActorConstants.PlayerActorVirtualID));
 
             #if PAL3
             PlaySfx("wg007");

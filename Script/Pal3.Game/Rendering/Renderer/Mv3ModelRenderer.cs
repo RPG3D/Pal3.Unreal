@@ -559,17 +559,6 @@ namespace Pal3.Game.Rendering.Renderer
             return false;
         }
 
-        public string[] GetMeshPoseFingerprints()
-        {
-            if (!IsInitialized) return Array.Empty<string>();
-            var fingerprints = new string[_meshCount];
-            for (int i = 0; i < _meshCount; i++)
-            {
-                fingerprints[i] = _renderMeshComponents[i].MeshRenderer.FingerprintMesh();
-            }
-            return fingerprints;
-        }
-
         public void Dispose()
         {
             if (!IsInitialized) return;

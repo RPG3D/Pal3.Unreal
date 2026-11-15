@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------------------------
 //  Copyright (c) 2021-2025, Jiaqi (0x7c13) Liu. All rights reserved.
 //  See LICENSE file in the project root for license information.
 // ---------------------------------------------------------------------------------------------
@@ -36,15 +36,15 @@ namespace Pal3.Game.Scene.SceneObjects
 
             if (ObjectInfo.Parameters[0] != 0) // Game item
             {
-                Pal3Game.Instance.Execute(new InventoryAddItemCommand(ObjectInfo.Parameters[0], 1));
+                Pal3.Instance.Execute(new InventoryAddItemCommand(ObjectInfo.Parameters[0], 1));
             }
             else if (ObjectInfo.Parameters[1] != 0 && ObjectInfo.Parameters[1] != 1)
             {
-                Pal3Game.Instance.Execute(new InventoryAddMoneyCommand(ObjectInfo.Parameters[1]));
+                Pal3.Instance.Execute(new InventoryAddMoneyCommand(ObjectInfo.Parameters[1]));
             }
             else if (ObjectInfo.Parameters[2] != 0)
             {
-                Pal3Game.Instance.Execute(new InventoryAddMoneyCommand(ObjectInfo.Parameters[2]));
+                Pal3.Instance.Execute(new InventoryAddMoneyCommand(ObjectInfo.Parameters[2]));
             }
 
             PlaySfx("wa006");

@@ -1,4 +1,4 @@
-﻿// ---------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------
 //  Copyright (c) 2021-2025, Jiaqi (0x7c13) Liu. All rights reserved.
 //  See LICENSE file in the project root for license information.
 // ---------------------------------------------------------------------------------------------
@@ -174,7 +174,7 @@ namespace Pal3.Game.GameSystems.Dialogue
             if (!_isDialoguePresenting && _dialogueRenderQueue.Count > 0)
             {
                 _isDialoguePresenting = true;
-               Pal3Game.Instance.StartCoroutine(_dialogueRenderQueue.Dequeue());
+               Pal3.Instance.StartCoroutine(_dialogueRenderQueue.Dequeue());
             }
         }
 
@@ -207,7 +207,7 @@ namespace Pal3.Game.GameSystems.Dialogue
             DialogueRenderActorAvatarCommand avatarCommand = null,
             Action onFinished = null)
         {
-            Pal3Game.Instance.Execute(new DialogueRenderingStartedNotification());
+            Pal3.Instance.Execute(new DialogueRenderingStartedNotification());
             _totalTimeUsedBeforeSkippingTheLastDialogue = 0f;
 
             bool isRightAligned = true;
@@ -256,7 +256,7 @@ namespace Pal3.Game.GameSystems.Dialogue
                     _flashingAnimationCts.Cancel();
                 }
                 _flashingAnimationCts = new CancellationTokenSource();
-                Pal3Game.Instance.StartCoroutine(PlayDialogueBackgroundFlashingAnimationAsync(
+                Pal3.Instance.StartCoroutine(PlayDialogueBackgroundFlashingAnimationAsync(
                      duration: LIMIT_TIME_DIALOGUE_PLAYER_MAX_REACTION_TIME_IN_SECONDS,
                     _flashingAnimationCts.Token));
             }
@@ -267,14 +267,14 @@ namespace Pal3.Game.GameSystems.Dialogue
                 Dev.DialoguePresentation.ShowText(dialogue);
                 IEnumerator renderDialogue = RenderDialogueTextWithAnimationAsync(dialogueTextUI, dialogue);
 
-                Pal3Game.Instance.StartCoroutine(renderDialogue);
+                Pal3.Instance.StartCoroutine(renderDialogue);
 
                 yield return WaitForDialoguePageAsync();
 
                 if (_isDialogueRenderingAnimationInProgress)
                 {
                     _isDialogueRenderingAnimationInProgress = false;
-                    Pal3Game.Instance.StopCoroutine(renderDialogue);
+                    Pal3.Instance.StopCoroutine(renderDialogue);
                     dialogueTextUI.text = dialogue;
                     yield return WaitForDialoguePageAsync();
                 }
@@ -413,7 +413,7 @@ namespace Pal3.Game.GameSystems.Dialogue
         public void Execute(DialogueRenderTextCommand command)
         {
             WaitUntilCanceled skipDialogueWaiter = new();
-            Pal3Game.Instance.Execute(new ScriptRunnerAddWaiterRequest(skipDialogueWaiter));
+            Pal3.Instance.Execute(new ScriptRunnerAddWaiterRequest(skipDialogueWaiter));
             DialogueRenderActorAvatarCommand avatarCommand = _lastAvatarCommand;
             _dialogueRenderQueue.Enqueue(RenderDialogueAndWaitAsync(
                 DialogueTextProcessor.GetDisplayText(command.DialogueText, INFORMATION_TEXT_COLOR_HEX),
@@ -426,7 +426,7 @@ namespace Pal3.Game.GameSystems.Dialogue
         public void Execute(DialogueRenderTextWithTimeLimitCommand command)
         {
             WaitUntilCanceled skipDialogueWaiter = new();
-            Pal3Game.Instance.Execute(new ScriptRunnerAddWaiterRequest(skipDialogueWaiter));
+            Pal3.Instance.Execute(new ScriptRunnerAddWaiterRequest(skipDialogueWaiter));
             DialogueRenderActorAvatarCommand avatarCommand = _lastAvatarCommand;
             _dialogueRenderQueue.Enqueue(RenderDialogueAndWaitAsync(
                 DialogueTextProcessor.GetDisplayText(command.DialogueText, INFORMATION_TEXT_COLOR_HEX),
@@ -461,7 +461,7 @@ namespace Pal3.Game.GameSystems.Dialogue
             _selectionReturnState = _gameStateManager.GetCurrentState();
             _gameStateManager.TryGoToState(GameState.UI);
             _selectionWaiter = new WaitUntilCanceled();
-            Pal3Game.Instance.Execute(new ScriptRunnerAddWaiterRequest(_selectionWaiter));
+            Pal3.Instance.Execute(new ScriptRunnerAddWaiterRequest(_selectionWaiter));
             Dev.DialoguePresentation.ShowChoices(choices);
         }
 

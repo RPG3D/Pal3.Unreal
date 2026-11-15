@@ -72,10 +72,10 @@ namespace Pal3.Game.GamePlay
             }
 
             WaitUntilCanceled waiter = new();
-            Pal3Game.Instance.Execute(new ScriptRunnerAddWaiterRequest(waiter));
+            Pal3.Instance.Execute(new ScriptRunnerAddWaiterRequest(waiter));
 
             bool climbAnimationOnly = command.ClimbUp != -1;
-            Pal3Game.Instance.StartCoroutine(PlayerActorMoveToClimbableObjectAndClimbAsync(climbableEntity,
+            Pal3.Instance.StartCoroutine(PlayerActorMoveToClimbableObjectAndClimbAsync(climbableEntity,
                 climbUp,
                 climbAnimationOnly,
                 climbableHeight,

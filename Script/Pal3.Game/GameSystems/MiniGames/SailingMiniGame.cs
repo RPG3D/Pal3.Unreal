@@ -36,7 +36,7 @@ namespace Pal3.Game.GameSystems.MiniGames
                 case 0:
                     scenes.BeginLoadScene("m04", "1", () =>
                     {
-                        Pal3Game.Instance.Execute(new ActorActivateCommand(ActorConstants.PlayerActorVirtualID, 0));
+                        Pal3.Instance.Execute(new ActorActivateCommand(ActorConstants.PlayerActorVirtualID, 0));
                         Finish();
                     });
                     break;
@@ -50,8 +50,8 @@ namespace Pal3.Game.GameSystems.MiniGames
 
             void Finish()
             {
-                Pal3Game.Instance.Execute(new ScriptExecuteCommand(command.EndScriptId));
-                Pal3Game.Instance.Execute(new UIDisplayNoteCommand("行船小游戏暂未实现，现已跳过"));
+                Pal3.Instance.Execute(new ScriptExecuteCommand(command.EndScriptId));
+                Pal3.Instance.Execute(new UIDisplayNoteCommand("行船小游戏暂未实现，现已跳过"));
             }
         }
     }

@@ -46,7 +46,7 @@ namespace Pal3.Game.Scene.SceneObjects
 
             float interval = ObjectInfo.Parameters[0] > 0 ? ObjectInfo.Parameters[0] / 1000f : 0f;
 
-            Pal3Game.Instance.Execute(new AttachSfxToGameEntityRequest(sceneObjectGameEntity,
+            Pal3.Instance.Execute(new AttachSfxToGameEntityRequest(sceneObjectGameEntity,
                     SfxName,
                     SCENE_SFX_AUDIO_SOURCE_NAME,
                     loopCount: -1,

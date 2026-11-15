@@ -86,7 +86,7 @@ namespace Pal3.Game.State
 
             UpdateInputManagerState();
 
-            Pal3Game.Instance.Execute(new GameStateChangedNotification(_previousState, _currentState));
+            Pal3.Instance.Execute(new GameStateChangedNotification(_previousState, _currentState));
 
             return true;
         }
@@ -150,7 +150,7 @@ namespace Pal3.Game.State
 
         public void Execute(GameSwitchToMainMenuCommand command)
         {
-            Pal3Game.Instance.Execute(new ResetGameStateCommand());
+            Pal3.Instance.Execute(new ResetGameStateCommand());
         }
 
         public void Execute(ResetGameStateCommand command)

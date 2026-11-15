@@ -2,6 +2,8 @@
 namespace UnityEngine
 {
     using System;
+    using System.Collections.Generic;
+    using System.Linq;
 
     /// <summary>
     /// Base class for anything attached to a game object. Mirrors UnityEngine.Component:
@@ -11,34 +13,52 @@ namespace UnityEngine
     {
         private GameObject? _gameObject;
         public GameObject gameObject => _gameObject ??= new GameObject();
+        private GameObject? ComponentHost => this as GameObject ?? _gameObject;
+        protected internal void BindGameObject(GameObject owner) => _gameObject = owner;
         private Transform? _transform;
         public Transform transform => _transform ??= new Transform();
-        public bool enabled = true;
+        public virtual bool enabled { get; set; } = true;
 
         // Lazily-created attached stub components (GetComponent<T> analog). In
         // Unity these would be wired up in the editor; here they are created on
         // demand so UI/layout code paths keep working on stub objects.
         private readonly System.Collections.Generic.Dictionary<Type, object> _stubComponents = new();
 
-        public T GetComponent<T>() where T : class
+        public T GetComponent<T>() where T : class => FindComponent(typeof(T)) as T ?? null!;
+
+        public Component? GetComponent(Type type) => FindComponent(type) as Component;
+
+        private object? FindComponent(Type type)
         {
-            Type type = typeof(T);
-            if (_stubComponents.TryGetValue(type, out object? existing)) return (T)existing;
-            if (type.IsAbstract || type.IsInterface) return null!;
+            GameObject? owner = ComponentHost;
+            if (owner != null && owner.TryFindHostedComponent(type, out object? hosted)) return hosted;
+            if (_stubComponents.TryGetValue(type, out object? existing)) return existing;
+            if (type.IsAbstract || type.IsInterface) return null;
             try
             {
-                T created = (T)Activator.CreateInstance(type)!;
+                object created = Activator.CreateInstance(type)!;
                 _stubComponents[type] = created;
                 return created;
             }
             catch (MissingMethodException)
             {
-                return null!; // no parameterless ctor - caller decides what to do
+                return null;
             }
         }
 
-        public T GetComponentInChildren<T>() where T : class => GetComponent<T>();
-        public T[] GetComponentsInChildren<T>() where T : class => new[] { GetComponent<T>() };
+        public T GetComponentInChildren<T>() where T : class
+        {
+            if (ComponentHost?.FindHostedComponentsInChildren(typeof(T)) is { } hosted)
+                return hosted.OfType<T>().FirstOrDefault()!;
+            return GetComponent<T>();
+        }
+
+        public T[] GetComponentsInChildren<T>() where T : class
+        {
+            if (ComponentHost?.FindHostedComponentsInChildren(typeof(T)) is { } hosted)
+                return hosted.OfType<T>().ToArray();
+            return GetComponent<T>() is { } component ? new[] { component } : Array.Empty<T>();
+        }
         public T GetOrAddComponent<T>() where T : class => GetComponent<T>();
     }
 
@@ -83,7 +103,47 @@ namespace UnityEngine
         /// </summary>
         public readonly System.Collections.Generic.List<System.Type> PrefabScriptTypes = new();
 
-        public new T AddComponent<T>() where T : new() => new();
+        private Func<Type, object?>? _addHostedComponent;
+        private Func<Type, object?>? _findHostedComponent;
+        private Func<Type, IEnumerable<object>>? _findHostedChildren;
+
+        // UnrealSharp portability. Bind to the same component registry that
+        // drives the entity's MonoBehaviour callbacks on the game thread.
+        public void BindComponentHost(Func<Type, object?> add, Func<Type, object?> find,
+            Func<Type, IEnumerable<object>> findInChildren)
+        {
+            _addHostedComponent = add;
+            _findHostedComponent = find;
+            _findHostedChildren = findInChildren;
+        }
+
+        public void ReleaseComponentHost()
+        {
+            // A GameObject can outlive the entity in managed code.
+            _addHostedComponent = static _ => null;
+            _findHostedComponent = static _ => null;
+            _findHostedChildren = static _ => Array.Empty<object>();
+        }
+
+        internal bool TryFindHostedComponent(Type type, out object? component)
+        {
+            component = _findHostedComponent?.Invoke(type);
+            return _findHostedComponent != null;
+        }
+
+        internal IEnumerable<object>? FindHostedComponentsInChildren(Type type) => _findHostedChildren?.Invoke(type);
+
+        public T AddComponent<T>() where T : Component => (T)AddComponent(typeof(T))!;
+
+        public Component? AddComponent(Type type)
+        {
+            if (!typeof(Component).IsAssignableFrom(type) || type.IsAbstract)
+                throw new ArgumentException("Expected a concrete Unity component type.", nameof(type));
+            var component = (_addHostedComponent != null ? _addHostedComponent(type) : Activator.CreateInstance(type)) as Component;
+            component?.BindGameObject(this);
+            return component;
+        }
+
         public void SetActive(bool value) { }
     }
 

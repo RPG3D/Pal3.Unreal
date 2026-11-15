@@ -96,7 +96,7 @@ namespace Pal3.Game.UI
 
         public void Dispose()
         {
-            if (_noteAnimation != null) Pal3Game.Instance.StopCoroutine(_noteAnimation);
+            if (_noteAnimation != null) Pal3.Instance.StopCoroutine(_noteAnimation);
             CommandExecutorRegistry<ICommand>.Instance.UnRegister(this);
         }
 
@@ -148,7 +148,7 @@ namespace Pal3.Game.UI
                 string currentText = _noteText.text;
                 if (_noteAnimation != null)
                 {
-                    Pal3Game.Instance.StopCoroutine(_noteAnimation);
+                    Pal3.Instance.StopCoroutine(_noteAnimation);
                 }
 
                 if (!string.Equals(currentText, command.Note) &&
@@ -162,14 +162,14 @@ namespace Pal3.Game.UI
                 _noteText.text = command.Note;
             }
 
-            _noteAnimation = Pal3Game.Instance.StartCoroutine(AnimateNoteUIAsync());
+            _noteAnimation = Pal3.Instance.StartCoroutine(AnimateNoteUIAsync());
         }
 
         public void Execute(SceneLeavingCurrentSceneNotification command)
         {
             if (_noteAnimation != null)
             {
-                Pal3Game.Instance.StopCoroutine(_noteAnimation);
+                Pal3.Instance.StopCoroutine(_noteAnimation);
             }
             _noteCanvasGroup.alpha = 0f;
             _noteText.text = string.Empty;

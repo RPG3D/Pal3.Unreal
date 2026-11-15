@@ -1,4 +1,4 @@
-﻿// ---------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------
 //  Copyright (c) 2021-2025, Jiaqi (0x7c13) Liu. All rights reserved.
 //  See LICENSE file in the project root for license information.
 // ---------------------------------------------------------------------------------------------
@@ -200,7 +200,7 @@ namespace Pal3.Game.State
             var services = ServiceLocator.Instance;
             var state = services.Get<GameStateManager>();
             var information = services.Get<InformationManager>();
-            var game = Pal3Game.Instance;
+            var game = Pal3.Instance;
             beforeRestore();
             LastLoadError = null;
             IsAutoSaveEnabled = false;
@@ -238,7 +238,7 @@ namespace Pal3.Game.State
                     throw new InvalidOperationException("The scene entry script left the saved scene.");
                 }
 
-                var game = Pal3Game.Instance;
+                var game = Pal3.Instance;
                 foreach (ICommand command in restore.Deferred.Where(command => command is not PlayerEnableInputCommand))
                 {
                     game.Execute(command);

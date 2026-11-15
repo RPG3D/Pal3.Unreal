@@ -129,7 +129,7 @@ namespace Pal3.Game.GameSystems.Combat
             if (_gameStateManager.GetCurrentState() == GameState.Cutscene)
             {
                 WaitUntilCanceled combatWaiter = new();
-                Pal3Game.Instance.Execute(new ScriptRunnerAddWaiterRequest(combatWaiter));
+                Pal3.Instance.Execute(new ScriptRunnerAddWaiterRequest(combatWaiter));
                 _combatContextBuilder.WithScriptWaiter(combatWaiter);
             }
 
@@ -153,7 +153,7 @@ namespace Pal3.Game.GameSystems.Combat
             }
             else
             {
-                Pal3Game.Instance.Execute(new GameSwitchToMainMenuCommand());
+                Pal3.Instance.Execute(new GameSwitchToMainMenuCommand());
             }
         }
 
@@ -313,11 +313,11 @@ namespace Pal3.Game.GameSystems.Combat
         // Player actor collides with combat NPC in maze
         public void Execute(CombatActorCollideWithPlayerActorNotification command)
         {
-            Pal3Game.Instance.Execute(new ActorActivateCommand(command.CombatActorId, 0));
+            Pal3.Instance.Execute(new ActorActivateCommand(command.CombatActorId, 0));
 
             if (_gameSettings.IsTurnBasedCombatEnabled)
             {
-                Pal3Game.Instance.Execute(new ActorStopActionAndStandCommand(ActorConstants.PlayerActorVirtualID));
+                Pal3.Instance.Execute(new ActorStopActionAndStandCommand(ActorConstants.PlayerActorVirtualID));
 
                 GameScene currentScene = _sceneManager.GetCurrentScene();
                 GameActor gameActor = currentScene.GetActor(command.CombatActorId);
@@ -334,7 +334,7 @@ namespace Pal3.Game.GameSystems.Combat
             }
             else // TODO: Remove once combat system is fully implemented
             {
-                Pal3Game.Instance.Execute(new PlaySfxCommand("wd130", 1));
+                Pal3.Instance.Execute(new PlaySfxCommand("wd130", 1));
             }
         }
 

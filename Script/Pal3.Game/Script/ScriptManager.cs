@@ -138,7 +138,7 @@ namespace Pal3.Game.Script
 
         private void OnCommandExecutionRequested(object sender, ICommand command)
         {
-            Pal3Game.Instance.Execute(command);
+            Pal3.Instance.Execute(command);
             var scenes = ServiceLocator.Instance.Get<SceneManager>();
             if (scenes.IsLoading && sender is PalScriptRunner runner)
             {
@@ -155,7 +155,7 @@ namespace Pal3.Game.Script
                         _runningScripts.Remove(runner);
                         runner.OnCommandExecutionRequested -= OnCommandExecutionRequested;
                         runner.Dispose();
-                        Pal3Game.Instance.Execute(new ScriptFailedToRunNotification(runner.ScriptId, runner.ScriptType));
+                        Pal3.Instance.Execute(new ScriptFailedToRunNotification(runner.ScriptId, runner.ScriptType));
                     });
                 runner.WaitForSceneLoad(waiter);
                 _waitingForSceneLoad = true;
@@ -190,7 +190,7 @@ namespace Pal3.Game.Script
 
                 EngineLogger.Log($"Script [{finishedScript.ScriptId} " +
                           $"{finishedScript.ScriptDescription}] finished running");
-                Pal3Game.Instance.Execute(new ScriptFinishedRunningNotification(
+                Pal3.Instance.Execute(new ScriptFinishedRunningNotification(
                     finishedScript.ScriptId,
                     finishedScript.ScriptType));
             }
@@ -224,7 +224,7 @@ namespace Pal3.Game.Script
             // A caller waiting on an existing run should receive that run's outcome.
             if (!IsScriptScheduled(scriptId) && !AddScript(scriptId))
             {
-                Pal3Game.Instance.Execute(new ScriptFailedToRunNotification(scriptId, GetScriptType(scriptId)));
+                Pal3.Instance.Execute(new ScriptFailedToRunNotification(scriptId, GetScriptType(scriptId)));
             }
         }
 

@@ -1,4 +1,4 @@
-﻿// ---------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------
 //  Copyright (c) 2021-2025, Jiaqi (0x7c13) Liu. All rights reserved.
 //  See LICENSE file in the project root for license information.
 // ---------------------------------------------------------------------------------------------
@@ -298,7 +298,7 @@ namespace Pal3.Game.Scene.SceneObjects
 
         internal void RequestForInteraction()
         {
-            Pal3Game.Instance.Execute(new PlayerInteractWithObjectCommand(ObjectInfo.Id));
+            Pal3.Instance.Execute(new PlayerInteractWithObjectCommand(ObjectInfo.Id));
         }
 
         internal bool IsInteractableBasedOnTimesCount()
@@ -311,7 +311,7 @@ namespace Pal3.Game.Scene.SceneObjects
                     return false;
                 default:
                     ObjectInfo.Times--;
-                    Pal3Game.Instance.Execute(new SceneSaveGlobalObjectTimesCountCommand(
+                    Pal3.Instance.Execute(new SceneSaveGlobalObjectTimesCountCommand(
                             SceneInfo.CityName,
                             SceneInfo.SceneName,
                             ObjectInfo.Id,
@@ -323,14 +323,14 @@ namespace Pal3.Game.Scene.SceneObjects
         internal void ExecuteScriptIfAny()
         {
             if (ObjectInfo.ScriptId == ScriptConstants.InvalidScriptId) return;
-            Pal3Game.Instance.Execute(new ScriptExecuteCommand((int)ObjectInfo.ScriptId));
+            Pal3.Instance.Execute(new ScriptExecuteCommand((int)ObjectInfo.ScriptId));
         }
 
         internal IEnumerator ExecuteScriptAndWaitForFinishIfAnyAsync()
         {
             if (ObjectInfo.ScriptId == ScriptConstants.InvalidScriptId) yield break;
             var waiter = new WaitUntilScriptFinished(ScriptManager.GetScriptType(ObjectInfo.ScriptId), ObjectInfo.ScriptId);
-            Pal3Game.Instance.Execute(new ScriptExecuteCommand((int)ObjectInfo.ScriptId));
+            Pal3.Instance.Execute(new ScriptExecuteCommand((int)ObjectInfo.ScriptId));
             yield return waiter;
         }
 
@@ -338,18 +338,18 @@ namespace Pal3.Game.Scene.SceneObjects
         {
             if (!string.IsNullOrEmpty(ObjectInfo.SfxName))
             {
-                Pal3Game.Instance.Execute(new PlaySfxCommand(ObjectInfo.SfxName, 1));
+                Pal3.Instance.Execute(new PlaySfxCommand(ObjectInfo.SfxName, 1));
             }
         }
 
         internal void PlaySfx(string sfxName, int loopCount = 1)
         {
-            Pal3Game.Instance.Execute(new PlaySfxCommand(sfxName, loopCount));
+            Pal3.Instance.Execute(new PlaySfxCommand(sfxName, loopCount));
         }
 
         internal void ChangeAndSaveActivationState(bool isActivated)
         {
-            Pal3Game.Instance.Execute(new SceneActivateObjectCommand(ObjectInfo.Id, isActivated ? 1 : 0));
+            Pal3.Instance.Execute(new SceneActivateObjectCommand(ObjectInfo.Id, isActivated ? 1 : 0));
             // Scene will receive this command and save its global activation state
             // so no need to dispatch a SceneSaveGlobalObjectActivationStateCommand here
         }
@@ -357,7 +357,7 @@ namespace Pal3.Game.Scene.SceneObjects
         internal void FlipAndSaveSwitchState()
         {
             ObjectInfo.SwitchState = ObjectInfo.SwitchState == 0 ? (byte) 1 : (byte) 0;
-            Pal3Game.Instance.Execute(new SceneSaveGlobalObjectSwitchStateCommand(SceneInfo.CityName,
+            Pal3.Instance.Execute(new SceneSaveGlobalObjectSwitchStateCommand(SceneInfo.CityName,
                     SceneInfo.SceneName,
                     ObjectInfo.Id,
                     ObjectInfo.SwitchState));
@@ -371,7 +371,7 @@ namespace Pal3.Game.Scene.SceneObjects
 
             if (!allActivatedSceneObjects.Contains(objectId))
             {
-                Pal3Game.Instance.Execute(new SceneActivateObjectCommand(objectId, 1));
+                Pal3.Instance.Execute(new SceneActivateObjectCommand(objectId, 1));
             }
             else
             {
@@ -428,7 +428,7 @@ namespace Pal3.Game.Scene.SceneObjects
         internal void ChangeAndSaveNavLayerIndex(byte layerIndex)
         {
             ObjectInfo.LayerIndex = layerIndex;
-            Pal3Game.Instance.Execute(new SceneSaveGlobalObjectLayerIndexCommand(SceneInfo.CityName,
+            Pal3.Instance.Execute(new SceneSaveGlobalObjectLayerIndexCommand(SceneInfo.CityName,
                     SceneInfo.SceneName,
                     ObjectInfo.Id,
                     layerIndex));
@@ -437,7 +437,7 @@ namespace Pal3.Game.Scene.SceneObjects
         internal void SaveCurrentPosition()
         {
             GameBoxVector3 gameBoxPosition = _sceneObjectGameEntity.Transform.Position.ToGameBoxPosition();
-            Pal3Game.Instance.Execute(new SceneSaveGlobalObjectPositionCommand(SceneInfo.CityName,
+            Pal3.Instance.Execute(new SceneSaveGlobalObjectPositionCommand(SceneInfo.CityName,
                     SceneInfo.SceneName,
                     ObjectInfo.Id,
                     gameBoxPosition.X,
@@ -447,7 +447,7 @@ namespace Pal3.Game.Scene.SceneObjects
 
         internal void SaveCurrentYRotation()
         {
-            Pal3Game.Instance.Execute(new SceneSaveGlobalObjectYRotationCommand(SceneInfo.CityName,
+            Pal3.Instance.Execute(new SceneSaveGlobalObjectYRotationCommand(SceneInfo.CityName,
                     SceneInfo.SceneName,
                     ObjectInfo.Id,
                     _sceneObjectGameEntity.Transform.EulerAngles.y.ToGameBoxYEulerAngle()));
@@ -457,7 +457,7 @@ namespace Pal3.Game.Scene.SceneObjects
             Vector3 position,
             ITransform playerActorTransform)
         {
-            Pal3Game.Instance.Execute(new CameraFollowPlayerCommand(0));
+            Pal3.Instance.Execute(new CameraFollowPlayerCommand(0));
             Vector3 offset = position - playerActorTransform.Position;
             Vector3 cameraCurrentPosition = CameraTransform.Position;
             Vector3 targetPosition = cameraCurrentPosition + offset;
@@ -466,13 +466,13 @@ namespace Pal3.Game.Scene.SceneObjects
 
         internal void CameraFocusOnObject(int objectId)
         {
-            Pal3Game.Instance.Execute(new CameraFollowPlayerCommand(1));
-            Pal3Game.Instance.Execute(new CameraFocusOnSceneObjectCommand(objectId));
+            Pal3.Instance.Execute(new CameraFollowPlayerCommand(1));
+            Pal3.Instance.Execute(new CameraFocusOnSceneObjectCommand(objectId));
         }
 
         internal void ResetCamera()
         {
-            Pal3Game.Instance.Execute(new CameraFollowPlayerCommand(1));
+            Pal3.Instance.Execute(new CameraFollowPlayerCommand(1));
         }
 
         internal bool IsFullyVisibleToCamera()

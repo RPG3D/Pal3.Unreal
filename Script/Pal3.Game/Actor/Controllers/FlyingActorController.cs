@@ -72,7 +72,7 @@ namespace Pal3.Game.Actor.Controllers
             }
 
             WaitUntilCanceled waiter = new();
-            Pal3Game.Instance.Execute(new ScriptRunnerAddWaiterRequest(waiter));
+            Pal3.Instance.Execute(new ScriptRunnerAddWaiterRequest(waiter));
 
             float distance = (targetPosition - Transform.Position).magnitude;
             float duration = distance / DefaultFlySpeed;

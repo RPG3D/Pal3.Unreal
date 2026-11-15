@@ -20,11 +20,6 @@ namespace Pal3.Game.Effect
     using Rendering.Renderer;
 
     using Vector3 = UnityEngine.Vector3;
-    using UnrealSharp.Core;
-    using UnrealSharp.CoreUObject;
-    using UnrealSharp.Engine;
-    using UnrealSharp.ProceduralMeshComponent;
-    using UnrealSharp.SharpDemo;
 
     public sealed class FireEffect : GameEntityScript, IEffect
     {
@@ -32,10 +27,9 @@ namespace Pal3.Game.Effect
         public FireEffectType FireEffectType { get; private set; }
 
         private (ITexture2D texture, bool hasAlphaChannel)[] _effectTextures = Array.Empty<(ITexture2D texture, bool hasAlphaChannel)>();
+        private AnimatedBillboardRenderer _billboardRenderer;
         private PolyModelRenderer _sceneObjectRenderer;
-        private UMaterialInterface _billboardMaterial;
-        private int _frame = -1;
-        private float _elapsed;
+        private IMaterial _spriteMaterial;
 
         protected override void OnDisableGameEntity()
         {
@@ -65,6 +59,16 @@ namespace Pal3.Game.Effect
                 _effectTextures = resourceProvider.GetEffectTextures(
                     GraphicsEffectType.Fire, info.TexturePathFormat);
 
+                ISprite[] sprites = new ISprite[_effectTextures.Length];
+                for (int i = 0; i < _effectTextures.Length; i++)
+                {
+                    ITexture2D texture = _effectTextures[i].texture;
+                    ISprite sprite = texture?.CreateSprite(0f, 0f,
+                        texture.Width, texture.Height,
+                        0.5f, 0f);
+                    sprites[i] = sprite;
+                }
+
                 float yPosition = 0f;
                 if (_sceneObjectRenderer != null)
                 {
@@ -76,45 +80,13 @@ namespace Pal3.Game.Effect
                 EffectGameEntity.Transform.LocalScale = new Vector3(info.Size, info.Size, info.Size);
                 EffectGameEntity.Transform.LocalPosition = new Vector3(0f, yPosition, 0f);
 
-                if (EffectGameEntity is UEGameEntity entity && _effectTextures.Length != 0 &&
-                    _effectTextures[0].texture is { } firstTexture)
-                {
-                    _billboardMaterial = UPal3AssetHelper.CreatePal3MaterialBlend(_effectTextures[0].hasAlphaChannel ? 2 : 1);
-                    Pal3TransientAssets.Track(this, _billboardMaterial);
-                    var quad = entity.Actor.AddComponentByClass<UProceduralMeshComponent>(false, new FTransform());
-                    double halfWidth = firstTexture.Width / 2.0;
-                    double height = firstTexture.Height;
-                    quad.CreateMeshSection(0,
-                        new FVector[] { new(0, -halfWidth, 0), new(0, halfWidth, 0), new(0, halfWidth, height), new(0, -halfWidth, height) },
-                        new[] { 0, 1, 2, 0, 2, 3 }, Array.Empty<FVector>(),
-                        new FVector2D[] { new(0, 1), new(1, 1), new(1, 0), new(0, 0) },
-                        Array.Empty<FVector2D>(), Array.Empty<FVector2D>(), Array.Empty<FVector2D>(),
-                        Array.Empty<FLinearColor>(), Array.Empty<FProcMeshTangent>(), false);
-                    quad.SetMaterial(0, _billboardMaterial);
-                    // Additive textures contain black in the transparent area. Keep
-                    // the flame luminous even while the room is tinted for night.
-                    UPal3AssetHelper.SetVectorParameter(_billboardMaterial, new FName("TintColor"), new FLinearColor(1, 1, 1, 1));
-                    OnUpdateGameEntity(0);
-                }
+                _billboardRenderer = EffectGameEntity.AddComponent<AnimatedBillboardRenderer>();
+                _spriteMaterial = _effectTextures[0].hasAlphaChannel
+                    ? null
+                    : materialManager.CreateOpaqueSpriteMaterial();
+                _billboardRenderer.Init(sprites, EffectConstants.AnimatedFireEffectFrameRate, _spriteMaterial);
+                _billboardRenderer.StartAnimation(-1);
             }
-        }
-
-        protected override void OnUpdateGameEntity(float deltaTime)
-        {
-            if (_billboardMaterial == null || EffectGameEntity.IsNullOrDisposed()) return;
-            if (Pal3Boot.CameraActor is { } camera)
-            {
-                Vector3 target = UnityUeConvert.ToUnityPosition(camera.ActorLocation);
-                target.y = EffectGameEntity.Transform.Position.y;
-                EffectGameEntity.Transform.LookAt(target);
-            }
-
-            _elapsed += deltaTime;
-            int frame = (int)(_elapsed * EffectConstants.AnimatedFireEffectFrameRate) % _effectTextures.Length;
-            if (frame == _frame) return;
-            _frame = frame;
-            if (_effectTextures[frame].texture is UnityTexture2D { UeTexture: { } texture })
-                UPal3AssetHelper.BindTexture(_billboardMaterial, new FName("Pal3Tex"), texture);
         }
 
         public void Dispose()
@@ -126,16 +98,22 @@ namespace Pal3.Game.Effect
                 _sceneObjectRenderer = null;
             }
 
+            if (_billboardRenderer != null)
+            {
+                _billboardRenderer.Destroy();
+                _billboardRenderer = null;
+            }
+
             if (EffectGameEntity != null)
             {
                 EffectGameEntity.Destroy();
                 EffectGameEntity = null;
             }
 
-            if (_billboardMaterial != null)
+            if (_spriteMaterial != null)
             {
-                Pal3TransientAssets.Release(_billboardMaterial);
-                _billboardMaterial = null;
+                _spriteMaterial.Destroy();
+                _spriteMaterial = null;
             }
         }
     }

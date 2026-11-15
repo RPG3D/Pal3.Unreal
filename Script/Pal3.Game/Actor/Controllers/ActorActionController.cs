@@ -268,7 +268,7 @@ namespace Pal3.Game.Actor.Controllers
             if (!Enum.IsDefined(typeof(ActorEmojiType), emojiType)) yield break;
 
             WaitUntilCanceled waiter = new();
-            Pal3Game.Instance.Execute(new ScriptRunnerAddWaiterRequest(waiter));
+            Pal3.Instance.Execute(new ScriptRunnerAddWaiterRequest(waiter));
 
             ISprite[] sprites = _resourceProvider.GetEmojiSprites(emojiType);
 
@@ -284,7 +284,7 @@ namespace Pal3.Game.Actor.Controllers
             string emojiSfx = ActorEmojiConstants.EmojiSfxInfo[emojiType];
             if (!string.IsNullOrEmpty(emojiSfx))
             {
-                Pal3Game.Instance.Execute(new PlaySfxCommand(emojiSfx, 1));
+                Pal3.Instance.Execute(new PlaySfxCommand(emojiSfx, 1));
             }
             #endif
 
@@ -314,7 +314,7 @@ namespace Pal3.Game.Actor.Controllers
                 if (command.LoopCount is > 0 or -2)
                 {
                     waiter = new WaitUntilCanceled();
-                    Pal3Game.Instance.Execute(new ScriptRunnerAddWaiterRequest(waiter));
+                    Pal3.Instance.Execute(new ScriptRunnerAddWaiterRequest(waiter));
                 }
                 PerformAction(command.ActionName, true, command.LoopCount, waiter);
             }

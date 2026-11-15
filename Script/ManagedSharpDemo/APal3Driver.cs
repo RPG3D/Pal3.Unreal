@@ -245,6 +245,7 @@ namespace ManagedSharpDemo
             _startMenu.RemoveWidget();
             _bootRecovery.Dispose();
             JsonUiDemo.Hide();
+            Pal3Boot.ReleaseGameComponentHost();
             Pal3Boot.ReleaseTransientAssets();
             base.EndPlay(endPlayReason);
         }
@@ -308,7 +309,7 @@ namespace ManagedSharpDemo
             }
 
             float x = 0f, y = 0f;
-            if (!menuHasInput)
+            if (gameplayEnabled)
             {
                 if (pc.IsInputKeyDown(UnrealSharp.InputCore.Keys.W) ||
                     pc.IsInputKeyDown(UnrealSharp.InputCore.Keys.Up)) y += 1f;
@@ -320,13 +321,18 @@ namespace ManagedSharpDemo
                     pc.IsInputKeyDown(UnrealSharp.InputCore.Keys.Left)) x -= 1f;
             }
 
-            var movement = x != 0f || y != 0f ? new UnityEngine.Vector2(x, y) : touch.Movement;
+            // RC schedules a Game command, then supplies its vector to the same
+            // Unity InputAction adapter used by keyboard and touch.
+            var scheduled = _automation.ReadMovement(gameplayEnabled && Pal3Boot.HasPlayerControl());
+            var movement = scheduled.Direction != UnityEngine.Vector2.zero ? scheduled.Direction :
+                x != 0f || y != 0f ? new UnityEngine.Vector2(x, y) : touch.Movement;
             if (movement != _lastMovement)
             {
                 actions.Gameplay.Movement.InjectValue(movement);
                 if (movement == UnityEngine.Vector2.zero)
                 {
-                    actions.Gameplay.Movement.SimulateCanceled();
+                    if (!scheduled.PathTookOver && Pal3Boot.HasPlayerControl())
+                        actions.Gameplay.Movement.SimulateCanceled();
                 }
                 else
                 {

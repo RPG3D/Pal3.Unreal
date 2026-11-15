@@ -703,7 +703,7 @@ namespace Pal3.Game.Scene
 
                 // Save the new position since it is moved by the script
                 GameBoxVector3 toGameBoxPosition = toPosition.ToGameBoxPosition();
-                Pal3Game.Instance.Execute(
+                Pal3.Instance.Execute(
                     new SceneSaveGlobalObjectPositionCommand(ScnFile.SceneInfo.CityName,
                         ScnFile.SceneInfo.SceneName,
                         command.ObjectId,
@@ -757,7 +757,7 @@ namespace Pal3.Game.Scene
                     // Hide all existing birds
                     foreach (FengYaSongActorId actorId in Enum.GetValues(typeof(FengYaSongActorId)))
                     {
-                        Pal3Game.Instance.Execute(new ActorActivateCommand((int)actorId, 0));
+                        Pal3.Instance.Execute(new ActorActivateCommand((int)actorId, 0));
                     }
                     break;
                 }
@@ -776,7 +776,7 @@ namespace Pal3.Game.Scene
                     {
                         if (actorId != activeBirdActorId)
                         {
-                            Pal3Game.Instance.Execute(new ActorActivateCommand((int)actorId, 0));
+                            Pal3.Instance.Execute(new ActorActivateCommand((int)actorId, 0));
                         }
                     }
 

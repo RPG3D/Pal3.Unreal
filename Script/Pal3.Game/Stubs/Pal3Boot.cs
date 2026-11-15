@@ -2,7 +2,7 @@
 // actor (APal3Driver.BeginPlay). Verifies the Unity-style lifecycle dispatch
 // (Awake/OnEnable/Start/Update/LateUpdate) and every CoroutineScheduler yield
 // operand (null / float / Task / nested IEnumerator) actually run per-frame.
-// Once the full Pal3 boot (GameResourceInitializer -> Pal3Game) is wired, this
+// Once the full Pal3 boot (GameResourceInitializer -> Pal3) is wired, this
 // stays behind as a self-check utility.
 
 using System;
@@ -65,6 +65,7 @@ namespace Pal3.Game
         private static LifecycleProbeScript? _probe;
         private static float _probeLifetime;
         private static bool _summaryLogged;
+        private static GameEntity? _gameComponentHost;
 
         /// <summary>
         /// Drops every piece of static state left over from the previous PIE session.
@@ -84,6 +85,7 @@ namespace Pal3.Game
             _summaryLogged = false;
             _fullBootStarted = false;
             _resourceInitializer = null;
+            _gameComponentHost = null;
             BootError = null;
             StoragePermissionRequired = false;
             s_InputActions = null;
@@ -103,21 +105,21 @@ namespace Pal3.Game
 
             // Static registries/caches owned by the ported game code. The command
             // executor registry matters most: it is process-wide, so without a reset
-            // the new Pal3Game registers next to the OLD executors and the previous
+            // the new Pal3 registers next to the OLD executors and the previous
             // session's SceneManager also receives SceneLoadCommand (second boot hung).
             UnityEngine.InputSystem.InputSystem.ResetForNewSession();
             IngameDebugConsole.DebugLogManager.ResetForNewSession();
-            Pal3.Game.Data.GameResourceProvider.ResetStaticCaches();
+            global::Pal3.Game.Data.GameResourceProvider.ResetStaticCaches();
             UnityEngine.SceneLighting.Reset();
 
             // Clear managed presentation state from the previous PIE session.
             Engine.Diagnostics.DebugOverlay.ResetForNewSession();
-            Pal3.Game.Dev.DialoguePresentation.Clear();
-            Pal3.Game.Dev.DialoguePresentation.ClearChoices();
+            global::Pal3.Game.Dev.DialoguePresentation.Clear();
+            global::Pal3.Game.Dev.DialoguePresentation.ClearChoices();
             try { UnrealSharp.SharpDemo.UPal3AudioHelper.StopAllAudio(); }
             catch (Exception) { }
 
-            // Singleton services last (Pal3Game, ServiceLocator) — they are rebuilt
+            // Singleton services last (Pal3, ServiceLocator) — they are rebuilt
             // lazily by the upcoming boot.
             Engine.Utilities.SessionStateRegistry.ResetAll();
             ReleaseTransientAssets();
@@ -129,6 +131,12 @@ namespace Pal3.Game
         {
             UnityMaterial.ReleaseSharedAssets();
             Pal3TransientAssets.ReleaseSession();
+        }
+
+        public static void ReleaseGameComponentHost()
+        {
+            _gameComponentHost?.Destroy();
+            _gameComponentHost = null;
         }
 
         /// <summary>Starts the lifecycle/coroutine smoke probe. Call from the UE driver actor.</summary>
@@ -143,17 +151,17 @@ namespace Pal3.Game
             _summaryLogged = false;
         }
 
-        private static Pal3.Game.Input.PlayerInputActions? s_InputActions;
+        private static global::Pal3.Game.Input.PlayerInputActions? s_InputActions;
 
         /// <summary>Input actions for the keyboard bridge (null before game init).</summary>
-        public static Pal3.Game.Input.PlayerInputActions? InputActions
+        public static global::Pal3.Game.Input.PlayerInputActions? InputActions
         {
             get
             {
                 try
                 {
                     return s_InputActions ??= Engine.Services.ServiceLocator.Instance
-                        .Get<Pal3.Game.Input.PlayerInputActions>();
+                        .Get<global::Pal3.Game.Input.PlayerInputActions>();
                 }
                 catch (Exception)
                 {
@@ -203,7 +211,7 @@ namespace Pal3.Game
         /// <summary>
         /// Boots the real game: GameResourceInitializer mounts the CPK file system
         /// from the PAL3 game data folder, registers engine services and finally
-        /// instantiates the starting component (Pal3Game).
+        /// instantiates the starting component (Pal3).
         /// </summary>
         /// <summary>Real UE actor that stands in for UnityEngine.Camera.main.</summary>
         public static UnrealSharp.Engine.AActor? CameraActor { get; private set; }
@@ -211,7 +219,7 @@ namespace Pal3.Game
         /// <summary>
         /// Creates the camera actor the ported CameraManager drives. Done before the
         /// resource initializer so AutoFillStubFields can attach it to the Camera stub
-        /// before Pal3Game builds its camera entity.
+        /// before Pal3 builds its camera entity.
         /// </summary>
         private static void EnsureCameraActor()
         {
@@ -317,10 +325,10 @@ namespace Pal3.Game
             GameResourceInitializer initializer = entity.AddComponent<GameResourceInitializer>();
 
             // Stand-in for the Unity "starting component" prefab: a stub GameObject
-            // carrying Pal3Game, which GameResourceInitializer instantiates once all
+            // carrying Pal3, which GameResourceInitializer instantiates once all
             // services are registered.
             GameObject startingPrefab = new("Pal3Game");
-            startingPrefab.PrefabScriptTypes.Add(typeof(Pal3Game));
+            startingPrefab.PrefabScriptTypes.Add(typeof(Pal3));
             typeof(GameResourceInitializer)
                 .GetField("startingComponent",
                     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
@@ -337,7 +345,7 @@ namespace Pal3.Game
         /// <summary>
         /// Object.Instantiate hook: cloning a stub prefab GameObject spawns real
         /// managed components. GameEntityScript-derived types attach to a new
-        /// managed entity; plain component types (e.g. Pal3Game, which derives
+        /// managed entity; plain component types (e.g. Pal3, which derives
         /// from Singleton instead) are instantiated and activated standalone.
         /// Non-prefab objects fall back to default (return original).
         /// </summary>
@@ -345,25 +353,27 @@ namespace Pal3.Game
         {
             if (original is GameObject prefab && prefab.PrefabScriptTypes.Count > 0)
             {
-                IGameEntity clone = GameEntityFactory.Create(prefab.name);
+                var clone = new GameEntity(prefab.name);
                 foreach (Type scriptType in prefab.PrefabScriptTypes)
                 {
-                    if (typeof(GameEntityScript).IsAssignableFrom(scriptType))
+                    if (typeof(GameEntityScript).IsAssignableFrom(scriptType) ||
+                        typeof(MonoBehaviour).IsAssignableFrom(scriptType))
                     {
                         clone.AddComponent(scriptType);
                     }
                     else
                     {
-                        // Singleton-style component (e.g. Pal3Game : Singleton<Pal3Game>).
+                        // Singleton-style component (e.g. Pal3 : Singleton<Pal3>).
                         // Engine.Singleton<T>.Instance constructs its own instance lazily,
                         // so constructing a second one here would leave game code talking
                         // to an unticked object. ADOPT the engine singleton instead.
                         object component = TryGetEngineSingleton(scriptType)
                             ?? Activator.CreateInstance(scriptType, nonPublic: true)!;
-                        GameEntityScriptRuntime.Activate(component);
+                        if (component is Pal3) _gameComponentHost = clone;
+                        GameEntityScriptRuntime.Activate(component, clone.UnityGameObject);
                     }
                 }
-                return new GameObject(prefab.name);
+                return clone.UnityGameObject;
             }
             return null;
         }
@@ -393,7 +403,7 @@ namespace Pal3.Game
         {
             IsGameReady = true;
             _resourceInitializer = null;
-            // Pal3Game.Update/LateUpdate are dispatched by GameEntityScriptRuntime's
+            // Pal3.Update/LateUpdate are dispatched by GameEntityScriptRuntime's
             // active-script loop (Activate registered the singleton); no extra hook.
 
             bool autostart = Environment.GetEnvironmentVariable("PAL3_AUTOSTART") == "1" ||
@@ -441,9 +451,9 @@ namespace Pal3.Game
 
                 // Kill any in-flight init-view camera animation (CameraOrbitHorizontal
                 // runs 20 s and would otherwise land its final write mid-cutscene).
-                Pal3Game.Instance.Execute(new CameraFollowPlayerCommand(0));
+                Pal3.Instance.Execute(new CameraFollowPlayerCommand(0));
 
-                Pal3Game.Instance.Execute(new ResetGameStateCommand());
+                Pal3.Instance.Execute(new ResetGameStateCommand());
                 ServiceLocator.Instance.Get<IUserVariableStore<ushort, int>>()
                     .Set(ScriptConstants.MainStoryVariableId, 0);
                 ServiceLocator.Instance.Get<ScriptManager>()
@@ -485,8 +495,8 @@ namespace Pal3.Game
             var services = ServiceLocator.Instance;
             services.Get<MainMenu>().HideMenu();
             services.Get<SaveManager>().IsAutoSaveEnabled = false;
-            Pal3Game.Instance.Execute(new CameraFollowPlayerCommand(0));
-            Pal3Game.Instance.Execute(new ResetGameStateCommand());
+            Pal3.Instance.Execute(new CameraFollowPlayerCommand(0));
+            Pal3.Instance.Execute(new ResetGameStateCommand());
             services.Get<GameStateManager>().TryGoToState(GameState.Cutscene);
             services.Get<SceneManager>().RunSceneCommands(commands);
             WaitingForMenuStart = false;
@@ -495,7 +505,7 @@ namespace Pal3.Game
         public static void SwitchScene(string city, string scene, int tileX, int tileY)
         {
             CheckSceneResources(city, scene);
-            var game = Pal3Game.Instance;
+            var game = Pal3.Instance;
             if (WaitingForMenuStart)
             {
                 ServiceLocator.Instance.Get<MainMenu>().HideMenu();
@@ -527,7 +537,7 @@ namespace Pal3.Game
             saves.Restore(data, () =>
             {
                 services.Get<MainMenu>().HideMenu();
-                Pal3Game.Instance.Execute(new CameraFollowPlayerCommand(0));
+                Pal3.Instance.Execute(new CameraFollowPlayerCommand(0));
             });
             WaitingForMenuStart = false;
         }
@@ -537,7 +547,7 @@ namespace Pal3.Game
             if (slot is < 1 or > SaveManager.ManualSlotCount)
                 throw new ArgumentOutOfRangeException(nameof(slot));
             var services = ServiceLocator.Instance;
-            var player = services.Get<Pal3.Game.GamePlay.PlayerActorManager>();
+            var player = services.Get<global::Pal3.Game.GamePlay.PlayerActorManager>();
             if (services.Get<GameStateManager>().GetCurrentState() != GameState.Gameplay ||
                 services.Get<ScriptManager>().GetNumberOfRunningScripts() != 0 ||
                 !player.IsPlayerInputEnabled() || !player.IsPlayerActorControlEnabled())

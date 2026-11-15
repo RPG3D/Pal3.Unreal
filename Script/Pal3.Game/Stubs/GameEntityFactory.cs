@@ -123,6 +123,23 @@ public sealed class GameEntity : IGameEntity
 
     // Managed script components attached to this entity (MonoBehaviour analog).
     private readonly List<Engine.Core.Implementation.GameEntityScript> _scripts = new();
+    private UnityEngine.GameObject? _unityGameObject;
+
+    internal UnityEngine.GameObject UnityGameObject
+    {
+        get
+        {
+            if (_unityGameObject != null) return _unityGameObject;
+            var gameObject = _gameObject ?? new UnityEngine.GameObject(Name)
+            {
+                UeActor = _ue?.NativeObject as UnrealSharp.Engine.AActor
+            };
+            if (_destroyed) gameObject.ReleaseComponentHost();
+            else gameObject.BindComponentHost(AddComponent, FindManagedComponent,
+                type => EnumerateComponentsInChildren(type));
+            return _unityGameObject = gameObject;
+        }
+    }
 
     // Unity-style components with no managed/UE equivalent (StaticMeshRenderer,
     // Collider, AudioSource, ...). They are plain stub objects; Unity semantics are
@@ -171,12 +188,17 @@ public sealed class GameEntity : IGameEntity
 
         foreach (object component in _stubComponents)
         {
+            if (component is UnityEngine.MonoBehaviour behaviour)
+            {
+                Engine.Core.Implementation.GameEntityScriptRuntime.Deactivate(behaviour);
+            }
             if (component is IDisposable disposable)
             {
                 try { disposable.Dispose(); } catch (Exception) { }
             }
         }
         _stubComponents.Clear();
+        _unityGameObject?.ReleaseComponentHost();
 
         _ue?.Destroy();
     }
@@ -233,6 +255,7 @@ public sealed class GameEntity : IGameEntity
 
     public object AddComponent(Type type)
     {
+        if (_destroyed) return null!;
         if (typeof(Engine.Core.Implementation.GameEntityScript).IsAssignableFrom(type))
         {
             return AttachScript(type);
@@ -263,6 +286,11 @@ public sealed class GameEntity : IGameEntity
             ueComponent.AttachTo(_ue);
         }
         _stubComponents.Add(component!);
+        if (component is UnityEngine.MonoBehaviour behaviour)
+        {
+            behaviour.AttachToGameEntity(this, UnityGameObject);
+            Engine.Core.Implementation.GameEntityScriptRuntime.Activate(behaviour);
+        }
         return true;
     }
 
@@ -277,15 +305,7 @@ public sealed class GameEntity : IGameEntity
 
     public T GetComponent<T>() where T : class
     {
-        foreach (Engine.Core.Implementation.GameEntityScript script in _scripts)
-        {
-            if (typeof(T).IsAssignableFrom(script.GetType())) return (T)(object)script;
-        }
-        // Native UE component lookup (Collider etc.) — absent pre-attach.
-        foreach (object component in _stubComponents)
-        {
-            if (component is T typed) return typed;
-        }
+        if (FindManagedComponent(typeof(T)) is T component) return component;
         if (_ue != null && typeof(UnrealSharp.Engine.UActorComponent).IsAssignableFrom(typeof(T)))
         {
             return _ue.GetComponent<T>();
@@ -293,24 +313,59 @@ public sealed class GameEntity : IGameEntity
         return null!;
     }
 
-    public T GetComponentInChildren<T>() where T : class => GetComponent<T>();
+    private object? FindManagedComponent(Type type)
+    {
+        foreach (Engine.Core.Implementation.GameEntityScript script in _scripts)
+        {
+            if (type.IsInstanceOfType(script)) return script;
+        }
+        foreach (object component in _stubComponents)
+        {
+            if (type.IsInstanceOfType(component)) return component;
+        }
+        return null;
+    }
+
+    public T GetComponentInChildren<T>() where T : class
+    {
+        if (_destroyed) return null!;
+        if (GetComponent<T>() is { } component) return component;
+        foreach (GameEntity child in _children)
+        {
+            if (child.GetComponentInChildren<T>() is { } match) return match;
+        }
+        return null!;
+    }
 
     public T[] GetComponentsInChildren<T>() where T : class
     {
         List<T> result = new();
+        Func<GameEntity, object?>? findNative = typeof(UnrealSharp.Engine.UActorComponent).IsAssignableFrom(typeof(T))
+            ? static entity => entity._ue?.GetComponent<T>() : null;
+        foreach (object component in EnumerateComponentsInChildren(typeof(T), findNative))
+        {
+            result.Add((T)component);
+        }
+        return result.ToArray();
+    }
+
+    private IEnumerable<object> EnumerateComponentsInChildren(Type type, Func<GameEntity, object?>? findNative = null)
+    {
+        if (_destroyed) yield break;
         foreach (Engine.Core.Implementation.GameEntityScript script in _scripts)
         {
-            if (typeof(T).IsAssignableFrom(script.GetType())) result.Add((T)(object)script);
+            if (type.IsInstanceOfType(script)) yield return script;
         }
         foreach (object component in _stubComponents)
         {
-            if (component is T typed) result.Add(typed);
+            if (type.IsInstanceOfType(component)) yield return component;
         }
-        if (_ue != null && typeof(UnrealSharp.Engine.UActorComponent).IsAssignableFrom(typeof(T)))
+        if (findNative?.Invoke(this) is { } native) yield return native;
+        foreach (GameEntity child in _children)
         {
-            result.AddRange(_ue.GetComponentsInChildren<T>());
+            foreach (object component in child.EnumerateComponentsInChildren(type, findNative))
+                yield return component;
         }
-        return result.ToArray();
     }
 
     public T GetOrAddComponent<T>() where T : class

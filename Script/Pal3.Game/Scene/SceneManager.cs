@@ -149,7 +149,7 @@ namespace Pal3.Game.Scene
                         BeginLoadScene(load.SceneCityName, load.SceneName, () => ExecuteFrom(next), onFailure);
                         return;
                     }
-                    Pal3Game.Instance.Execute(commands[i]);
+                    Pal3.Instance.Execute(commands[i]);
                 }
             }
         }
@@ -225,7 +225,7 @@ namespace Pal3.Game.Scene
                 FileConstants.GetSceneSceFileVirtualPath(sceneCityName));
             yield return new("正在读取场景描述", .04f);
 
-            if (_currentGameScene != null) Pal3Game.Instance.Execute(new SceneLeavingCurrentSceneNotification());
+            if (_currentGameScene != null) Pal3.Instance.Execute(new SceneLeavingCurrentSceneNotification());
             try
             {
                 if (_currentSceneRoot is GameEntity root)
@@ -244,7 +244,7 @@ namespace Pal3.Game.Scene
             bool committed = false;
             try
             {
-                Pal3Game.Instance.Execute(new ScenePreLoadingNotification(scnFile.SceneInfo));
+                Pal3.Instance.Execute(new ScenePreLoadingNotification(scnFile.SceneInfo));
                 EngineLogger.Log($"Loading scene: {JsonConvert.SerializeObject(scnFile.SceneInfo)}");
 
                 _currentSceneRoot = GameEntityFactory.Create($"Scene_{sceneCityName}_{sceneName}",
@@ -260,7 +260,7 @@ namespace Pal3.Game.Scene
 
                 _sceneObjectIdsToNotLoadFromSaveState.Clear();
                 _scriptManager.TryAddSceneScript(sceFile, $"_{sceneCityName}_{sceneName}", out var sceneScriptId);
-                Pal3Game.Instance.Execute(new ScenePostLoadingNotification(scnFile.SceneInfo, sceneScriptId));
+                Pal3.Instance.Execute(new ScenePostLoadingNotification(scnFile.SceneInfo, sceneScriptId));
                 committed = true;
             }
             finally
@@ -379,7 +379,7 @@ namespace Pal3.Game.Scene
 
             if (_currentGameScene != null)
             {
-                if (notifyLeaving) Pal3Game.Instance.Execute(new SceneLeavingCurrentSceneNotification());
+                if (notifyLeaving) Pal3.Instance.Execute(new SceneLeavingCurrentSceneNotification());
                 _currentGameScene.Destroy();
                 _currentGameScene = null;
             }

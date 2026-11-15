@@ -168,7 +168,7 @@ namespace Pal3.Game.Actor.Controllers
                 ServiceLocator.Instance.Get<PlayerActorManager>()
                     .GetPlayerActorId() == actorController.GetActor().Id)
             {
-                Pal3Game.Instance.Execute(new CombatActorCollideWithPlayerActorNotification(
+                Pal3.Instance.Execute(new CombatActorCollideWithPlayerActorNotification(
                         _actor.Id, actorController.GetActor().Id));
             }
         }
@@ -251,7 +251,7 @@ namespace Pal3.Game.Actor.Controllers
         {
             if (command.ActorId != _actor.Id) return;
             WaitUntilCanceled waiter = new();
-            Pal3Game.Instance.Execute(new ScriptRunnerAddWaiterRequest(waiter));
+            Pal3.Instance.Execute(new ScriptRunnerAddWaiterRequest(waiter));
             StartCoroutine(AnimateScaleAsync(command.Scale, 2f, () => waiter.CancelWait()));
         }
 

@@ -1,228 +1,21 @@
 // Runtime host for managed game-entity scripts.
 //
-// Replaces Unity's two engine-side services the port depends on:
-//   1. CoroutineScheduler      - frame-driven replacement for StartCoroutine.
-//   2. GameEntityScriptRuntime - Unity MonoBehaviour lifecycle dispatch
-//                                (Awake/OnEnable/Start/Update/LateUpdate/OnDisable)
-//                                via cached reflection, plus the port's renamed
-//                                virtuals (Init/OnUpdateGameEntity/...).
-//
-// Both are pumped by the UE-side driver actor (APal3Driver.Tick in
-// ManagedSharpDemo), once per engine frame on the game thread.
+// The UE driver pumps lifecycle callbacks and the Engine coroutine scheduler
+// once per frame on the game thread.
 
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
-using System.Threading.Tasks;
-using Pal3.Game;
+using UnityEngine;
 
 namespace Engine.Core.Implementation
 {
     /// <summary>
-    /// Frame-driven coroutine scheduler replacing Unity's StartCoroutine engine.
-    /// Supported yield operands:
-    ///   - null                      -> resume next frame
-    ///   - Task                      -> resume when the task completes (polled per frame)
-    ///   - float                     -> resume after N (scaled) seconds
-    ///   - CustomYieldInstruction    -> resume when keepWaiting turns false
-    ///                                   (covers WaitForSeconds, WaitUntilScriptFinished, ...)
-    ///   - IEnumerator               -> nested coroutine (caller resumes when it finishes)
-    ///   - anything else             -> resume next frame (defensive)
-    /// </summary>
-    public static class CoroutineScheduler
-    {
-        private sealed class Routine
-        {
-            public IEnumerator Current;                              // innermost running enumerator
-            public readonly Stack<IEnumerator> Callers = new();      // outer enumerators, nearest caller on top
-            public bool Alive = true;
-            public float WaitSeconds;                                // > 0: waiting for time
-            public Task? WaitTask;                                   // non-null: waiting for task
-            public CustomYieldInstruction? WaitInstruction;          // non-null: waiting for keepWaiting == false
-            public object? Owner;                                    // originating script (StopCoroutine support)
-        }
-
-        private static readonly object _gate = new();
-        private static readonly List<Routine> _routines = new();
-
-        /// <summary>Number of live coroutines (diagnostics only).</summary>
-        public static int ActiveCount { get { lock (_gate) return _routines.Count; } }
-        private static readonly List<Routine> _pending = new();       // registered during Tick; started next Tick
-        private static readonly Dictionary<IEnumerator, Routine> _byEnumerator = new();
-
-        public static UnityEngine.Coroutine Run(IEnumerator routine, object? owner = null)
-        {
-            if (routine == null) throw new ArgumentNullException(nameof(routine));
-            Routine r = new() { Current = routine, Owner = owner };
-            lock (_gate) { _pending.Add(r); }
-            return new UnityEngine.Coroutine() { Handle = r };
-        }
-
-        public static void Stop(IEnumerator routine)
-        {
-            if (routine == null) return;
-            lock (_gate)
-            {
-                if (_byEnumerator.TryGetValue(routine, out Routine? r)) r.Alive = false;
-            }
-        }
-
-        public static void Stop(UnityEngine.Coroutine coroutine)
-        {
-            if (coroutine?.Handle is Routine r) r.Alive = false;
-        }
-
-        public static void StopAll(object owner)
-        {
-            if (owner == null) return;
-            lock (_gate)
-            {
-                foreach (Routine r in _routines) if (Equals(owner, r.Owner)) r.Alive = false;
-                foreach (Routine r in _pending) if (Equals(owner, r.Owner)) r.Alive = false;
-            }
-        }
-
-        /// <summary>
-        /// Drops every routine (PIE session reset). Stale coroutines capture actors of
-        /// the previous world; stepping one after a PIE restart calls into freed memory.
-        /// </summary>
-        public static void ResetForNewSession()
-        {
-            lock (_gate)
-            {
-                _routines.Clear();
-                _pending.Clear();
-                _byEnumerator.Clear();
-            }
-        }
-
-        /// <summary>Advances every live routine one step. Call once per frame, game thread only.</summary>
-        public static void Tick(float deltaTime)
-        {
-            long tickStart = System.Diagnostics.Stopwatch.GetTimestamp();
-            try
-            {
-                TickInternal(deltaTime);
-            }
-            finally
-            {
-                double totalMs = (System.Diagnostics.Stopwatch.GetTimestamp() - tickStart) * 1000.0
-                                 / System.Diagnostics.Stopwatch.Frequency;
-                if (totalMs > 100.0)
-                {
-                    Engine.Diagnostics.ManagedDiagnostics.ReportSlow("CoroutineScheduler.Tick", totalMs);
-                }
-            }
-        }
-
-        private static void TickInternal(float deltaTime)
-        {
-            lock (_gate)
-            {
-                if (_pending.Count > 0)
-                {
-                    foreach (Routine r in _pending)
-                    {
-                        _routines.Add(r);
-                        _byEnumerator[r.Current] = r;
-                    }
-                    _pending.Clear();
-                }
-
-                // Reverse iteration: routines started during this pass append to
-                // _pending and are not stepped until next frame (Unity semantics).
-                for (int i = _routines.Count - 1; i >= 0; i--)
-                {
-                    Routine r = _routines[i];
-
-                    if (!r.Alive)
-                    {
-                        RemoveAt(i, r);
-                        continue;
-                    }
-
-                    // Honor active waits.
-                    if (r.WaitSeconds > 0f)
-                    {
-                        r.WaitSeconds -= deltaTime;
-                        if (r.WaitSeconds > 0f) continue;
-                        r.WaitSeconds = 0f;
-                    }
-                    if (r.WaitTask is { IsCompleted: false }) continue;
-                    r.WaitTask = null;
-                    if (r.WaitInstruction != null)
-                    {
-                        if (r.WaitInstruction.keepWaiting) continue;
-                        r.WaitInstruction = null;
-                    }
-
-                    try
-                    {
-                        Advance(r);
-                    }
-                    catch (Exception ex)
-                    {
-                        r.Alive = false;
-                        UnityEngine.Debug.LogError($"[CoroutineScheduler] Coroutine threw and was stopped: {ex}");
-                    }
-
-                    if (!r.Alive) RemoveAt(i, r);
-                }
-            }
-        }
-
-        private static void Advance(Routine r)
-        {
-            while (true)
-            {
-                bool moved = r.Current.MoveNext();
-
-                if (moved)
-                {
-                    object? current = r.Current.Current;
-
-                    if (current == null) return;                       // next frame
-                    if (current is Task task) { r.WaitTask = task; return; }
-                    if (current is float seconds) { r.WaitSeconds = seconds; return; }
-                    if (current is CustomYieldInstruction instruction) { r.WaitInstruction = instruction; return; }
-                    if (current is IEnumerator inner)                  // nested coroutine
-                    {
-                        r.Callers.Push(r.Current);
-                        _byEnumerator[inner] = r;
-                        r.Current = inner;
-                        return;                                        // step the inner one next frame
-                    }
-                    return;                                            // unknown operand: next frame
-                }
-
-                // Current enumerator finished. Resume its caller immediately
-                // (Unity semantics: outer resumes the same frame the inner ends).
-                if (r.Callers.Count > 0)
-                {
-                    _byEnumerator.Remove(r.Current);
-                    r.Current = r.Callers.Pop();
-                    continue;
-                }
-
-                r.Alive = false;                                       // whole chain done
-                return;
-            }
-        }
-
-        private static void RemoveAt(int index, Routine r)
-        {
-            _routines.RemoveAt(index);
-            _byEnumerator.Remove(r.Current);
-            foreach (IEnumerator e in r.Callers) _byEnumerator.Remove(e);
-        }
-    }
-
-    /// <summary>
     /// Unity-MonoBehaviour-style lifecycle dispatcher. Primary target is
     /// <see cref="GameEntityScript"/>, but arbitrary "component" objects that keep
     /// the Unity magic methods (private Awake/OnEnable/Start/Update/LateUpdate/
-    /// OnDisable - e.g. Pal3Game, which derives from Singleton instead of
+    /// OnDisable - e.g. Pal3, which derives from Singleton instead of
     /// GameEntityScript) are dispatched the same way. Methods are located via a
     /// per-type reflection cache; the port's renamed virtuals (Init,
     /// OnUpdateGameEntity, ...) are dispatched as well on GameEntityScript types.
@@ -238,11 +31,15 @@ namespace Engine.Core.Implementation
             public MethodInfo? Update;
             public MethodInfo? LateUpdate;
             public MethodInfo? OnDisable;
+            public Action? EnabledChanged;
+            public bool BehaviourEnabled;
+            public int FirstUpdateFrame;
+            public bool Removed;
         }
 
         private sealed class MethodCache
         {
-            public MethodInfo? Awake, OnEnable, Start, Update, LateUpdate, OnDisable;
+            public MethodInfo? Awake, OnEnable, Start, Update, LateUpdate, OnDisable, OnDestroy;
         }
 
         private static readonly object _gate = new();
@@ -257,9 +54,10 @@ namespace Engine.Core.Implementation
         public static int ActiveScriptCount { get { lock (_gate) return _active.Count; } }
         private static readonly Dictionary<Type, MethodCache> _cache = new();
         private static bool _tickedOnce;
+        private static bool _needsCompaction;
 
         /// <summary>
-        /// Drops all active scripts and the Pal3Game tick hooks (PIE session reset).
+        /// Drops all active scripts and the Pal3 tick hooks (PIE session reset).
         /// Does not dispatch OnDisable: the owning UE world is already gone by the time
         /// the next session starts. The method cache is type-keyed and stays valid.
         /// </summary>
@@ -267,8 +65,14 @@ namespace Engine.Core.Implementation
         {
             lock (_gate)
             {
+                foreach (ScriptInfo info in _active)
+                {
+                    if (info.Script is MonoBehaviour behaviour && info.EnabledChanged != null)
+                        behaviour.EnabledChanged -= info.EnabledChanged;
+                }
                 _active.Clear();
                 _tickedOnce = false;
+                _needsCompaction = false;
             }
         }
 
@@ -279,7 +83,7 @@ namespace Engine.Core.Implementation
         /// AutoFillStubFields -> Awake -> OnEnable -> Start (a coroutine Start is
         /// fed to the scheduler).
         /// </summary>
-        public static void Activate(object script)
+        public static void Activate(object script, GameObject? componentHost = null)
         {
             if (script == null) throw new ArgumentNullException(nameof(script));
 
@@ -289,7 +93,7 @@ namespace Engine.Core.Implementation
             {
                 foreach (ScriptInfo info in _active)
                 {
-                    if (ReferenceEquals(info.Script, script)) return; // already active
+                    if (!info.Removed && ReferenceEquals(info.Script, script)) return;
                 }
 
                 ScriptInfo si = new()
@@ -304,7 +108,20 @@ namespace Engine.Core.Implementation
                 };
                 _active.Add(si);
 
-                AutoFillStubFields(script);
+                if (script is MonoBehaviour behaviour)
+                {
+                    si.FirstUpdateFrame = UnityEngine.Time.frameCount + 1;
+                    InvokeSafe(behaviour, cache.Awake, "Awake");
+                    if (!si.Removed)
+                    {
+                        si.EnabledChanged = () => UpdateBehaviourEnabled(si, behaviour);
+                        behaviour.EnabledChanged += si.EnabledChanged;
+                        UpdateBehaviourEnabled(si, behaviour);
+                    }
+                    return;
+                }
+
+                AutoFillStubFields(script, componentHost);
                 InvokeSafe(script, cache.Awake, "Awake");
                 InvokeSafe(script, cache.OnEnable, "OnEnable");
                 // Unity's OnEnable also drives the GameEntityScript virtual (upstream
@@ -330,6 +147,15 @@ namespace Engine.Core.Implementation
             }
         }
 
+        private static void UpdateBehaviourEnabled(ScriptInfo info, MonoBehaviour behaviour)
+        {
+            bool enabled = behaviour.isActiveAndEnabled;
+            if (info.Removed || info.BehaviourEnabled == enabled) return;
+            info.BehaviourEnabled = enabled;
+            if (enabled) InvokeSafe(behaviour, info.OnEnable, "OnEnable");
+            else InvokeSafe(behaviour, info.OnDisable, "OnDisable");
+        }
+
         private static bool MonitorIsHeldByCurrentThread() => System.Threading.Monitor.IsEntered(_gate);
 
         private static IEnumerator DeferredStart(object script, MethodInfo start)
@@ -343,7 +169,8 @@ namespace Engine.Core.Implementation
             object? result = InvokeSafe(script, start, "Start");
             if (result is IEnumerator routine)
             {
-                CoroutineScheduler.Run(routine, script);
+                if (script is MonoBehaviour behaviour) behaviour.StartCoroutine(routine);
+                else CoroutineScheduler.Run(routine, script);
             }
         }
 
@@ -400,6 +227,19 @@ namespace Engine.Core.Implementation
                     {
                         ScriptInfo si = _active[i];
 
+                        if (si.Removed) continue;
+
+                        if (si.Script is MonoBehaviour)
+                        {
+                            if (!si.BehaviourEnabled || UnityEngine.Time.frameCount < si.FirstUpdateFrame) continue;
+                            if (si.Start is { } start)
+                            {
+                                si.Start = null;
+                                RunStart(si.Script, start);
+                                if (!si.BehaviourEnabled || si.Removed) continue;
+                            }
+                        }
+
                         // Disabled GameEntityScripts don't tick (Unity semantics);
                         // plain components always tick.
                         if (si.Script is GameEntityScript { enabled: false })
@@ -431,11 +271,16 @@ namespace Engine.Core.Implementation
                     }
 
                     // Unity runs all LateUpdates after all Updates so the camera
-                    // follow (Pal3Game.LateUpdate -> CameraManager.LateUpdate) sees
+                    // follow (Pal3.LateUpdate -> CameraManager.LateUpdate) sees
                     // every position written this frame.
                     for (int i = 0; i < _active.Count; i++)
                     {
                         ScriptInfo si = _active[i];
+                        if (si.Removed || (si.Script is MonoBehaviour &&
+                            (!si.BehaviourEnabled || si.Start != null || UnityEngine.Time.frameCount < si.FirstUpdateFrame)))
+                        {
+                            continue;
+                        }
                         if (si.Script is GameEntityScript { enabled: false })
                         {
                             continue;
@@ -449,6 +294,11 @@ namespace Engine.Core.Implementation
                 }
                 finally
                 {
+                    if (_needsCompaction)
+                    {
+                        _active.RemoveAll(static info => info.Removed);
+                        _needsCompaction = false;
+                    }
                     _tickedOnce = false;
                 }
             }
@@ -459,16 +309,32 @@ namespace Engine.Core.Implementation
         {
             if (script == null) return;
 
+            ScriptInfo? removed = null;
             lock (_gate)
             {
                 for (int i = 0; i < _active.Count; i++)
                 {
-                    if (ReferenceEquals(_active[i].Script, script))
+                    ScriptInfo info = _active[i];
+                    if (!info.Removed && ReferenceEquals(info.Script, script))
                     {
-                        _active.RemoveAt(i);
+                        removed = info;
+                        info.Removed = true;
+                        if (_tickedOnce) _needsCompaction = true;
+                        else _active.RemoveAt(i);
                         break;
                     }
                 }
+            }
+
+            if (script is MonoBehaviour behaviour)
+            {
+                if (removed == null) return;
+                if (removed.EnabledChanged != null) behaviour.EnabledChanged -= removed.EnabledChanged;
+                if (removed.BehaviourEnabled) InvokeSafe(behaviour, removed.OnDisable, "OnDisable");
+                InvokeSafe(behaviour, GetCache(behaviour.GetType()).OnDestroy, "OnDestroy");
+                behaviour.DetachFromGameEntity();
+                CoroutineScheduler.StopAll(behaviour);
+                return;
             }
 
             InvokeSafe(script, GetCache(script.GetType()).OnDisable, "OnDisable");
@@ -511,6 +377,7 @@ namespace Engine.Core.Implementation
                 Update = FindZeroArg(type, "Update"),
                 LateUpdate = FindZeroArg(type, "LateUpdate"),
                 OnDisable = FindZeroArg(type, "OnDisable"),
+                OnDestroy = FindZeroArg(type, "OnDestroy"),
             };
 
             // Override dispatch for OnUpdateGameEntity/OnLateUpdateGameEntity/OnDisableGameEntity
@@ -545,7 +412,7 @@ namespace Engine.Core.Implementation
         /// whose type lives in a stub namespace and has a parameterless constructor.
         /// Real wired components (already non-null) are left untouched.
         /// </summary>
-        private static void AutoFillStubFields(object script)
+        private static void AutoFillStubFields(object script, GameObject? componentHost)
         {
             Type type = script.GetType();
             for (Type? t = type; t != null && t != typeof(object); t = t.BaseType)
@@ -554,21 +421,28 @@ namespace Engine.Core.Implementation
                 {
                     if (field.IsInitOnly) continue;
                     Type fieldType = field.FieldType;
-                    if (!IsAutoFillable(fieldType)) continue;
+                    bool isBehaviour = typeof(MonoBehaviour).IsAssignableFrom(fieldType);
+                    bool useHost = isBehaviour && componentHost != null && !fieldType.IsAbstract &&
+                                   (field.IsPublic || field.IsDefined(typeof(SerializeField), false));
+                    if (!useHost && (isBehaviour || !IsAutoFillable(fieldType))) continue;
 
                     object? current = field.GetValue(script);
                     if (current != null) continue;
 
                     try
                     {
-                        object instance = Activator.CreateInstance(fieldType)!;
+                        // UnrealSharp portability. Supply Unity-style prefab references via
+                        // the component host so their lifecycle starts with the game.
+                        object? instance = useHost
+                            ? componentHost!.AddComponent(fieldType)
+                            : Activator.CreateInstance(fieldType);
                         field.SetValue(script, instance);
 
                         // The game's main camera is a stub; give it the real actor so
-                        // Pal3Game's camera entity drives the UE camera (Pal3Boot).
+                        // Pal3's camera entity drives the UE camera (Pal3Boot).
                         if (instance is UnityEngine.Camera cameraStub)
                         {
-                            cameraStub.gameObject.UeActor = Pal3.Game.Pal3Boot.CameraActor;
+                            cameraStub.gameObject.UeActor = global::Pal3.Game.Pal3Boot.CameraActor;
                         }
                     }
                     catch (Exception)

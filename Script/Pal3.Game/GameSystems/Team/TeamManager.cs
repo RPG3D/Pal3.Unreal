@@ -148,7 +148,7 @@ namespace Pal3.Game.GameSystems.Team
 
             foreach (PlayerActorId actor in _actorsInTeam.Where(actor => (int)actor != playerActorId))
             {
-                Pal3Game.Instance.Execute(new ActorActivateCommand((int)actor, 0));
+                Pal3.Instance.Execute(new ActorActivateCommand((int)actor, 0));
             }
         }
 

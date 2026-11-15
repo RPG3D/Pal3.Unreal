@@ -39,7 +39,6 @@ namespace Pal3.Game.Rendering.Renderer
         private ITextureFactory _textureFactory;
         private IMaterialManager _materialManager;
         private Dictionary<string, ITexture2D> _textureCache = new ();
-        private readonly List<StaticMeshRenderer> _meshRenderers = new();
 
         private bool _isStaticObject;
         private Color _tintColor;
@@ -105,14 +104,15 @@ namespace Pal3.Game.Rendering.Renderer
 
         public Bounds GetRendererBounds()
         {
-            if (_meshRenderers.Count == 0)
+            StaticMeshRenderer[] renderers = GameEntity.GetComponentsInChildren<StaticMeshRenderer>();
+            if (renderers.Length == 0)
             {
                 return new Bounds(Transform.Position, Vector3.one);
             }
-            Bounds bounds = _meshRenderers[0].GetRendererBounds();
-            for (int i = 1; i < _meshRenderers.Count; i++)
+            Bounds bounds = renderers[0].GetRendererBounds();
+            for (int i = 1; i < renderers.Length; i++)
             {
-                bounds.Encapsulate(_meshRenderers[i].GetRendererBounds());
+                bounds.Encapsulate(renderers[i].GetRendererBounds());
             }
             return bounds;
         }
@@ -186,7 +186,6 @@ namespace Pal3.Game.Rendering.Renderer
                 #endif
 
                 StaticMeshRenderer meshRenderer = meshEntity.AddComponent<StaticMeshRenderer>();
-                _meshRenderers.Add(meshRenderer);
                 GameBoxBlendFlag blendFlag = mesh.Textures[i].BlendFlag;
 
                 IMaterial[] CreateMaterials(bool isWaterSurface, int mainTextureIndex, int shadowTextureIndex = -1)
@@ -290,7 +289,6 @@ namespace Pal3.Game.Rendering.Renderer
 
         public void Dispose()
         {
-            _meshRenderers.Clear();
             if (_animationCts is {IsCancellationRequested: false})
             {
                 _animationCts.Cancel();

@@ -1,4 +1,4 @@
-﻿// ---------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------
 //  Copyright (c) 2021-2025, Jiaqi (0x7c13) Liu. All rights reserved.
 //  See LICENSE file in the project root for license information.
 // ---------------------------------------------------------------------------------------------
@@ -312,7 +312,7 @@ namespace Pal3.Game.Audio
             {
                 case 0: // start playing sfx indefinitely for the given sfxName
                     _playingSfxSourceNames.Add(sfxName);
-                    Pal3Game.Instance.StartCoroutine(AttachSfxToGameEntityAndPlaySfxAsync(
+                    Pal3.Instance.StartCoroutine(AttachSfxToGameEntityAndPlaySfxAsync(
                         _cameraEntity,
                         _resourceProvider.GetSfxFilePath(sfxName),
                         sfxName, // use sfx name as audio source name
@@ -333,7 +333,7 @@ namespace Pal3.Game.Audio
                     _playingSfxSourceNames.Add(sfxName);
                     string sfxFilePath = _resourceProvider.GetSfxFilePath(sfxName);
                     CancellationToken cancellationToken = _sceneAudioCts.Token;
-                    Pal3Game.Instance.StartCoroutine(AttachSfxToGameEntityAndPlaySfxAsync(
+                    Pal3.Instance.StartCoroutine(AttachSfxToGameEntityAndPlaySfxAsync(
                         _cameraEntity,
                         sfxFilePath,
                         sfxName, // use sfx name as audio source name
@@ -353,7 +353,7 @@ namespace Pal3.Game.Audio
 
             string sfxFilePath = _resourceProvider.GetSfxFilePath(request.SfxName);
             CancellationToken cancellationToken = _sceneAudioCts.Token;
-            Pal3Game.Instance.StartCoroutine(StartWithDelayAsync(request.StartDelayInSeconds,
+            Pal3.Instance.StartCoroutine(StartWithDelayAsync(request.StartDelayInSeconds,
                 AttachSfxToGameEntityAndPlaySfxAsync(request.Parent,
                     sfxFilePath,
                     request.AudioSourceName,
@@ -414,7 +414,7 @@ namespace Pal3.Game.Audio
             _currentMusicClipName = command.MusicName;
             string musicFileVirtualPath = FileConstants.GetMusicFileVirtualPath(command.MusicName);
             string musicFileCachePath = _resourceProvider.GetMusicFilePathInCacheFolder(musicFileVirtualPath);
-            Pal3Game.Instance.StartCoroutine(PlayMusicAsync(command.MusicName,
+            Pal3.Instance.StartCoroutine(PlayMusicAsync(command.MusicName,
                 musicFileVirtualPath,
                 musicFileCachePath,
                 command.Loop == 0 ? -1 : command.Loop));
@@ -435,7 +435,7 @@ namespace Pal3.Game.Audio
             if (_sceneManager.GetCurrentScene() is {} scene)
             {
                 ScnSceneInfo sceneInfo = scene.GetSceneInfo();
-                Pal3Game.Instance.StartCoroutine(PlaySceneMusicAsync(sceneInfo.CityName, sceneInfo.SceneName));
+                Pal3.Instance.StartCoroutine(PlaySceneMusicAsync(sceneInfo.CityName, sceneInfo.SceneName));
             }
         }
 
@@ -450,7 +450,7 @@ namespace Pal3.Game.Audio
         {
             if (string.IsNullOrEmpty(_currentScriptMusic))
             {
-                Pal3Game.Instance.StartCoroutine(
+                Pal3.Instance.StartCoroutine(
                     PlaySceneMusicAsync(command.NewSceneInfo.CityName, command.NewSceneInfo.SceneName));
             }
         }

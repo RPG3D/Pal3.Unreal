@@ -16,6 +16,7 @@ using Pal3.Game.Scene;
 using Pal3.Game.Script;
 using Pal3.Game.State;
 using Debug = UnityEngine.Debug;
+using Pal3Game = global::Pal3.Game.Pal3;
 
 namespace ManagedSharpDemo
 {
@@ -27,6 +28,9 @@ namespace ManagedSharpDemo
         private long _lastPoll;
         private double _cameraUntil;
         private float _cameraAxis;
+        private double _movementUntil;
+        private UnityEngine.Vector2 _movementDirection;
+        private bool _pathTookOver;
 
         public void Start()
         {
@@ -286,10 +290,20 @@ namespace ManagedSharpDemo
             return (tokens[0].ToLowerInvariant(), seconds, strength);
         }
 
-        private static void ScheduleMovement(string? argument)
+        public (UnityEngine.Vector2 Direction, bool PathTookOver) ReadMovement(bool enabled)
+        {
+            if (!enabled) _movementUntil = 0;
+            var direction = GameTimeProvider.Instance.TimeSinceStartup < _movementUntil
+                ? _movementDirection : UnityEngine.Vector2.zero;
+            bool pathTookOver = _pathTookOver;
+            _pathTookOver = false;
+            return (direction, pathTookOver);
+        }
+
+        private void ScheduleMovement(string? argument)
         {
             var (input, seconds, _) = ParseTimedDirection(argument);
-            UnityEngine.Vector2 direction = input switch
+            _movementDirection = input switch
             {
                 "up" => new(0, 1),
                 "down" => new(0, -1),
@@ -297,10 +311,11 @@ namespace ManagedSharpDemo
                 "right" => new(1, 0),
                 _ => throw new ArgumentException("Direction must be up, down, left or right.")
             };
-            ServiceLocator.Instance.Get<PlayerGamePlayManager>().MovePlayerFor(direction, seconds);
+            _movementUntil = GameTimeProvider.Instance.TimeSinceStartup + seconds;
+            _pathTookOver = false;
         }
 
-        private static void MoveToTile(string? argument)
+        private void MoveToTile(string? argument)
         {
             var tokens = argument?.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (tokens is not { Length: 2 or 3 } ||
@@ -321,7 +336,8 @@ namespace ManagedSharpDemo
                 throw new InvalidOperationException("The destination is not walkable on the player's current layer.");
             }
 
-            services.Get<PlayerGamePlayManager>().MovePlayerFor(default, 0f);
+            _movementUntil = 0;
+            _pathTookOver = true;
             var game = Pal3Game.Instance;
             game.Execute(new ActorStopActionAndStandCommand(actorId));
             game.Execute(new ActorPathToCommand(actorId, x, y, tokens.Length == 3 && tokens[2] == "run" ? 1 : 0));
@@ -460,8 +476,11 @@ namespace ManagedSharpDemo
             var action = entity?.GetComponent<ActorActionController>();
             var position = entity?.Transform.Position;
             var forward = entity?.Transform.Forward;
-            string[] fingerprints = action is VertexAnimationActorActionController vertexAction
-                ? vertexAction.GetMeshPoseFingerprints() : Array.Empty<string>();
+            string[] fingerprints = action is VertexAnimationActorActionController && entity != null
+                ? entity.GetComponentsInChildren<Engine.Renderer.StaticMeshRenderer>()
+                    .Where(renderer => renderer.IsVertexAnimated)
+                    .Select(renderer => renderer.FingerprintMesh()).ToArray()
+                : Array.Empty<string>();
             return new
             {
                 actorId,
