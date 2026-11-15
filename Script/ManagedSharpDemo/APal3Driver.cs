@@ -23,6 +23,8 @@ namespace ManagedSharpDemo
     [UClass]
     public partial class APal3Driver : AActor
     {
+        private double _lastWorldRealTime;
+
         public APal3Driver()
         {
             _startMenu = new(_touchStick);
@@ -33,6 +35,7 @@ namespace ManagedSharpDemo
         public override void BeginPlay()
         {
             base.BeginPlay();
+            _lastWorldRealTime = UGameplayStatics.RealTimeSeconds;
 
             // Fresh PIE session: the managed runtime survives world teardown, so drop
             // every static left over from the previous run BEFORE touching anything.
@@ -114,6 +117,9 @@ namespace ManagedSharpDemo
         public override void Tick(float deltaTime)
         {
             base.Tick(deltaTime);
+            double realTime = UGameplayStatics.RealTimeSeconds;
+            float realDeltaTime = (float)(realTime - _lastWorldRealTime);
+            _lastWorldRealTime = realTime;
 
             var pc = UGameplayStatics.GetPlayerController(0);
             bool menuHasInput = true;
@@ -133,7 +139,7 @@ namespace ManagedSharpDemo
             }
 
             Engine.Diagnostics.ManagedDiagnostics.Heartbeat();
-            GameEntityScriptRuntime.TickAll(deltaTime);
+            GameEntityScriptRuntime.TickAll(deltaTime, realDeltaTime);
             Pal3.Game.Data.Pal3TransientAssets.Tick();
             UnrealSharp.SharpDemo.UPal3AudioHelper.TickAudio();
             Pal3Boot.TickSmokeProbe(deltaTime);

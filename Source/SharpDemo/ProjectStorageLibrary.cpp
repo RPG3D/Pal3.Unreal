@@ -53,3 +53,9 @@ bool UProjectStorageLibrary::RequestSharedStorageAccess()
 	return false;
 #endif
 }
+
+#if !PLATFORM_IOS
+FString UProjectStorageLibrary::ResolveAuthorizedPal3Folder() { return {}; }
+void UProjectStorageLibrary::RequestPal3FolderSelection(const FString&) {}
+EPal3FolderSelectionResult UProjectStorageLibrary::ConsumePal3FolderSelectionResult() { return EPal3FolderSelectionResult::None; }
+#endif

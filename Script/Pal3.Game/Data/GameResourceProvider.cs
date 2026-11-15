@@ -519,7 +519,7 @@ namespace Pal3.Game.Data
             return Path.Combine(Application.persistentDataPath, "Movies", videoName.ToLowerInvariant() + ".mp4");
         }
 
-        public (string Path, bool NeedsConversion) PrepareVideoSource(string videoName, string cachePath)
+        public (string Path, bool NeedsConversion) PrepareVideoSource(string videoName, string cachePath, bool stageReadyVideo)
         {
             string movieFolder = Path.Combine(_fileSystem.GetRootPath(), FileConstants.MovieFolderName);
             if (Directory.Exists(movieFolder))
@@ -527,10 +527,68 @@ namespace Pal3.Game.Data
                 string? readyVideo = Directory.EnumerateFiles(movieFolder, "*", SearchOption.AllDirectories)
                     .FirstOrDefault(file => Path.GetFileNameWithoutExtension(file).Equals(videoName, StringComparison.OrdinalIgnoreCase) &&
                         Path.GetExtension(file).ToLowerInvariant() is ".mp4" or ".mov" or ".webm");
-                if (readyVideo != null) return (readyVideo, false);
+                if (readyVideo != null)
+                {
+                    // AV Foundation opens the local copy through UE's platform file layer.
+                    return (stageReadyVideo ? StageReadyVideo(readyVideo, cachePath) : readyVideo, false);
+                }
             }
 
             return (StageOriginalVideo(videoName, cachePath, movieFolder), true);
+        }
+
+        private static readonly object ReadyVideoCacheLock = new();
+
+        private static string StageReadyVideo(string source, string cachePath)
+        {
+            string directory = Path.Combine(Path.GetDirectoryName(cachePath)!, "Imported");
+            // Keep the original container extension and distinguish it from converted Bink video.
+            string destination = Path.Combine(directory, Path.GetFileNameWithoutExtension(cachePath) + Path.GetExtension(source));
+            string stampPath = destination + ".source";
+
+            lock (ReadyVideoCacheLock)
+            {
+                var sourceFile = new FileInfo(source);
+                long length = sourceFile.Length;
+                DateTime lastWrite = sourceFile.LastWriteTimeUtc;
+                string stamp = FormattableString.Invariant($"{length}:{lastWrite.Ticks}:{sourceFile.FullName}");
+                var cachedFile = new FileInfo(destination);
+                if (cachedFile.Exists && cachedFile.Length == length &&
+                    File.Exists(stampPath) && File.ReadAllText(stampPath) == stamp)
+                {
+                    return destination;
+                }
+
+                Directory.CreateDirectory(directory);
+                string temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try
+                {
+                    File.Copy(sourceFile.FullName, temporary);
+                    sourceFile.Refresh();
+                    if (sourceFile.Length != length || sourceFile.LastWriteTimeUtc != lastWrite ||
+                        new FileInfo(temporary).Length != length)
+                    {
+                        throw new IOException($"PAL3 video changed while copying: {source}");
+                    }
+
+                    // An interrupted replacement must leave a cache miss on the next launch.
+                    File.Delete(stampPath);
+                    File.Move(temporary, destination, overwrite: true);
+                    try
+                    {
+                        File.WriteAllText(stampPath, stamp);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        EngineLogger.LogWarning($"Could not write PAL3 video cache marker for {destination}: {ex.Message}");
+                    }
+                    return destination;
+                }
+                finally
+                {
+                    File.Delete(temporary);
+                }
+            }
         }
 
         private string StageOriginalVideo(string videoName, string cachePath, string movieFolder)

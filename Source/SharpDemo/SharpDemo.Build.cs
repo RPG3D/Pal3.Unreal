@@ -20,6 +20,14 @@ public class SharpDemo : ModuleRules
 			AdditionalPropertiesForReceipt.Add("AndroidPlugin",
 				System.IO.Path.Combine(ModuleDirectory, "ProjectStorage_APL.xml"));
 		}
+		else if (Target.Platform == UnrealTargetPlatform.IOS)
+		{
+			// The shared engine PCH is compiled without ARC.
+			PCHUsage = PCHUsageMode.NoSharedPCHs;
+			bEnableObjCAutomaticReferenceCounting = true;
+			PrivateDependencyModuleNames.Add("ApplicationCore");
+			PublicFrameworks.AddRange(new[] { "UIKit", "UniformTypeIdentifiers" });
+		}
 
     }
 }

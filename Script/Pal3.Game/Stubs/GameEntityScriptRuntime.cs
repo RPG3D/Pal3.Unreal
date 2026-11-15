@@ -179,44 +179,15 @@ namespace Engine.Core.Implementation
         /// then Update and LateUpdate on every active script.
         /// Call once per frame, game thread only.
         /// </summary>
-        // Low frame rates (e.g. UE throttling PIE to ~3 FPS while the editor is in
-        // the background) deliver huge deltas. Feeding them straight into gameplay
-        // makes a 4 m/s actor step 1.33 m per frame - a 1.2 m tile path finishes in
-        // one frame and the walk action is replaced before a single new pose can be
-        // displayed. Clamping the simulation delta under load applies time dilation
-        // instead: movement stays proportional to the (clamped) delta and the
-        // animation advances one step per rendered frame. At normal frame rates this
-        // has no effect. Override with PAL3_MAX_SIM_DELTA (seconds; <=0 disables).
-        private static readonly float s_MaxSimulationDelta = ReadMaxSimulationDelta();
-
-        private static float ReadMaxSimulationDelta()
+        public static void TickAll(float deltaTime, float realDeltaTime)
         {
-            string? raw = System.Environment.GetEnvironmentVariable("PAL3_MAX_SIM_DELTA");
-            if (!string.IsNullOrWhiteSpace(raw) &&
-                float.TryParse(raw, System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out float parsed))
-            {
-                return parsed;
-            }
-            return 0.05f; // 20 Hz minimum simulation step
-        }
-
-        public static void TickAll(float deltaTime)
-        {
-            float simulationDelta = deltaTime;
-            if (s_MaxSimulationDelta > 0f && simulationDelta > s_MaxSimulationDelta)
-            {
-                simulationDelta = s_MaxSimulationDelta;
-            }
-
-            // Unity semantics: Time.deltaTime is timeScale-scaled.
-            float scaledDelta = simulationDelta * UnityEngine.Time.timeScale;
-            UnityEngine.Time.unscaledDeltaTime = simulationDelta;
-            UnityEngine.Time.deltaTime = scaledDelta;
-            UnityEngine.Time.time += scaledDelta;
+            // UE has already applied World and Actor Time Dilation to the tick.
+            UnityEngine.Time.unscaledDeltaTime = realDeltaTime;
+            UnityEngine.Time.deltaTime = deltaTime;
+            UnityEngine.Time.time += deltaTime;
             UnityEngine.Time.frameCount++;
 
-            CoroutineScheduler.Tick(scaledDelta);
+            CoroutineScheduler.Tick(deltaTime);
 
             lock (_gate)
             {
@@ -265,7 +236,7 @@ namespace Engine.Core.Implementation
                         }
                         if (si.Script is GameEntityScript script)
                         {
-                            script.InvokeVirtualOnUpdate(scaledDelta);
+                            script.InvokeVirtualOnUpdate(deltaTime);
                         }
 
                     }
@@ -288,7 +259,7 @@ namespace Engine.Core.Implementation
                         InvokeSafe(si.Script, si.LateUpdate, "LateUpdate");
                         if (si.Script is GameEntityScript lateScript)
                         {
-                            lateScript.InvokeVirtualOnLateUpdate(scaledDelta);
+                            lateScript.InvokeVirtualOnLateUpdate(deltaTime);
                         }
                     }
                 }

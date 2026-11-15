@@ -31,7 +31,6 @@ namespace Pal3.Game.GameSystems.Caption
     {
         private const float FadeInSeconds = 10f;
         private const float AutoHoldSeconds = 2f;
-        private const float FadeOutSeconds = .75f;
 
         private readonly GameResourceProvider _gameResourceProvider;
         private readonly PlayerInputActions _playerInputActions;
@@ -101,7 +100,11 @@ namespace Pal3.Game.GameSystems.Caption
             _captionImage.sprite = _sprite.NativeObject as Sprite;
             _captionImage.color = Color.clear;
 
-            yield return FadeAsync(waiter, 0f, 1f, FadeInSeconds);
+            yield return CoreAnimation.EnumerateValueAsync(0f, 1f, FadeInSeconds,
+                AnimationCurveType.Linear, alpha =>
+                {
+                    if (waiter == _skipCaptionWaiter) _captionImage.color = new Color(1f, 1f, 1f, alpha);
+                });
 
             if (waiter != _skipCaptionWaiter) yield break;
             _skipCaptionRequested = false;
@@ -111,17 +114,8 @@ namespace Pal3.Game.GameSystems.Caption
             if (waiter != _skipCaptionWaiter) yield break;
             if (!_skipCaptionRequested)
                 yield return CoroutineYieldInstruction.WaitForSeconds(AutoHoldSeconds);
-            if (waiter != _skipCaptionWaiter) yield break;
-
-            yield return FadeAsync(waiter, 1f, 0f, FadeOutSeconds);
             if (waiter == _skipCaptionWaiter) FinishCaption();
         }
-
-        private IEnumerator FadeAsync(WaitUntilCanceled waiter, float from, float to, float seconds)
-            => CoreAnimation.EnumerateValueAsync(from, to, seconds, AnimationCurveType.Linear, alpha =>
-            {
-                if (waiter == _skipCaptionWaiter) _captionImage.color = new Color(1f, 1f, 1f, alpha);
-            });
 
         private void FinishCaption()
         {

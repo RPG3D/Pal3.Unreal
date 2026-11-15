@@ -156,7 +156,8 @@ namespace Pal3.Game.Video
                 if (!_preparations.TryGetValue(path, out Preparation? preparation))
                 {
                     string cachePath = path;
-                    preparation = new Preparation(Task.Run(() => _resourceProvider.PrepareVideoSource(name, cachePath)));
+                    bool stageReadyVideo = UnrealSharp.Engine.UGameplayStatics.PlatformName == "IOS";
+                    preparation = new Preparation(Task.Run(() => _resourceProvider.PrepareVideoSource(name, cachePath, stageReadyVideo)));
                     _preparations.Add(cachePath, preparation);
                     Pal3.Instance.StartCoroutine(PrepareVideo(cachePath, preparation));
                 }

@@ -3,6 +3,16 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "ProjectStorageLibrary.generated.h"
 
+UENUM(BlueprintType)
+enum class EPal3FolderSelectionResult : uint8
+{
+	None,
+	Selected,
+	Cancelled,
+	MissingData,
+	Unavailable,
+};
+
 UCLASS()
 class SHARPDEMO_API UProjectStorageLibrary : public UBlueprintFunctionLibrary
 {
@@ -21,4 +31,13 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "SharpDemo|Storage")
 	static bool RequestSharedStorageAccess();
+
+	UFUNCTION(BlueprintCallable, Category = "SharpDemo|Storage")
+	static FString ResolveAuthorizedPal3Folder();
+
+	UFUNCTION(BlueprintCallable, Category = "SharpDemo|Storage")
+	static void RequestPal3FolderSelection(const FString& RequiredFile);
+
+	UFUNCTION(BlueprintCallable, Category = "SharpDemo|Storage")
+	static EPal3FolderSelectionResult ConsumePal3FolderSelectionResult();
 };

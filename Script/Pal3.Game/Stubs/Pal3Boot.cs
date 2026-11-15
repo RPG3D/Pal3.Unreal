@@ -88,6 +88,7 @@ namespace Pal3.Game
             _gameComponentHost = null;
             BootError = null;
             StoragePermissionRequired = false;
+            CanSelectPal3Folder = false;
             s_InputActions = null;
             WaitingForMenuStart = false;
             IsGameReady = false;
@@ -207,6 +208,7 @@ namespace Pal3.Game
         private static IGameEntity? _resourceInitializer;
         public static string? BootError { get; private set; }
         public static bool StoragePermissionRequired { get; private set; }
+        public static bool CanSelectPal3Folder { get; private set; }
 
         /// <summary>
         /// Boots the real game: GameResourceInitializer mounts the CPK file system
@@ -268,13 +270,13 @@ namespace Pal3.Game
             string dataPath = Environment.GetEnvironmentVariable("PAL3_DATA_PATH");
             string platform = UnrealSharp.Engine.UGameplayStatics.PlatformName;
             bool isAndroid = platform == "Android";
-            bool usesDefaultIosPath = platform == "IOS" && string.IsNullOrWhiteSpace(dataPath);
+            CanSelectPal3Folder = platform == "IOS" && string.IsNullOrWhiteSpace(dataPath);
             if (string.IsNullOrWhiteSpace(dataPath))
             {
                 dataPath = platform switch
                 {
                     "Android" => AndroidDataPath,
-                    "IOS" => System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "PAL3"),
+                    "IOS" => GetIosDataPath(),
                     "Mac" => GetMacDataPath(),
                     _ => DefaultDataPath,
                 };
@@ -295,10 +297,10 @@ namespace Pal3.Game
                 return;
             }
 
-            if (usesDefaultIosPath &&
+            if (CanSelectPal3Folder &&
                 !System.IO.File.Exists(System.IO.Path.Combine(dataPath, FileConstants.BaseDataCpkFileRelativePath)))
             {
-                BootError = "找不到 PAL3/basedata/basedata.cpk。请在「文件」App 的 SharpDemo 文件夹中放入原版 PAL3 数据后重试。";
+                BootError = "请选择「下载」中包含 basedata/basedata.cpk 的 PAL3 文件夹，或将原版数据放到 SharpDemo 文件夹后重试。";
                 return;
             }
 
@@ -334,6 +336,21 @@ namespace Pal3.Game
                     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
                 ?.SetValue(initializer, startingPrefab);
         }
+
+        private static string GetIosDataPath()
+        {
+            string selected = UnrealSharp.SharpDemo.UProjectStorageLibrary.ResolveAuthorizedPal3Folder();
+            if (!string.IsNullOrEmpty(selected) &&
+                System.IO.File.Exists(System.IO.Path.Combine(selected, FileConstants.BaseDataCpkFileRelativePath)))
+            {
+                return selected;
+            }
+
+            return GetIosSandboxDataPath();
+        }
+
+        internal static string GetIosSandboxDataPath() =>
+            System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "PAL3");
 
         internal static void ReportDataLoadFailure(string message)
         {

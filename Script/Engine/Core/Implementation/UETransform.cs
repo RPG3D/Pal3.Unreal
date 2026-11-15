@@ -50,7 +50,13 @@ namespace Engine.Core.Implementation
         public UnityEngine.Vector3 LocalPosition
         {
             get => IsComponentAlive ? UnityUeConvert.ToUnityPosition(_component.RelativeLocation) : default;
-            set { if (IsComponentAlive) _component.RelativeLocation = UnityUeConvert.ToUePosition(value); }
+            set
+            {
+                if (IsComponentAlive)
+                {
+                    _component.SetRelativeLocation(UnityUeConvert.ToUePosition(value), false, out _, false);
+                }
+            }
         }
 
         public UnityEngine.Quaternion Rotation

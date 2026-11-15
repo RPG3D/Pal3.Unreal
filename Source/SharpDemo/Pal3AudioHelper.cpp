@@ -8,6 +8,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Misc/EngineVersionComparison.h"
 #include "Sound/SoundGenerator.h"
+#include "UObject/Package.h"
 #include "dr_libs_mp3decoder.h"
 
 // --- decode helpers -------------------------------------------------------------

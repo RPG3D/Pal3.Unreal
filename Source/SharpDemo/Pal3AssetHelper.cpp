@@ -12,6 +12,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/EngineVersionComparison.h"
 #include "RenderCommandFence.h"
+#include "UObject/Package.h"
 #include "UObject/StrongObjectPtr.h"
 
 static int32 GTexturesCreated = 0;
