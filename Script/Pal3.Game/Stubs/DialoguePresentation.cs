@@ -12,12 +12,16 @@ namespace Pal3.Game.Dev
         public static Portrait? Avatar { get; private set; }
         public static IReadOnlyList<string> Choices { get; private set; } = Array.Empty<string>();
         public static string ChoicePrompt { get; private set; } = "";
+        public static Portrait? ChoiceAvatar { get; private set; }
         private static string _lastPage = "";
+        private static Portrait? _lastPageAvatar;
 
         public static void ShowChoices(string[] choices)
         {
             ChoicePrompt = _lastPage;
+            ChoiceAvatar = _lastPageAvatar;
             _lastPage = "";
+            _lastPageAvatar = null;
             Choices = Array.AsReadOnly(choices);
         }
 
@@ -25,7 +29,9 @@ namespace Pal3.Game.Dev
         {
             Choices = Array.Empty<string>();
             ChoicePrompt = "";
+            ChoiceAvatar = null;
             _lastPage = "";
+            _lastPageAvatar = null;
         }
 
         public static void ShowText(string text)
@@ -33,6 +39,7 @@ namespace Pal3.Game.Dev
             // UMG text blocks display plain text; strip the upstream TMP color tags.
             Text = System.Text.RegularExpressions.Regex.Replace(text, "</?color(?:=[^>]+)?>", "");
             _lastPage = Text;
+            _lastPageAvatar = Avatar;
         }
 
         public static void ShowAvatar(ISprite? sprite, bool rightAligned)

@@ -10,14 +10,18 @@ namespace ManagedSharpDemo
 {
     internal sealed class Pal3DialogueChoices : IDisposable
     {
-        private const int PageSize = 4;
+        private const int MaxPageSize = 4;
         private const int PanelWidth = 800;
         private const int Inset = 24;
         private const int RowHeight = 80;
         private const int RowGap = 16;
+        private const int PageButtonHeight = 64;
+        // Pal3Dialogue.json reserves 228 px plus a 24 px bottom margin.
+        private const int DialogueOffset = 228 + 24 + RowGap;
         private IReadOnlyList<string>? _choices;
         private URuntimeJsonWidget? _widget;
         private int _page;
+        private int _pageSize;
 
         public void Tick(APlayerController pc)
         {
@@ -34,6 +38,7 @@ namespace ManagedSharpDemo
                     WidgetLibrary.SetInputMode_GameOnly(pc, flushInput: true);
                     return;
                 }
+                _pageSize = GetPageSize(choices.Count);
                 Show(choices, 0);
             }
 
@@ -43,7 +48,7 @@ namespace ManagedSharpDemo
             {
                 Show(choices, _page - 1);
             }
-            else if (id == "next" && (_page + 1) * PageSize < choices.Count)
+            else if (id == "next" && (_page + 1) * _pageSize < choices.Count)
             {
                 Show(choices, _page + 1);
             }
@@ -53,35 +58,41 @@ namespace ManagedSharpDemo
             }
         }
 
+        private static int GetPageSize(int choiceCount)
+        {
+            double scale = UWidgetLayoutLibrary.ViewportScale;
+            double viewportHeight = UWidgetLayoutLibrary.ViewportSize.Y;
+            if (scale <= 0 || viewportHeight <= 0) return MaxPageSize;
+            double height = viewportHeight / scale;
+            int bottomOffset = DialoguePresentation.ChoicePrompt.Length > 0 ? DialogueOffset : Inset;
+            double available = height - bottomOffset - Inset * 2;
+            int rows = Math.Clamp((int)(available / (RowHeight + RowGap)), 1, MaxPageSize);
+            return choiceCount <= rows ? rows :
+                Math.Clamp((int)((available - PageButtonHeight - RowGap) / (RowHeight + RowGap)), 1, rows);
+        }
+
         private void Show(IReadOnlyList<string> choices, int page)
         {
-            int first = page * PageSize;
-            int count = Math.Min(PageSize, choices.Count - first);
+            int first = page * _pageSize;
+            int count = Math.Min(_pageSize, choices.Count - first);
             var rows = new List<object>();
-            string prompt = DialoguePresentation.ChoicePrompt;
-            int firstRow = prompt.Length == 0 ? 68 : 124;
-            rows.Add(new
-            {
-                type = "text", text = prompt.Length == 0 ? "请选择" : prompt, fontSize = 26, wrap = true,
-                position = new[] { Inset, 14 }, size = new[] { PanelWidth - Inset * 2, firstRow - 24 }
-            });
+            bool hasPrompt = DialoguePresentation.ChoicePrompt.Length > 0;
             for (int i = 0; i < count; i++)
             {
                 int index = first + i;
                 rows.Add(Button(index.ToString(), $"{index + 1}. {choices[index]}",
-                    Inset, firstRow + i * (RowHeight + RowGap), PanelWidth - Inset * 2));
+                    Inset, Inset + i * (RowHeight + RowGap), PanelWidth - Inset * 2));
             }
 
-            int height = firstRow + count * (RowHeight + RowGap);
-            if (choices.Count > PageSize)
+            int height = Inset + count * (RowHeight + RowGap);
+            if (choices.Count > _pageSize)
             {
                 const int pageButtonWidth = 164;
-                const int pageButtonHeight = 64;
-                if (page > 0) rows.Add(Button("previous", "上一页", Inset, height, pageButtonWidth, pageButtonHeight));
+                if (page > 0) rows.Add(Button("previous", "上一页", Inset, height, pageButtonWidth, PageButtonHeight));
                 if (first + count < choices.Count)
                     rows.Add(Button("next", "下一页", PanelWidth - Inset - pageButtonWidth, height,
-                        pageButtonWidth, pageButtonHeight));
-                height += pageButtonHeight + RowGap;
+                        pageButtonWidth, PageButtonHeight));
+                height += PageButtonHeight + RowGap;
             }
 
             string layout = JsonSerializer.Serialize(new
@@ -93,7 +104,8 @@ namespace ManagedSharpDemo
                     {
                         new
                         {
-                            type = "border", anchor = "center", size = new[] { PanelWidth, height },
+                            type = "border", anchor = "bottom_center", size = new[] { PanelWidth, height },
+                            position = new[] { 0, -(hasPrompt ? DialogueOffset : Inset) },
                             color = new[] { 0.035, 0.055, 0.075, 0.98 },
                             child = new { type = "canvas", children = rows }
                         }

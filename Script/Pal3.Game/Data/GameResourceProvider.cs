@@ -330,7 +330,9 @@ namespace Pal3.Game.Data
             yield break;
         }
 
-        public ISprite GetLogoSprite()
+        public ISprite? GetLogoSprite() => GetLogoSprite(useCache: true);
+
+        public ISprite? GetLogoSprite(bool useCache)
         {
             #if PAL3
             const string mainLogoTextureFileName = "11.tga";
@@ -340,8 +342,28 @@ namespace Pal3.Game.Data
             Rect mainLogoSpriteRect = new Rect(0, 770, 500, 253);
             #endif
 
-            ITextureResourceProvider uiLibTextureProvider = CreateTextureResourceProvider(FileConstants.UILibFolderVirtualPath);
-            ITexture2D logoTexture = uiLibTextureProvider.GetTexture(mainLogoTextureFileName);
+            string logoPath = FileConstants.UILibFolderVirtualPath + mainLogoTextureFileName;
+            ITexture2D? logoTexture;
+            try
+            {
+                logoTexture = CreateTextureResourceProvider(FileConstants.UILibFolderVirtualPath, useCache)
+                    .GetTexture(mainLogoTextureFileName);
+            }
+            catch (Exception error)
+            {
+                EngineLogger.LogWarning($"Could not read PAL3 logo {logoPath}: {error.Message}");
+                return null;
+            }
+
+            if (logoTexture == null) return null;
+            if (mainLogoSpriteRect.x + mainLogoSpriteRect.width > logoTexture.Width ||
+                mainLogoSpriteRect.y + mainLogoSpriteRect.height > logoTexture.Height)
+            {
+                EngineLogger.LogWarning($"PAL3 logo crop exceeds atlas bounds: {logoPath} ({logoTexture.Width}x{logoTexture.Height})");
+                if (!useCache || _textureCache == null) logoTexture.Destroy();
+                return null;
+            }
+
             return logoTexture.CreateSprite(mainLogoSpriteRect.x, mainLogoSpriteRect.y,
                 mainLogoSpriteRect.width, mainLogoSpriteRect.height,
                 0.5f, 0.5f);

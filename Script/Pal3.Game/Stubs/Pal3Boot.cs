@@ -555,9 +555,11 @@ namespace Pal3.Game
             {
                 services.Get<MainMenu>().HideMenu();
                 Pal3.Instance.Execute(new CameraFollowPlayerCommand(0));
+                WaitingForMenuStart = false;
             });
-            WaitingForMenuStart = false;
         }
+
+        internal static void ReturnToSaveMenu() => WaitingForMenuStart = true;
 
         public static void SaveToSlot(int slot)
         {

@@ -9,10 +9,12 @@
         "child": {
           "type": "canvas",
           "children": [
-            { "type": "text", "text": "仙剑奇侠传三", "fontAsset": "/Game/PAL3/Fonts/Pal3Weibei_Font.Pal3Weibei_Font", "fontSize": 44, "align": "center", "anchor": "center", "size": [680, 70], "color": [0.96, 0.89, 0.74, 1] },
+            { "type": "text", "id": "loading_title", "text": "仙剑奇侠传三", "fontAsset": "/Game/PAL3/Fonts/Pal3Weibei_Font.Pal3Weibei_Font", "fontSize": 44, "align": "center", "anchor": "center", "size": [680, 70], "color": [0.96, 0.89, 0.74, 1] },
+            { "type": "image", "id": "loading_logo", "anchor": "center", "size": [650, 252], "preserveAspect": true },
             { "type": "text", "id": "loading_phase", "text": "正在准备场景", "fontAsset": "/Game/PAL3/Fonts/Pal3Weibei_Font.Pal3Weibei_Font", "fontSize": 30, "align": "left", "anchor": "bottom_center", "position": [-95, -96], "size": [930, 48] },
             { "type": "text", "id": "loading_percent", "text": "0%", "fontAsset": "/Game/PAL3/Fonts/Pal3Weibei_Font.Pal3Weibei_Font", "fontSize": 30, "align": "right", "anchor": "bottom_center", "position": [495, -96], "size": [130, 48], "color": [0.96, 0.89, 0.74, 1] },
-            { "type": "progressbar", "id": "loading_progress", "anchor": "bottom_center", "position": [0, -58], "size": [1120, 32], "fillColor": [0.82, 0.68, 0.42, 1] }
+            { "type": "progressbar", "id": "loading_progress", "anchor": "bottom_center", "position": [0, -58], "size": [1120, 32], "fillColor": [0.035, 0.29, 0.72, 1] },
+            { "type": "image", "id": "loading_huaying", "anchor": "bottom_center", "position": [-560, -42], "size": [71, 54] }
           ]
         }
       }

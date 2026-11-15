@@ -211,7 +211,8 @@ namespace Pal3.Game.State
                 _restore = new PendingRestore(scene, commands.Where(DeferUntilSceneReady).ToArray(), Guid.NewGuid());
                 state.AddGamePlayStateLocker(_restore.GameplayLock);
                 game.Execute(new PlayerEnableInputCommand(0));
-                _sceneManager.RunSceneCommands(commands.Skip(1).Where(command => !DeferUntilSceneReady(command)).ToArray(),
+                _sceneManager.RunSceneCommands(commands.Skip(1).Where(command => !DeferUntilSceneReady(command))
+                    .Select(ConvertSavedCameraRotation).ToArray(),
                     CancelRestore);
                 CompleteRestoreIfReady();
             }
@@ -226,6 +227,15 @@ namespace Pal3.Game.State
             command is ActorActivateCommand or ActorSetNavLayerCommand or ActorSetWorldPositionCommand or
                 ActorSetYPositionCommand or ActorSetFacingCommand or ActorSetScriptCommand or CameraFadeInCommand or
                 PlayerEnableInputCommand;
+
+        private static ICommand ConvertSavedCameraRotation(ICommand command)
+        {
+            if (command is not CameraSetInitialStateOnNextSceneLoadCommand camera) return command;
+
+            // UE v1 saves contain native Euler angles. The scene command expects Unity angles.
+            return new CameraSetInitialStateOnNextSceneLoadCommand(
+                -camera.XEulerAngle, camera.YEulerAngle, -camera.ZEulerAngle, camera.InitTransformOption);
+        }
 
         internal void CompleteRestoreIfReady()
         {
@@ -264,6 +274,8 @@ namespace Pal3.Game.State
             }
             _restore = null;
             LastLoadError = error.GetBaseException().Message;
+            _cameraManager.SetCurtainColor(UnityEngine.Color.clear);
+            Pal3Boot.ReturnToSaveMenu();
             ServiceLocator.Instance.Get<InformationManager>().EnableNoteDisplay(true);
             EngineLogger.LogException(error);
         }

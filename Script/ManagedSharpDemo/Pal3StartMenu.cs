@@ -62,7 +62,15 @@ namespace ManagedSharpDemo
             if (_widget == null)
             {
                 _canTransition = canTransition;
-                if (atTitle || tab) Show(pc, Page.Home);
+                if (atTitle && ServiceLocator.Instance.Get<SaveManager>().LastLoadError is { } error)
+                {
+                    _status = FormatLoadError(error);
+                    Show(pc, Page.Saves);
+                }
+                else if (atTitle || tab)
+                {
+                    Show(pc, Page.Home);
+                }
                 return atTitle || _widget != null;
             }
 
@@ -206,12 +214,17 @@ namespace ManagedSharpDemo
             }
             catch (Exception e)
             {
-                string reason = e.GetBaseException().Message.Replace('\n', ' ').Replace('\r', ' ');
-                _status = "加载失败 · " + (reason.Length > 46 ? reason[..46] + "…" : reason);
+                _status = FormatLoadError(e.GetBaseException().Message);
                 Show(pc, _page);
                 return;
             }
             Close(pc);
+        }
+
+        private static string FormatLoadError(string reason)
+        {
+            reason = reason.Replace('\n', ' ').Replace('\r', ' ');
+            return "加载失败 · " + (reason.Length > 46 ? reason[..46] + "…" : reason);
         }
 
         private void Show(APlayerController pc, Page page)

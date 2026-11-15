@@ -120,6 +120,8 @@ namespace Pal3.Game.Camera
             Quaternion cameraRotation,
             int transformOption)> _cameraLastKnownState = new ();
 
+        public Color CurtainColor => _curtainImage.color;
+
         public CameraManager(PlayerInputActions inputActions,
             SceneManager sceneManager,
             GameStateManager gameStateManager,
@@ -387,6 +389,12 @@ namespace Pal3.Game.Camera
             Action onFinished = null,
             CancellationToken cancellationToken = default)
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                onFinished?.Invoke();
+                yield break;
+            }
+
             _curtainImage.color = color;
 
             float from = 1f, to = 0f;
@@ -404,6 +412,12 @@ namespace Pal3.Game.Camera
             }
 
             onFinished?.Invoke();
+        }
+
+        internal void SetCurtainColor(Color color)
+        {
+            _cameraFadeAnimationCts.Cancel();
+            _curtainImage.color = color;
         }
 
         public int GetCurrentAppliedDefaultTransformOption()
@@ -818,7 +832,7 @@ namespace Pal3.Game.Camera
         {
             if (!_asyncCameraAnimationCts.IsCancellationRequested) _asyncCameraAnimationCts.Cancel();
 
-            _curtainImage.color = Color.black;
+            SetCurtainColor(Color.black);
             _currentAppliedDefaultTransformOption = 0;
             _initTransformOptionOnSceneLoad = null;
             _initRotationOnSceneLoad = null;

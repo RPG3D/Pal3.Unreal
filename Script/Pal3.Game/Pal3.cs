@@ -384,6 +384,8 @@ namespace Pal3.Game
             );
             #endif
 
+            // The PAL3.Unity curtain starts fully black in the game prefab.
+            curtainImage.color = Color.black;
             ServiceLocator.Instance.Register(_cameraManager =
                 new CameraManager(_inputActions,
                     _sceneManager,
@@ -513,14 +515,14 @@ namespace Pal3.Game
             _mainMenu.ShowInitView();
 
             // Show logo image.
-            logoImage.sprite = _gameResourceProvider.GetLogoSprite().NativeObject as Sprite;
+            logoImage.sprite = _gameResourceProvider.GetLogoSprite()?.NativeObject as Sprite;
             logoImage.preserveAspect = true;
             #if PAL3
             logoImage.transform.localScale = new Vector3(0.85f, 0.85f, 1f);
             #elif PAL3A
             logoImage.transform.localScale = new Vector3(1.25f, 1.25f, 1f);
             #endif
-            logoImage.enabled = true;
+            logoImage.enabled = logoImage.sprite != null;
 
             // Listen to input events to detect any key or touch press
             // to hide the logo and show the main menu.
