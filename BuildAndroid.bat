@@ -30,7 +30,7 @@ rem
 rem Steps 1 and 2.5 are idempotent/incremental (~40s when warm); neither is skippable
 rem on a cold tree (glue / flat managed would be missing or stale).
 rem
-rem Requires: Visual Studio, Android NDK r27c+, .NET 10 SDK
+rem Requires: Visual Studio, Android NDK r28 (UE 5.9 minimum), .NET 10 SDK
 rem ============================================================================
 
 set "PROJ_DIR=%~dp0"
@@ -92,7 +92,7 @@ echo [INFO] Engine: %ENGINE%
 echo [INFO] Config: %BUILD_CONFIG%
 
 rem -- Android toolchain --
-set "NDKROOT=C:\Users\imxql\AppData\Local\Android\Sdk\ndk\27.2.12479018"
+set "NDKROOT=C:\Users\imxql\AppData\Local\Android\Sdk\ndk\28.0.13004108"
 set "ANDROID_NDK_ROOT=%NDKROOT%"
 set "ANDROID_HOME=C:\Users\imxql\AppData\Local\Android\Sdk"
 set "UAT=%ENGINE%\Engine\Build\BatchFiles\RunUAT.bat"

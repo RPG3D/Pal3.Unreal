@@ -583,9 +583,11 @@ UWidget* URuntimeJsonWidget::BuildElement(const TSharedPtr<FJsonObject>& Element
 		FLinearColor Pressed = Normal * 0.7f;
 		GetColor(Element, TEXT("pressedColor"), Pressed);
 
-		Button->WidgetStyle.Normal.TintColor = FSlateColor(Normal);
-		Button->WidgetStyle.Hovered.TintColor = FSlateColor(Hover);
-		Button->WidgetStyle.Pressed.TintColor = FSlateColor(Pressed);
+		FButtonStyle ButtonStyle = Button->GetStyle();
+		ButtonStyle.Normal.TintColor = FSlateColor(Normal);
+		ButtonStyle.Hovered.TintColor = FSlateColor(Hover);
+		ButtonStyle.Pressed.TintColor = FSlateColor(Pressed);
+		Button->SetStyle(ButtonStyle);
 
 		UTextBlock* Label = MakeText(Tree, Element, TEXT("Button"));
 		Button->AddChild(Label);
