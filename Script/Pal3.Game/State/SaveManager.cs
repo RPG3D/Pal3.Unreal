@@ -54,7 +54,7 @@ namespace Pal3.Game.State
         ICommandExecutor<GameSwitchToMainMenuCommand>
     {
         public const int AutoSaveSlotIndex = 0;
-        public const int ManualSlotCount = 5;
+        public const int ManualSlotCount = 99;
         public bool IsAutoSaveEnabled { get; set; } = false;
         public bool IsRestoring => _restore != null;
         public string? LastLoadError { get; private set; }
@@ -116,10 +116,7 @@ namespace Pal3.Game.State
             _audioManager = Requires.IsNotNull(audioManager, nameof(audioManager));
             _postProcessManager = Requires.IsNotNull(postProcessManager, nameof(postProcessManager));
 
-            string? overridePath = Environment.GetEnvironmentVariable("PAL3_SAVE_DIR");
-            _saveFolder = string.IsNullOrWhiteSpace(overridePath)
-                ? Path.Combine(UnityEngine.Application.persistentDataPath, SAVE_FOLDER_NAME)
-                : Path.GetFullPath(overridePath);
+            _saveFolder = Path.Combine(UnityEngine.Application.persistentDataPath, SAVE_FOLDER_NAME);
             Directory.CreateDirectory(_saveFolder);
 
             CommandExecutorRegistry<ICommand>.Instance.Register(this);

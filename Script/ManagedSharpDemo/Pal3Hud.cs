@@ -12,6 +12,7 @@ using Pal3.Game.Scene;
 using UnrealSharp.CoreUObject;
 using UnrealSharp.Engine;
 using UnrealSharp.RuntimeWidgetLayout;
+using UnrealSharp.SlateCore;
 using UnrealSharp.UMG;
 
 namespace ManagedSharpDemo
@@ -19,8 +20,12 @@ namespace ManagedSharpDemo
     internal sealed class Pal3Hud : IDisposable
     {
         // Width of loading_progress in Pal3Loading.json.
-        private const float LoadingBarWidth = 1120f;
-        private const string LoadingMarkerTextureName = "loading_3.tga";
+        private const float LoadingBarWidth = 1080f;
+        private const string LoadingBarFrameTextureName = "loading_1.tga";
+        private const string LoadingBarFillTextureName = "loading_2.tga";
+        private const string LoadingDecorationTextureName = "loading_4.tga";
+        private const double LoadingMarkerFrameSeconds = 0.15;
+        private static readonly string[] LoadingMarkerFrameNames = ["loading_3.tga", "loading_5.tga"];
 
         private const string DiagnosticsLayout = """
         {
@@ -54,7 +59,11 @@ namespace ManagedSharpDemo
         private URuntimeJsonWidget? _cameraCurtain;
         private UTexture2D? _captionTexture;
         private ITexture2D? _loadingLogoTexture;
-        private ITexture2D? _loadingMarkerTexture;
+        private readonly List<UnityTexture2D> _loadingArtwork = new();
+        private UnityTexture2D[] _loadingMarkerFrames = [];
+        private FBox2f _loadingMarkerUv;
+        private int _displayedLoadingMarkerFrame = -1;
+        private double _loadingMarkerTime;
         private string? _loadingText;
         private float _loadingProgress = float.NaN;
         private int _logVersion = -1;
@@ -70,7 +79,7 @@ namespace ManagedSharpDemo
             try
             {
                 UpdateCameraCurtain();
-                UpdateLoading();
+                UpdateLoading(deltaTime);
                 UpdateDiagnostics(deltaTime);
                 UpdateDialogue();
                 UpdateCaption();
@@ -102,7 +111,7 @@ namespace ManagedSharpDemo
             SetVisible(_cameraCurtain, true);
         }
 
-        private void UpdateLoading()
+        private void UpdateLoading(float deltaTime)
         {
             string? phase = null;
             float progress = -1f;
@@ -126,6 +135,7 @@ namespace ManagedSharpDemo
             if (phase == null)
             {
                 if (_loading != null) SetVisible(_loading, false);
+                _loadingMarkerTime = 0;
                 return;
             }
 
@@ -134,7 +144,7 @@ namespace ManagedSharpDemo
                 _loading = Pal3UiLayout.Create("Pal3Loading", 120);
                 if (_loading == null) return;
                 LoadLoadingLogo(_loading);
-                LoadProgressMarker(_loading);
+                LoadLoadingArtwork(_loading);
                 DebugOverlay.Info("[PAL3 loading] widget ready");
             }
 
@@ -150,12 +160,15 @@ namespace ManagedSharpDemo
                 float fraction = Math.Clamp(progress, 0f, 1f);
                 _loading.SetElementVisible("loading_percent", progress >= 0);
                 _loading.SetElementProgress("loading_progress", fraction);
-                bool showMarker = progress >= 0 && _loadingMarkerTexture != null;
+                bool showMarker = progress >= 0 && _loadingMarkerFrames.Length > 0;
                 _loading.SetElementVisible("loading_huaying", showMarker);
                 if (showMarker)
                     _loading.SetElementRenderTranslation("loading_huaying", new FVector2D(LoadingBarWidth * fraction, 0));
                 if (progress >= 0) _loading.SetElementText("loading_percent", $"{(int)(fraction * 100)}%");
             }
+
+            if (progress >= 0) UpdateLoadingMarker(_loading, deltaTime);
+            else _loadingMarkerTime = 0;
         }
 
         private void LoadLoadingLogo(URuntimeJsonWidget widget)
@@ -168,13 +181,8 @@ namespace ManagedSharpDemo
                 sprite = ServiceLocator.Instance.Get<GameResourceProvider>().GetLogoSprite(useCache: false);
                 if (sprite is UnitySprite { Texture: UnityTexture2D { UeTexture: { } nativeTexture } texture } logo)
                 {
-                    var rect = logo.TextureRect;
-                    // The Unity sprite rectangle is bottom-up, while UMG UVs are top-down.
-                    float u0 = rect.x / texture.Width;
-                    float v0 = 1f - (rect.y + rect.height) / texture.Height;
-                    float u1 = (rect.x + rect.width) / texture.Width;
-                    float v1 = 1f - rect.y / texture.Height;
-                    if (widget.SetElementImage("loading_logo", nativeTexture, u0, v0, u1, v1))
+                    var uv = logo.GetTextureUVs();
+                    if (widget.SetElementImage("loading_logo", nativeTexture, uv.Left, uv.Top, uv.Right, uv.Bottom))
                     {
                         _loadingLogoTexture = texture;
                         widget.SetElementVisible("loading_title", false);
@@ -193,30 +201,102 @@ namespace ManagedSharpDemo
             }
         }
 
-        private void LoadProgressMarker(URuntimeJsonWidget widget)
+        private void LoadLoadingArtwork(URuntimeJsonWidget widget)
+        {
+            // The HUD owns the textures across scene cache clears.
+            string folder = $"{FileConstants.UIFolderVirtualPath}Loading{CpkConstants.DirectorySeparatorChar}";
+            var provider = ServiceLocator.Instance.Get<GameResourceProvider>()
+                .CreateTextureResourceProvider(folder, useCache: false);
+
+            bool hasFrame = LoadImage("loading_bar_frame", LoadingBarFrameTextureName);
+            LoadImage("loading_decoration", LoadingDecorationTextureName);
+            var fill = LoadLoadingTexture(provider, LoadingBarFillTextureName);
+            if (widget.WidgetTree.RootWidget is UCanvasPanel root &&
+                root.GetChildAt(0) is UBorder { Content: UCanvasPanel panel } &&
+                Enumerable.Range(0, panel.ChildrenCount).Select(panel.GetChildAt).OfType<UProgressBar>().FirstOrDefault() is { } bar)
+            {
+                var style = bar.Style;
+                if (hasFrame) style.BackgroundImage.DrawAs = ESlateBrushDrawType.NoDrawType;
+                if (fill is { UeTexture: { } nativeTexture })
+                {
+                    style.FillImage.DrawAs = ESlateBrushDrawType.Image;
+                    style.FillImage.Tiling = ESlateBrushTileType.NoTile;
+                    style.FillImage.Image = nativeTexture;
+                    style.FillImage.UVRegion = AlphaBounds(fill);
+                    style.FillImage.Tint.SpecifiedColor = FLinearColor.White;
+                    style.EnableFillAnimation = false;
+                    bar.FillColorAndOpacity = FLinearColor.White;
+                    bar.BarFillStyle = UnrealSharp.Slate.EProgressBarFillStyle.Mask;
+                }
+                bar.Style = style;
+            }
+
+            // Use the same crop for both frames to keep their original alignment.
+            var frames = new List<UnityTexture2D>(LoadingMarkerFrameNames.Length);
+            var min = new FVector2f(1, 1);
+            var max = new FVector2f(0, 0);
+            foreach (string name in LoadingMarkerFrameNames)
+            {
+                var frame = LoadLoadingTexture(provider, name);
+                if (frame == null) continue;
+
+                var uv = AlphaBounds(frame);
+                min = new FVector2f(Math.Min(min.X, uv.Min.X), Math.Min(min.Y, uv.Min.Y));
+                max = new FVector2f(Math.Max(max.X, uv.Max.X), Math.Max(max.Y, uv.Max.Y));
+                frames.Add(frame);
+            }
+            _loadingMarkerFrames = frames.ToArray();
+            _loadingMarkerUv = new FBox2f(min, max, frames.Count > 0);
+
+            bool LoadImage(string id, string name)
+            {
+                var texture = LoadLoadingTexture(provider, name);
+                bool bound = texture is { UeTexture: { } native } && SetLoadingImage(widget, id, native, AlphaBounds(texture));
+                widget.SetElementVisible(id, bound);
+                return bound;
+            }
+        }
+
+        private UnityTexture2D? LoadLoadingTexture(ITextureResourceProvider provider, string name)
         {
             ITexture2D? texture = null;
             try
             {
-                // Own this texture in the HUD since scene loads clear the shared texture cache.
-                string folder = $"{FileConstants.UIFolderVirtualPath}Loading{CpkConstants.DirectorySeparatorChar}";
-                texture = ServiceLocator.Instance.Get<GameResourceProvider>()
-                    .CreateTextureResourceProvider(folder, useCache: false).GetTexture(LoadingMarkerTextureName);
-                if (texture is UnityTexture2D { UeTexture: { } nativeTexture } marker)
+                texture = provider.GetTexture(name);
+                if (texture is UnityTexture2D { UeTexture: not null } uploaded)
                 {
-                    marker.TryGetAlphaBounds(out float u0, out float v0, out float u1, out float v1);
-                    if (widget.SetElementImage("loading_huaying", nativeTexture, u0, v0, u1, v1))
-                    {
-                        _loadingMarkerTexture = marker;
-                        return;
-                    }
+                    _loadingArtwork.Add(uploaded);
+                    return uploaded;
                 }
             }
             catch (Exception error)
             {
-                UnrealSharp.Log.UnrealLogger.LogWarning("Pal3", $"Could not load the PAL3 progress marker: {error.Message}");
+                UnrealSharp.Log.UnrealLogger.LogWarning("Pal3", $"Could not load PAL3 loading texture '{name}': {error.Message}");
             }
             texture?.Destroy();
+            return null;
+        }
+
+        private static FBox2f AlphaBounds(UnityTexture2D texture)
+        {
+            texture.TryGetAlphaBounds(out float u0, out float v0, out float u1, out float v1);
+            return new FBox2f(new FVector2f(u0, v0), new FVector2f(u1, v1), true);
+        }
+
+        private static bool SetLoadingImage(URuntimeJsonWidget widget, string id, UTexture2D texture, FBox2f uv) =>
+            widget.SetElementImage(id, texture, uv.Min.X, uv.Min.Y, uv.Max.X, uv.Max.Y);
+
+        private void UpdateLoadingMarker(URuntimeJsonWidget widget, float deltaTime)
+        {
+            if (_loadingMarkerFrames.Length == 0) return;
+            int frame = (int)(_loadingMarkerTime / LoadingMarkerFrameSeconds);
+            if (frame != _displayedLoadingMarkerFrame && _loadingMarkerFrames[frame].UeTexture is { } native &&
+                SetLoadingImage(widget, "loading_huaying", native, _loadingMarkerUv))
+            {
+                _displayedLoadingMarkerFrame = frame;
+            }
+            if (_loadingMarkerFrames.Length > 1)
+                _loadingMarkerTime = (_loadingMarkerTime + deltaTime) % (LoadingMarkerFrameSeconds * _loadingMarkerFrames.Length);
         }
 
         private void UpdateDiagnostics(float deltaTime)
@@ -334,14 +414,17 @@ namespace ManagedSharpDemo
             if (_caption != null) URuntimeJsonWidgetLibrary.RemoveJsonWidget(_caption);
             if (_cameraCurtain != null) URuntimeJsonWidgetLibrary.RemoveJsonWidget(_cameraCurtain);
             _loadingLogoTexture?.Destroy();
-            _loadingMarkerTexture?.Destroy();
+            foreach (var texture in _loadingArtwork) texture.Destroy();
+            _loadingArtwork.Clear();
             _diagnostics = null;
             _dialogue = null;
             _loading = null;
             _caption = null;
             _cameraCurtain = null;
             _loadingLogoTexture = null;
-            _loadingMarkerTexture = null;
+            _loadingMarkerFrames = [];
+            _displayedLoadingMarkerFrame = -1;
+            _loadingMarkerTime = 0;
             _captionTexture = null;
         }
     }

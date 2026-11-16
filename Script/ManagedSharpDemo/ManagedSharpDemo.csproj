@@ -29,5 +29,8 @@
     <ProjectReference Include="..\Pal3.Core\Pal3.Core.csproj" />
     <ProjectReference Include="..\Engine\Engine.csproj" />
     <ProjectReference Include="..\Pal3.Game\Pal3.Game.csproj" />
+    <Reference Include="RuntimeBinkVideo">
+      <HintPath>../../Binaries/Managed/net10.0/RuntimeBinkVideo.dll</HintPath>
+    </Reference>
   </ItemGroup>
 </Project>

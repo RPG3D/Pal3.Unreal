@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory)] [string] $ObjectPath,
     [string] $RemoteUrl = 'http://127.0.0.1:30010',
-    [ValidateRange(1, 5)] [int] $Slot = 5
+    [ValidateRange(1, 99)] [int] $Slot = 5
 )
 
 $ErrorActionPreference = 'Stop'
@@ -11,7 +11,7 @@ $rc = @{ ObjectPath = $ObjectPath; RemoteUrl = $RemoteUrl }
 
 $slots = & $client slots @rc | ConvertFrom-Json
 if (($slots | Where-Object slot -eq $Slot).occupied) {
-    throw "Slot $Slot is occupied. Use an empty slot or start the test game with a separate PAL3_SAVE_DIR."
+    throw "Slot $Slot is occupied. Choose an empty manual save slot."
 }
 
 & $client checkpoint 1 @rc | Out-Null

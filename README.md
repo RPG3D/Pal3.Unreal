@@ -68,7 +68,7 @@ PAL3 的宿主地图、材质和字体资产放在 `Content/PAL3`，由 `Default
 
 原版过场保存在 `movie/movie.cpk` 和 `movie/movie_end.cpk`。首次播放时，游戏在后台把对应 Bink 1 转成 MP4，加载界面显示准备阶段和转码进度。转码结果写入 UE 的 `Saved/Movies`，之后直接播放缓存。没有缓存时，游戏也会查找用户数据目录 `movie` 下的同名 MP4、MOV 或 WebM，具体格式支持取决于平台播放器。Windows 需要支持 libx264 的 FFmpeg，可将 `RUNTIME_BINK_FFMPEG` 设为 `ffmpeg.exe` 的绝对路径，或把程序放到 `Binaries/ThirdParty/FFmpeg/Win64/ffmpeg.exe`。Android 使用 [FFmpegKit Min 8.1.7](https://github.com/ffmpegkit-maintained/ffmpeg)（LGPL-3.0）、MediaCodec 和 Electra。准备或播放中都可跳过，失败时剧情继续。原版视频和转码文件均由用户的数据目录及应用缓存提供。
 
-启动前设置 `PAL3_AUTOSTART=1` 或传入 `-PAL3Autostart`，可跳过标题菜单，直接进入开场并启用自动对白。独立测试需要隔离存档时，用 `PAL3_SAVE_DIR` 指向测试目录。
+启动前设置 `PAL3_AUTOSTART=1` 或传入 `-PAL3Autostart`，可跳过标题菜单，直接进入开场并启用自动对白。
 
 ## 玩法与调试入口
 
@@ -79,10 +79,10 @@ PAL3 的宿主地图、材质和字体资产放在 `Content/PAL3`，由 `Default
 | 镜头 | Q/R、鼠标滚轮或手柄右摇杆横向转动。固定室内机位和剧情镜头按原作锁定 |
 | 移动端操作 | 左下角摇杆移动，右下角「镜头」摇杆横向转动。右下角动作键在自由行动时显示「交互」，在剧情中显示「继续」。右上角 Menu 可开启「摇杆全透明」，触控区仍可操作。Win64 可用 `PAL3_TOUCH_STICK=1` 预览 |
 | 返回、诊断、自动对白 | Esc 返回上一级或关闭菜单。Tab 菜单可开关诊断面板和自动对白 |
-| 存档 | 可操作且没有运行脚本时可写手动槽 1–5。槽 0 为自动存档，默认目录 `Saved/Saves` |
+| 存档 | 左侧滚动选择槽位。可操作且没有运行脚本时可写手动槽 1–99。槽 0 为自动存档，统一读写 `Saved/Saves` |
 | 自动化 | `tools/pal3-play.ps1` 通过 RC 或本地文件调用同一套游戏命令。移动使用游戏命令直接驱动 |
 
-主菜单的静态 JSON 定义四个 `WidgetSwitcher` 页面。独立布局文件通过 UFS 随 UE 打包，运行时由 UE 文件接口按项目相对路径读取。C# 负责交互与数据，`RuntimeWidgetLayout` 提供通用的布局、换页和控件 API。诊断面板和对白栏由 `Pal3Hud` 使用 JSON UMG 呈现。旧 `UPal3DebugOverlay` 类仍承载 RC 查询和程序网格接口。[主菜单布局](Script/ManagedSharpDemo/Layouts/Pal3StartMenu.json)
+主菜单的静态 JSON 定义首页和剧情两个 `WidgetSwitcher` 页面。场景页面按挂载的 PAL3 场景档案分组，调试跳转从导航数据选择可行走的落点。存读档页面按槽位数量生成。独立布局文件通过 UFS 随 UE 打包，运行时由 UE 文件接口按项目相对路径读取。C# 负责交互与数据，`RuntimeWidgetLayout` 提供通用的布局、换页和控件 API。诊断面板和对白栏由 `Pal3Hud` 使用 JSON UMG 呈现。旧 `UPal3DebugOverlay` 类仍承载 RC 查询和程序网格接口。[主菜单布局](Script/ManagedSharpDemo/Layouts/Pal3StartMenu.json)
 
 ## 当前已知问题与后续项
 

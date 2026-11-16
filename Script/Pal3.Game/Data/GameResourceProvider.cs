@@ -23,6 +23,7 @@ namespace Pal3.Game.Data
     using Core.DataReader.Gdb;
     using Core.DataReader.Ini;
     using Core.DataReader.Mv3;
+    using Core.DataReader.Scn;
     using Core.FileSystem;
     using Core.Utilities;
     using Engine.Core.Abstraction;
@@ -128,6 +129,44 @@ namespace Pal3.Game.Data
         public bool FileExists(string path)
         {
             return _fileSystem.FileExists(path);
+        }
+
+        public (string City, string Scene)[] ListSceneEntries()
+        {
+            var entries = new HashSet<(string City, string Scene)>();
+            foreach (string path in _fileSystem.Search(".scn"))
+            {
+                if (!path.EndsWith(".scn", StringComparison.OrdinalIgnoreCase)) continue;
+                string[] parts = path.Split(CpkConstants.DirectorySeparatorChar);
+                if (parts.Length != 2 || parts[0].Length <= 4 || parts[1].Length <= 4 ||
+                    !parts[0].EndsWith(".cpk", StringComparison.OrdinalIgnoreCase)) continue;
+
+                string city = parts[0][..^4].ToLowerInvariant();
+                string scene = parts[1][..^4].ToLowerInvariant();
+                if (string.Equals(path, FileConstants.GetScnFileVirtualPath(city, scene), StringComparison.OrdinalIgnoreCase) &&
+                    FileExists(FileConstants.GetSceneSceFileVirtualPath(city)))
+                {
+                    entries.Add((city, scene));
+                }
+            }
+
+            return entries.OrderBy(entry => entry.City, StringComparer.Ordinal)
+                .ThenBy(entry => entry.Scene, StringComparer.Ordinal).ToArray();
+        }
+
+        internal string GetSceneModelPrefix(ScnSceneInfo info, out bool usesDayFallback)
+        {
+            char separator = CpkConstants.DirectorySeparatorChar;
+            string folder = $"{info.CityName}{CpkConstants.FileExtension}{separator}{info.Model}{separator}";
+            string day = folder + info.Model;
+            usesDayFallback = false;
+            if (info.LightMap != 1) return day;
+
+            string night = folder + $"1{separator}{info.Model}";
+            if (FileExists(night + ".pol") || !FileExists(day + ".pol")) return night;
+
+            usesDayFallback = true;
+            return day;
         }
 
         // No need to deallocate the shadow texture/sprite since it is been used almost every where.
@@ -438,8 +477,7 @@ namespace Pal3.Game.Data
 
         public ITexture2D GetEffectTexture(string name, out bool hasAlphaChannel)
         {
-            string effectFolderRelativePath = FileConstants.EffectFolderVirtualPath;
-            ITextureResourceProvider textureProvider = CreateTextureResourceProvider(effectFolderRelativePath);
+            var textureProvider = CreateTextureResourceProvider(FileConstants.EffectFolderVirtualPath);
             return textureProvider.GetTexture(name, out hasAlphaChannel);
         }
 
@@ -656,19 +694,21 @@ namespace Pal3.Game.Data
             }
         }
 
-        public (ITexture2D texture, bool hasAlphaChannel)[] GetEffectTextures(GraphicsEffectType effect, string texturePathFormat)
+        public (ITexture2D texture, bool hasAlphaChannel)[] GetEffectTextures(
+            GraphicsEffectType effect, string texturePathFormat)
         {
-            ITextureResourceProvider textureProvider = CreateTextureResourceProvider(
+            var textureProvider = CreateTextureResourceProvider(
                 CoreUtility.GetDirectoryName(texturePathFormat, DIR_SEPARATOR));
 
             if (effect == GraphicsEffectType.Fire)
             {
                 int numberOfFrames = EffectConstants.AnimatedFireEffectFrameCount;
-                (ITexture2D texture, bool hasAlphaChannel)[] textures = new (ITexture2D texture, bool hasAlphaChannel)[numberOfFrames];
+                var textures = new (ITexture2D texture, bool hasAlphaChannel)[numberOfFrames];
+                string textureNameFormat = CoreUtility.GetFileName(texturePathFormat, DIR_SEPARATOR);
                 for (int i = 0; i < numberOfFrames; i++)
                 {
-                    string textureNameFormat = CoreUtility.GetFileName(texturePathFormat, DIR_SEPARATOR);
-                    ITexture2D texture = textureProvider.GetTexture(string.Format(textureNameFormat, i + 1), out var hasAlphaChannel);
+                    ITexture2D texture = textureProvider.GetTexture(string.Format(textureNameFormat, i + 1),
+                        out var hasAlphaChannel);
                     textures[i] = (texture, hasAlphaChannel);
                 }
 

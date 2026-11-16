@@ -12,6 +12,7 @@ namespace Pal3.Game.Rendering.Renderer
     using Core.DataReader.Pol;
     using Core.Primitives;
     using Core.Utilities;
+    using Data;
     using Dev.Presenters;
     using Engine.Core.Abstraction;
     using Engine.Core.Implementation;
@@ -254,32 +255,39 @@ namespace Pal3.Game.Rendering.Renderer
             mv3Mesh.GameBoxNormals.ToUnityNormals(
                 _renderMeshComponents[index].MeshDataBuffer.NormalBuffer);
 
-            mv3Mesh.Uvs.ToUnityVector2s(
-                _renderMeshComponents[index].MeshDataBuffer.UvBuffer);
+            _renderMeshComponents[index].MeshRenderer = meshRenderer;
+            WriteSubMeshUVs(index, TextureCoordinates.FlipCharacterV(_textures[index], fallback: true));
+            UploadSubMesh(index);
+        }
 
-            // Mv3 textures are TGAs, which the port's loader flips to UE's top-down
-            // row order; UE samples v=0 at the top while the Unity data is v-up, so
-            // the V coordinate must be mirrored here. (Scene CVD meshes use DDS and
-            // stay untouched - applying the flip globally breaks the room.)
-            UnityEngine.Vector2[] mv3Uvs = _renderMeshComponents[index].MeshDataBuffer.UvBuffer;
-            for (int uvIndex = 0; uvIndex < mv3Uvs.Length; uvIndex++)
+        private void WriteSubMeshUVs(int index, bool flipV)
+        {
+            var source = _meshes[index].Uvs;
+            var uvs = _renderMeshComponents[index].MeshDataBuffer.UvBuffer;
+            source.ToUnityVector2s(uvs);
+            if (flipV)
             {
-                mv3Uvs[uvIndex] = new UnityEngine.Vector2(mv3Uvs[uvIndex].x, 1f - mv3Uvs[uvIndex].y);
+                for (int i = 0; i < uvs.Length; i++)
+                    uvs[i].y = TextureCoordinates.ConvertV(uvs[i].y, flip: true);
             }
+        }
 
-            Mesh renderMesh = meshRenderer.Render(
-                vertices: _renderMeshComponents[index].MeshDataBuffer.VertexBuffer,
-                triangles: _renderMeshComponents[index].MeshDataBuffer.TriangleBuffer,
-                normals: _renderMeshComponents[index].MeshDataBuffer.NormalBuffer,
-                mainTextureUvs: (channel: 0, uvs: _renderMeshComponents[index].MeshDataBuffer.UvBuffer),
+        private void UploadSubMesh(int index)
+        {
+            var component = _renderMeshComponents[index];
+            var buffers = component.MeshDataBuffer;
+            var mesh = component.MeshRenderer.Render(
+                vertices: buffers.VertexBuffer,
+                triangles: buffers.TriangleBuffer,
+                normals: buffers.NormalBuffer,
+                mainTextureUvs: (channel: 0, uvs: buffers.UvBuffer),
                 secondaryTextureUvs: default, // MV3 models don't have secondary texture
                 materials: _materials[index],
                 isDynamic: true);
 
-            renderMesh.RecalculateTangents();
-
-            _renderMeshComponents[index].Mesh = renderMesh;
-            _renderMeshComponents[index].MeshRenderer = meshRenderer;
+            mesh.RecalculateTangents();
+            component.Mesh?.Destroy();
+            component.Mesh = mesh;
         }
 
         public void StartAnimation(int loopCount = -1)
@@ -299,11 +307,22 @@ namespace Pal3.Game.Rendering.Renderer
         {
             if (!textureName.Contains(".")) textureName += MV3_MODEL_DEFAULT_TEXTURE_EXTENSION;
 
-            _textures[0] = _textureProvider.GetTexture(textureName, out var hasAlphaChannel);
+            var texture = _textureProvider.GetTexture(textureName, out var hasAlphaChannel);
+            if (texture != null)
+            {
+                bool previousFlip = TextureCoordinates.FlipCharacterV(_textures[0], fallback: true);
+                bool nextFlip = TextureCoordinates.FlipCharacterV(texture, fallback: true);
+                if (previousFlip != nextFlip)
+                {
+                    WriteSubMeshUVs(0, nextFlip);
+                    UploadSubMesh(0);
+                }
+                _textures[0] = texture;
+            }
             _textureHasAlphaChannel[0] = hasAlphaChannel;
 
             // Change the texture for the first sub-mesh only
-            _materialManager.UpdateMaterial(_materials[0][0], _textures[0], _textureHasAlphaChannel[0] ?
+            _materialManager.UpdateMaterial(_materials[0][0], texture, _textureHasAlphaChannel[0] ?
                 GameBoxBlendFlag.AlphaBlend :
                 GameBoxBlendFlag.Opaque);
         }

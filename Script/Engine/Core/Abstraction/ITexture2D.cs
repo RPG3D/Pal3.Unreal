@@ -37,18 +37,15 @@ namespace Engine.Core.Abstraction
         public int Height { get; }
 
         /// <summary>
+        /// The alpha of the first decoded pixel, or 1 for textures without decoded pixels.
+        /// </summary>
+        public float FirstPixelAlpha { get; }
+
+        /// <summary>
         /// Sets the wrap mode of the texture.
         /// </summary>
         /// <param name="wrapMode">The wrap mode to set.</param>
         public void SetWrapMode(WrapMode wrapMode);
-
-        /// <summary>
-        /// Gets the pixel color at the specified position.
-        /// </summary>
-        /// <param name="x">The x-coordinate of the pixel.</param>
-        /// <param name="y">The y-coordinate of the pixel.</param>
-        /// <returns>The color of the pixel.</returns>
-        public (float r, float g, float b, float a) GetPixel(int x, int y);
 
         /// <summary>
         /// Creates a sprite from the texture.

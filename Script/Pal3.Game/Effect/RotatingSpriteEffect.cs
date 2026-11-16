@@ -9,16 +9,20 @@ namespace Pal3.Game.Effect
     using Data;
     using Engine.Core.Abstraction;
     using Engine.Core.Implementation;
-    using Engine.Extensions;
-    using UnityEngine;
+    using Engine.Renderer;
+    using UnrealSharp.Core;
+    using UnrealSharp.CoreUObject;
+    using UnrealSharp.Engine;
+    using Vector3 = UnityEngine.Vector3;
 
     public sealed class RotatingSpriteEffect : TickableGameEntityScript, IDisposable
     {
         private IGameEntity _root;
-        private SpriteRenderer _spriteRenderer;
-        private IMaterial _material;
+        private USceneComponent? _rootComponent;
+        private AnimatedBillboardRenderer _spriteRenderer;
 
         private float _rotationSpeed;
+        private float _rotationDegrees;
 
         protected override void OnDisableGameEntity()
         {
@@ -31,53 +35,46 @@ namespace Pal3.Game.Effect
             float rotationSpeed)
         {
             _rotationSpeed = rotationSpeed;
+            _rotationDegrees = 0f;
 
             ITexture2D texture = resourceProvider.GetEffectTexture(textureName, out var hasAlphaChannel);
+            if (texture == null) return;
 
             _root = GameEntityFactory.Create($"RotatingSpriteEffect_{textureName}",
                 GameEntity, worldPositionStays: false);
 
-            _spriteRenderer = _root.AddComponent<SpriteRenderer>();
-
-            _spriteRenderer.sprite = texture.CreateSprite(0, 0,
-                texture.Width, texture.Height,
-                0.5f, 0.5f).NativeObject as Sprite;
-
-            if (!hasAlphaChannel)
+            _rootComponent = (_root.NativeObject as AActor)?.RootComponent;
+            if (_rootComponent is { } root && root.IsValid())
             {
-                _material = resourceProvider.GetMaterialManager()
-                    .CreateOpaqueSpriteMaterial(texture);
-                _spriteRenderer.sharedMaterial = _material.NativeObject as Material;
+                // Offset the plane by 2 cm so it stays above the floor surface.
+                root.SetRelativeTransform(new FTransform(new FRotator(0, 0, 0),
+                    new FVector(0, 0, 2), new FVector(scale.z, scale.x, scale.y)), false, out _, false);
             }
 
-            Quaternion parentRotation = GameEntity.Transform.Rotation;
-            _root.Transform.LocalRotation = Quaternion.Euler(parentRotation.x + 90f, 0f, 0f);
-            _root.Transform.LocalScale = scale;
+            ISprite sprite = texture.CreateSprite(0f, 0f, texture.Width, texture.Height, 0.5f, 0.5f);
+            if (sprite is UnitySprite groundSprite) groundSprite.SourceRowsBottomUp = TextureCoordinates.HasBottomUpEffectRows(texture);
+            _spriteRenderer = _root.AddComponent<AnimatedBillboardRenderer>();
+            _spriteRenderer.ShowGroundSprite(sprite, useAdditiveBlend: !hasAlphaChannel);
         }
 
         protected override void OnUpdateGameEntity(float deltaTime)
         {
-            if (!_root.IsNullOrDisposed())
+            if (_rootComponent is { } root && root.IsValid())
             {
-                float rotationDelta = _rotationSpeed * deltaTime;
-                _root.Transform.LocalRotation *= Quaternion.Euler(0f, 0f, -rotationDelta);
+                _rotationDegrees = (_rotationDegrees + _rotationSpeed * deltaTime) % 360f;
+                root.SetRelativeRotation(new FRotator(0, _rotationDegrees, 0), false, out _, false);
             }
         }
 
         public void Dispose()
         {
-            if (_material != null)
-            {
-                _material.Destroy();
-                _material = null;
-            }
-
             if (_spriteRenderer != null)
             {
                 _spriteRenderer.Destroy();
                 _spriteRenderer = null;
             }
 
+            _rootComponent = null;
             if (_root != null)
             {
                 _root.Destroy();

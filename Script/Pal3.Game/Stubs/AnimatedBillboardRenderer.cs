@@ -26,6 +26,8 @@ namespace Engine.Renderer
         private object? _frameWait;
         private IMaterial? _sourceMaterial;
         private UMaterialInterface? _material;
+        private bool _groundAligned;
+        private bool _useAdditiveBlend;
         private bool _ownsMaterial;
         private UProceduralMeshComponent? _quad;
         private APlayerCameraManager? _camera;
@@ -39,8 +41,18 @@ namespace Engine.Renderer
             Destroy();
             _sprites = sprites;
             _sourceMaterial = material;
+            _useAdditiveBlend = material?.ShaderName == "Pal3/Sprite";
             if (fps > 0f && float.IsFinite(fps))
                 _frameWait = CoroutineYieldInstruction.WaitForSeconds(1f / fps);
+        }
+
+        public void ShowGroundSprite(ISprite sprite, bool useAdditiveBlend)
+        {
+            Destroy();
+            _sprites = [sprite];
+            _groundAligned = true;
+            _useAdditiveBlend = useAdditiveBlend;
+            ShowFrame(sprite);
         }
 
         public void StartAnimation(int loopCount = -1) => StartCoroutine(PlayAnimationAsync(loopCount));
@@ -74,14 +86,12 @@ namespace Engine.Renderer
 
         protected override void OnLateUpdateGameEntity(float deltaTime)
         {
-            if (!_visible || GameEntity.IsNativeObjectDisposed) return;
+            if (_groundAligned || !_visible || GameEntity.NativeObject is not AActor actor || !actor.IsValid()) return;
             if (!_camera.IsValid()) _camera = UGameplayStatics.GetPlayerCameraManager(0);
             if (!_camera.IsValid()) return;
 
-            Vector3 position = Transform.Position;
-            Vector3 target = UnityUeConvert.ToUnityPosition(_camera!.CameraLocation);
-            target.y = position.y;
-            if (target != position) Transform.LookAt(target);
+            // Match Unity's billboard yaw so the quad's +Y edge is screen-right.
+            actor.SetActorRotation(new FRotator(0, _camera!.CameraRotation.Yaw, 0));
         }
 
         private void ShowFrame(ISprite? sprite)
@@ -99,9 +109,9 @@ namespace Engine.Renderer
             Vector2 pivot = unitySprite?.Pivot ?? new Vector2(0.5f, 0.5f);
             if (region.width <= 0f || region.height <= 0f) return;
 
+            var uv = unitySprite?.GetTextureUVs() ?? (Left: 0f, Top: 0f, Right: 1f, Bottom: 1f);
             var geometry = new FrameGeometry(region.width, region.height, pivot.x, pivot.y,
-                region.xMin / source.Width, 1f - region.yMax / source.Height,
-                region.xMax / source.Width, 1f - region.yMin / source.Height);
+                uv.Left, uv.Top, uv.Right, uv.Bottom);
             if (_geometry != geometry)
             {
                 UpdateQuad(geometry);
@@ -126,14 +136,13 @@ namespace Engine.Renderer
 
             // PAL3's sprite shader treats black as transparent. Sprites with
             // an alpha channel use the regular translucent material.
-            bool isAdditive = _sourceMaterial?.ShaderName == "Pal3/Sprite";
-            if (!isAdditive && _sourceMaterial?.NativeObject is UMaterialInterface provided && provided.IsValid())
+            if (!_useAdditiveBlend && _sourceMaterial?.NativeObject is UMaterialInterface provided && provided.IsValid())
             {
                 _material = provided;
             }
             else
             {
-                _material = UPal3AssetHelper.CreatePal3MaterialBlend(isAdditive ? 1 : 2);
+                _material = UPal3AssetHelper.CreatePal3MaterialBlend(_useAdditiveBlend ? 1 : 2);
                 if (!_material.IsValid()) return false;
                 _ownsMaterial = true;
                 Pal3TransientAssets.Track(this, _material);
@@ -161,9 +170,13 @@ namespace Engine.Renderer
             double bottom = -frame.PivotY * frame.Height;
             double right = left + frame.Width;
             double top = bottom + frame.Height;
+            FVector[] vertices = _groundAligned
+                ? [new(-bottom, left, 0), new(-bottom, right, 0), new(-top, right, 0), new(-top, left, 0)]
+                : [new(0, left, bottom), new(0, right, bottom), new(0, right, top), new(0, left, top)];
+            int[] triangles = _groundAligned ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2];
             UPal3DebugOverlay.CreateProceduralSection(_quad, 0,
-                new FVector[] { new(0, left, bottom), new(0, right, bottom), new(0, right, top), new(0, left, top) },
-                new[] { 0, 1, 2, 0, 2, 3 }, Array.Empty<FVector>(),
+                vertices,
+                triangles, Array.Empty<FVector>(),
                 new FVector2D[] { new(frame.Left, frame.Bottom), new(frame.Right, frame.Bottom),
                     new(frame.Right, frame.Top), new(frame.Left, frame.Top) },
                 Array.Empty<FVector2D>(), false);
@@ -175,6 +188,8 @@ namespace Engine.Renderer
             if (_quad.IsValid() && GameEntity.NativeObject is AActor actor && actor.IsValid())
                 _quad!.DestroyComponent(actor);
             if (_ownsMaterial) Pal3TransientAssets.Release(_material);
+            _groundAligned = false;
+            _useAdditiveBlend = false;
             _ownsMaterial = false;
             _quad = null;
             _camera = null;

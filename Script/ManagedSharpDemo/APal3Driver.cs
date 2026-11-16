@@ -126,7 +126,8 @@ namespace ManagedSharpDemo
             if (pc != null && !_bootRecovery.Tick(pc, deltaTime))
             {
                 string touchClick = _touchButtons.ConsumeClick();
-                menuHasInput = _startMenu.Tick(pc, touchClick == Pal3TouchButtons.Menu) ||
+                bool startMenuHasInput = _startMenu.Tick(pc, touchClick == Pal3TouchButtons.Menu);
+                menuHasInput = _worldMap.Tick(pc) || startMenuHasInput ||
                     Pal3.Game.Dev.DialoguePresentation.Choices.Count > 0;
                 _touchButtons.Tick(menuHasInput);
                 PollInput(pc, menuHasInput, touchClick);
@@ -227,6 +228,7 @@ namespace ManagedSharpDemo
         private readonly Pal3Automation _automation;
         private readonly Pal3Hud _hud = new();
         private readonly Pal3DialogueChoices _dialogueChoices = new();
+        private readonly Pal3WorldMapMenu _worldMap = new();
 
         [UFunction(FunctionFlags.BlueprintCallable)]
         public string ExecutePal3Command(string command, string argument)
@@ -244,6 +246,7 @@ namespace ManagedSharpDemo
             if (Pal3Boot.IsGameReady) ServiceLocator.Instance.Get<Pal3.Game.Video.VideoManager>().Dispose();
             UnrealSharp.SharpDemo.UPal3AudioHelper.StopAllAudio();
             _dialogueChoices.Dispose();
+            _worldMap.Dispose();
             _touchStick.Dispose();
             _touchButtons.Dispose();
             _interactionHint.Dispose();
@@ -265,6 +268,13 @@ namespace ManagedSharpDemo
             if (actions == null) return;
 
             var gameplay = actions.Gameplay;
+            if (gameplayEnabled && (pc.WasInputKeyJustPressed(Keys.M) ||
+                pc.WasInputKeyJustPressed(Keys.Gamepad_Special_Right)))
+            {
+                gameplay.ToggleWorldMap.SimulatePerformed();
+                gameplayEnabled = Pal3Boot.HasPlayerControl();
+                cameraEnabled &= gameplayEnabled;
+            }
             float cameraX = _automation.GetCameraAxis(cameraEnabled);
             float scroll = 0f;
             if (cameraEnabled)

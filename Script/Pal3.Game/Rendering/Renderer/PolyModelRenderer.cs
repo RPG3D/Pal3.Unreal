@@ -199,7 +199,7 @@ namespace Pal3.Game.Rendering.Renderer
 
                         if (!_isWaterSurfaceOpaque)
                         {
-                            waterSurfaceOpacity = textures[mainTextureIndex].texture.GetPixel(0, 0).a;
+                            waterSurfaceOpacity = textures[mainTextureIndex].texture.FirstPixelAlpha;
                         }
                         else
                         {

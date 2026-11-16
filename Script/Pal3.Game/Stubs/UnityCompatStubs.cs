@@ -1420,15 +1420,16 @@ namespace SimpleFileBrowser
 namespace Pal3.Game.Data
 {
     /// <summary>
-    /// Unity-engine-backed ITexture2D. Wraps a UnityEngine.Texture2D stub; pixel/sprite
-    /// operations are deferred until real UE textures are wired.
+    /// Wraps a UE texture and retains the alpha metadata used by PAL3.
     /// </summary>
     public sealed class UnityTexture2D : ITexture2D
     {
         private readonly UnityEngine.Texture2D _texture;
-        private byte[]? _rgba;   // managed copy: GetPixel (water opacity etc.)
+        private readonly float _firstPixelAlpha = 1f;
+        private readonly (float Left, float Top, float Right, float Bottom)? _alphaBounds;
         private bool _destroyed;
         public UnrealSharp.Engine.UTexture2D? UeTexture { get; private set; }
+        internal TexturePixelRows PixelRows { get; set; }
 
         public UnityTexture2D(UnityEngine.Texture2D texture)
         {
@@ -1439,8 +1440,15 @@ namespace Pal3.Game.Data
         public UnityTexture2D(int width, int height, byte[] rgba)
         {
             _texture = new UnityEngine.Texture2D(width, height);
-            _rgba = rgba;
-            UeTexture = UnrealSharp.SharpDemo.UPal3AssetHelper.CreateTextureFromRgba(width, height, rgba);
+            long pixels = (long)width * height;
+            if (width > 0 && height > 0 && pixels <= rgba.Length / 4)
+            {
+                // Read alpha metadata before the decoder returns its rented buffer.
+                _firstPixelAlpha = rgba[3] / 255f;
+                _alphaBounds = FindAlphaBounds(rgba, width, height);
+                UeTexture = UnrealSharp.SharpDemo.UPal3AssetHelper.CreateTextureFromRgba(
+                    width, height, new ArraySegment<byte>(rgba, 0, (int)pixels * 4));
+            }
             Pal3TransientAssets.Track(this, UeTexture);
             if (UeTexture == null && TextureCreateFailures++ < 8)
             {
@@ -1453,49 +1461,46 @@ namespace Pal3.Game.Data
 
         public int Width => _texture?.width ?? 0;
         public int Height => _texture?.height ?? 0;
+        public float FirstPixelAlpha => _destroyed ? 1f : _firstPixelAlpha;
         public object NativeObject => UeTexture ?? (object?)_texture ?? this;
         public bool IsNativeObjectDisposed => _destroyed;
 
         public void SetWrapMode(WrapMode wrapMode) { }
-        public (float r, float g, float b, float a) GetPixel(int x, int y)
-        {
-            if (_rgba == null || x < 0 || y < 0 || x >= Width || y >= Height) return (1f, 1f, 1f, 1f);
-            int i = (y * Width + x) * 4;
-            return (_rgba[i] / 255f, _rgba[i + 1] / 255f, _rgba[i + 2] / 255f, _rgba[i + 3] / 255f);
-        }
-
         /// <summary>
         /// Normalized UV rectangle of the non-transparent pixels (avatar portraits
         /// ship with large transparent padding; the HUD dialogue bar crops to this).
-        /// Returns false for textures without a managed RGBA copy.
+        /// Returns false when no sampled pixel meets the alpha threshold.
         /// </summary>
         public bool TryGetAlphaBounds(out float u0, out float v0, out float u1, out float v1)
         {
-            u0 = v0 = 0f;
-            u1 = v1 = 1f;
-            if (_rgba == null || Width <= 0 || Height <= 0) return false;
-
-            int minX = Width, minY = Height, maxX = -1, maxY = -1;
-            int step = System.Math.Max(1, System.Math.Min(Width, Height) / 128);
-            for (int y = 0; y < Height; y += step)
+            if (!_destroyed && _alphaBounds is { } bounds)
             {
-                int row = y * Width;
-                for (int x = 0; x < Width; x += step)
+                (u0, v0, u1, v1) = bounds;
+                return true;
+            }
+            (u0, v0, u1, v1) = (0f, 0f, 1f, 1f);
+            return false;
+        }
+
+        private static (float Left, float Top, float Right, float Bottom)? FindAlphaBounds(
+            byte[] rgba, int width, int height)
+        {
+            int minX = width, minY = height, maxX = -1, maxY = -1;
+            int step = System.Math.Max(1, System.Math.Min(width, height) / 128);
+            for (int y = 0; y < height; y += step)
+            {
+                int row = y * width;
+                for (int x = 0; x < width; x += step)
                 {
-                    if (_rgba[(row + x) * 4 + 3] <= 8) continue;
+                    if (rgba[(row + x) * 4 + 3] <= 8) continue;
                     if (x < minX) minX = x;
                     if (x > maxX) maxX = x;
                     if (y < minY) minY = y;
                     if (y > maxY) maxY = y;
                 }
             }
-            if (maxX < 0) return false;
-
-            u0 = (float)minX / Width;
-            v0 = (float)minY / Height;
-            u1 = (float)(maxX + 1) / Width;
-            v1 = (float)(maxY + 1) / Height;
-            return true;
+            return maxX < 0 ? null : ((float)minX / width, (float)minY / height,
+                (float)(maxX + 1) / width, (float)(maxY + 1) / height);
         }
         public ISprite CreateSprite(float x, float y, float width, float height, float pivotX, float pivotY)
             => new UnitySprite(this, new UnityEngine.Rect(x, y, width, height),
@@ -1505,7 +1510,6 @@ namespace Pal3.Game.Data
             _destroyed = true;
             Pal3TransientAssets.Release(UeTexture);
             UeTexture = null;
-            _rgba = null;
         }
     }
 
@@ -1516,6 +1520,7 @@ namespace Pal3.Game.Data
         public bool IsNativeObjectDisposed => false;
         public UnityEngine.Rect TextureRect { get; }
         public UnityEngine.Vector2 Pivot { get; }
+        internal bool SourceRowsBottomUp { get; set; }
 
         public UnitySprite(ITexture2D texture, UnityEngine.Rect textureRect, UnityEngine.Vector2 pivot)
         {
@@ -1523,6 +1528,16 @@ namespace Pal3.Game.Data
             TextureRect = textureRect;
             Pivot = pivot;
         }
+
+        /// <summary>Normalizes a bottom-origin sprite rectangle to the decoded texture's UV coordinates.</summary>
+        public (float Left, float Top, float Right, float Bottom) GetTextureUVs()
+        {
+            var rect = TextureRect;
+            bool flip = !SourceRowsBottomUp;
+            return (rect.xMin / Texture.Width, TextureCoordinates.ConvertV(rect.yMax / Texture.Height, flip),
+                rect.xMax / Texture.Width, TextureCoordinates.ConvertV(rect.yMin / Texture.Height, flip));
+        }
+
         public void Destroy() { }
     }
 

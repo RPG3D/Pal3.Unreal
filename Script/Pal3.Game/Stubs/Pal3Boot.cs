@@ -12,6 +12,7 @@ using Engine.Core.Abstraction;
 using Engine.Core.Implementation;
 using Engine.Services;
 using Pal3.Core.Contract.Constants;
+using Pal3.Core.DataReader.Nav;
 using Pal3.Core.DataReader.Scn;
 using Pal3.Core.DataReader.Sce;
 using Pal3.Core.Command.SceCommands;
@@ -519,7 +520,20 @@ namespace Pal3.Game
             WaitingForMenuStart = false;
         }
 
-        public static void SwitchScene(string city, string scene, int tileX, int tileY)
+        public static void SwitchScene(string city, string scene)
+        {
+            var resources = ServiceLocator.Instance.Get<GameResourceProvider>();
+            var description = resources.GetGameResourceFile<ScnFile>(FileConstants.GetScnFileVirtualPath(city, scene), useCache: false);
+            var nav = resources.GetGameResourceFile<NavFile>(
+                FileConstants.GetNavFileVirtualPath(description.SceneInfo.CityName, description.SceneInfo.Model), useCache: false);
+            var spawn = DebugSceneSpawn.Find(description, nav);
+            SwitchScene(city, scene, spawn.X, spawn.Y, spawn.Layer);
+        }
+
+        public static void SwitchScene(string city, string scene, int tileX, int tileY) =>
+            SwitchScene(city, scene, tileX, tileY, 0);
+
+        private static void SwitchScene(string city, string scene, int tileX, int tileY, int layer)
         {
             CheckSceneResources(city, scene);
             var game = Pal3.Instance;
@@ -535,10 +549,13 @@ namespace Pal3.Game
             [
                 new SceneLoadCommand(city, scene),
                 new ActorActivateCommand(-1, 1),
-                new ActorSetNavLayerCommand(-1, 0),
+                new ActorSetNavLayerCommand(-1, layer),
                 new ActorSetTilePositionCommand(-1, tileX, tileY),
                 new ActorEnablePlayerControlCommand(-1),
                 new CameraFollowPlayerCommand(1),
+                // Preset 2 was chosen after comparing menu and doorway entry in several rooms.
+                // The comparison covered a subset of indoor maps, and doorway scripts can use other presets.
+                new CameraSetDefaultTransformCommand(2),
                 new CameraFadeInCommand(),
                 new PlayerEnableInputCommand(1)
             ]);
@@ -583,7 +600,10 @@ namespace Pal3.Game
         internal static void CheckSceneResources(string city, string scene)
         {
             var resources = ServiceLocator.Instance.Get<GameResourceProvider>();
-            resources.GetGameResourceFile<ScnFile>(FileConstants.GetScnFileVirtualPath(city, scene));
+            var description = resources.GetGameResourceFile<ScnFile>(FileConstants.GetScnFileVirtualPath(city, scene));
+            string modelPath = resources.GetSceneModelPrefix(description.SceneInfo, out _) + ".pol";
+            if (!resources.FileExists(modelPath))
+                throw new System.IO.FileNotFoundException($"场景模型缺失 · {modelPath}");
             resources.GetGameResourceFile<SceFile>(FileConstants.GetSceneSceFileVirtualPath(city));
         }
     }

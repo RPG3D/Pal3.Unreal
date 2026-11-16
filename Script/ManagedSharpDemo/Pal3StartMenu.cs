@@ -1,6 +1,8 @@
 using Engine.Diagnostics;
 using Engine.Services;
+using Pal3.Core.Contract.Constants;
 using Pal3.Game;
+using Pal3.Game.Data;
 using Pal3.Game.Dev;
 using Pal3.Game.Scene;
 using Pal3.Game.State;
@@ -16,6 +18,9 @@ namespace ManagedSharpDemo
         private enum Page { Home, Scenes, Story, Saves }
 
         private const int StoriesPerPage = 8;
+        private static readonly Dictionary<string, string> SceneAreaNames = SceneConstants.SceneCpkNameInfos
+            .Where(info => !string.IsNullOrWhiteSpace(info.sceneName))
+            .ToDictionary(info => info.cpkName[..^4], info => info.sceneName, StringComparer.OrdinalIgnoreCase);
         internal static readonly string[] Stories = DevCommands.StoryJumpPoints.Keys.ToArray();
         // Spawn tiles from the upstream presets for these PAL3 scenes.
         internal static readonly (string Label, string City, string Scene, int X, int Y)[] Scenes =
@@ -29,6 +34,9 @@ namespace ManagedSharpDemo
         private URuntimeJsonWidget? _widget;
         private Page _page;
         private int _storyPage;
+        private (string City, string Scene)[]? _sceneEntries;
+        private string? _sceneArea;
+        private int _selectedSaveSlot;
         private bool _canTransition;
         private string _status = "";
         private int? _overwriteSlot;
@@ -98,7 +106,8 @@ namespace ManagedSharpDemo
 
             if (pc.WasInputKeyJustPressed(Keys.Escape) || id == "menu_escape")
             {
-                if (_page != Page.Home) Navigate(pc, Page.Home);
+                if (_page == Page.Scenes) BackFromScenes(pc);
+                else if (_page != Page.Home) Navigate(pc, Page.Home);
                 else if (!atTitle) Close(pc);
                 return true;
             }
@@ -134,19 +143,56 @@ namespace ManagedSharpDemo
             switch (id)
             {
                 case "new": Launch(pc, "new game", Pal3Boot.StartFromMenu); return;
-                case "scenes": Navigate(pc, Page.Scenes); return;
+                case "scenes": _sceneArea = null; Navigate(pc, Page.Scenes); return;
                 case "story": _storyPage = 0; Navigate(pc, Page.Story); return;
                 case "saves": Navigate(pc, Page.Saves); return;
+                case "load_selected" when _page == Page.Saves:
+                    int loadSlot = _selectedSaveSlot;
+                    if (ServiceLocator.Instance.Get<SaveManager>().SaveSlotExists(loadSlot))
+                        Launch(pc, $"load slot {loadSlot}", () => Pal3Boot.LoadFromSlot(loadSlot));
+                    return;
+                case "save_selected" when _page == Page.Saves && CanWriteSelectedSlot:
+                    SaveSlot(pc, _selectedSaveSlot);
+                    return;
+                case "maze_entrance" or "maze_exit":
+                    if (GetAvailableMazeSkipper() is { } skipper)
+                    {
+                        bool entrance = id == "maze_entrance";
+                        Launch(pc, entrance ? "maze entrance" : "maze exit or story point",
+                            entrance ? skipper.PortalToEntrance : skipper.PortalToExitOrNextStoryPoint);
+                    }
+                    return;
                 case "prev": ChangeStoryPage(pc, -1); return;
                 case "next": ChangeStoryPage(pc, 1); return;
-                case "scene_back" or "story_back" or "saves_back": Navigate(pc, Page.Home); return;
+                case "scene_back": BackFromScenes(pc); return;
+                case "story_back" or "saves_back": Navigate(pc, Page.Home); return;
             }
 
-            if (id.StartsWith("scene_", StringComparison.Ordinal) &&
-                int.TryParse(id.AsSpan(6), out int sceneIndex) && (uint)sceneIndex < Scenes.Length)
+            if (_page == Page.Scenes && _sceneEntries is { } entries)
             {
-                var scene = Scenes[sceneIndex];
-                Launch(pc, $"{scene.City}/{scene.Scene}", () => Pal3Boot.SwitchScene(scene.City, scene.Scene, scene.X, scene.Y));
+                if (_sceneArea == null && id.StartsWith("area_", StringComparison.Ordinal))
+                {
+                    string area = id[5..];
+                    if (entries.Any(entry => entry.City == area))
+                    {
+                        _sceneArea = area;
+                        _status = "";
+                        Show(pc, Page.Scenes, rebuild: true);
+                    }
+                }
+                else if (_sceneArea is { } city && id.StartsWith("scene_", StringComparison.Ordinal))
+                {
+                    string scene = id[6..];
+                    if (entries.Contains((city, scene)))
+                    {
+                        var preset = Scenes.FirstOrDefault(entry => entry.City == city && entry.Scene == scene);
+                        Launch(pc, $"{city}/{scene}", () =>
+                        {
+                            if (preset.City != null) Pal3Boot.SwitchScene(city, scene, preset.X, preset.Y);
+                            else Pal3Boot.SwitchScene(city, scene);
+                        });
+                    }
+                }
             }
             else if (id.StartsWith("story_", StringComparison.Ordinal) &&
                 int.TryParse(id.AsSpan(6), out int storySlot) && (uint)storySlot < StoriesPerPage &&
@@ -155,16 +201,27 @@ namespace ManagedSharpDemo
                 string checkpoint = Stories[_storyPage * StoriesPerPage + storySlot];
                 Launch(pc, checkpoint, () => Pal3Boot.StartFromCheckpoint(checkpoint));
             }
-            else if (id.StartsWith("load_", StringComparison.Ordinal) &&
-                int.TryParse(id.AsSpan(5), out int loadSlot))
+            else if (_page == Page.Saves && id.StartsWith("slot_", StringComparison.Ordinal) &&
+                int.TryParse(id.AsSpan(5), out int slot) && slot is >= 0 and <= SaveManager.ManualSlotCount)
             {
-                Launch(pc, $"load slot {loadSlot}", () => Pal3Boot.LoadFromSlot(loadSlot));
+                SelectSaveSlot(slot);
             }
-            else if (id.StartsWith("save_", StringComparison.Ordinal) &&
-                int.TryParse(id.AsSpan(5), out int saveSlot))
-            {
-                SaveSlot(pc, saveSlot);
-            }
+        }
+
+        private bool CanWriteSelectedSlot => _selectedSaveSlot > SaveManager.AutoSaveSlotIndex && Pal3Boot.HasPlayerControl();
+
+        private void SelectSaveSlot(int slot)
+        {
+            if (_widget is not { } widget || slot == _selectedSaveSlot) return;
+            int previousSlot = _selectedSaveSlot;
+            _selectedSaveSlot = slot;
+            _overwriteSlot = null;
+            _status = "";
+            var saves = ServiceLocator.Instance.Get<SaveManager>();
+            RefreshSaveSlotRow(widget, saves, previousSlot);
+            RefreshSaveSlotRow(widget, saves, slot);
+            RefreshSaveSelection(widget, saves);
+            RefreshStatus(widget);
         }
 
         private void SaveSlot(APlayerController pc, int slot)
@@ -206,6 +263,36 @@ namespace ManagedSharpDemo
             Show(pc, page);
         }
 
+        private void BackFromScenes(APlayerController pc)
+        {
+            if (_sceneArea == null)
+            {
+                Navigate(pc, Page.Home);
+                return;
+            }
+
+            _sceneArea = null;
+            _status = "";
+            Show(pc, Page.Scenes, rebuild: true);
+        }
+
+        private string BuildSceneLayout()
+        {
+            _sceneEntries ??= ServiceLocator.Instance.Get<GameResourceProvider>().ListSceneEntries();
+            var destinations = _sceneArea is { } area
+                ? _sceneEntries.Where(entry => entry.City == area)
+                    .Select(entry => ($"scene_{entry.Scene}", entry.Scene.ToUpperInvariant())).ToArray()
+                : _sceneEntries.Select(entry => entry.City).Distinct()
+                    .OrderBy(city => city[0] == 'q' ? 0 : 1).ThenBy(city => city, StringComparer.Ordinal)
+                    .Select(city => ($"area_{city}", SceneAreaNames.GetValueOrDefault(city) ?? city.ToUpperInvariant())).ToArray();
+            string title = _sceneArea is { } city ? $"切换场景 · {SceneAreaLabel(city)}" : "切换 PAL3 场景";
+            return Pal3TravelMenuLayout.Build(title, destinations, "scene_back", "返回", "没有可切换的场景",
+                new { Tab = "menu_tab", Escape = "menu_escape" });
+        }
+
+        private static string SceneAreaLabel(string city) => SceneAreaNames.TryGetValue(city, out string? name)
+            ? $"{name} {city.ToUpperInvariant()}" : city.ToUpperInvariant();
+
         private void Launch(APlayerController pc, string target, Action action)
         {
             try
@@ -227,24 +314,27 @@ namespace ManagedSharpDemo
             return "加载失败 · " + (reason.Length > 46 ? reason[..46] + "…" : reason);
         }
 
-        private void Show(APlayerController pc, Page page)
+        private void Show(APlayerController pc, Page page, bool rebuild = false)
         {
-            bool opening = _widget == null;
+            bool standalone = page is Page.Saves or Page.Scenes;
+            bool opening = rebuild || _widget == null ||
+                (page != _page && (standalone || _page is Page.Saves or Page.Scenes));
             try
             {
-                string pageId = page switch
-                {
-                    Page.Home => "home_page",
-                    Page.Scenes => "scenes_page",
-                    Page.Story => "story_page",
-                    Page.Saves => "saves_page",
-                    _ => throw new ArgumentOutOfRangeException(nameof(page))
-                };
-
                 if (opening)
                 {
                     string? layoutPath = Environment.GetEnvironmentVariable("PAL3_MENU_LAYOUT");
-                    _widget = Pal3UiLayout.Create("Pal3StartMenu", 100, interactive: true, overridePath: layoutPath);
+                    var nextWidget = page switch
+                    {
+                        Page.Saves => URuntimeJsonWidgetLibrary.CreateJsonWidget(Pal3SaveMenuLayout.Json, 100),
+                        Page.Scenes => URuntimeJsonWidgetLibrary.CreateJsonWidget(BuildSceneLayout(), 100),
+                        _ => Pal3UiLayout.Create("Pal3StartMenu", 100, interactive: true, overridePath: layoutPath)
+                    };
+                    if (nextWidget == null) throw new InvalidOperationException("无法显示 PAL3 菜单。");
+                    RemoveWidget();
+                    _widget = nextWidget;
+                    if (standalone) Pal3UiLayout.ConfigureMenuScroll(nextWidget);
+                    if (page == Page.Saves) _selectedSaveSlot = SaveManager.AutoSaveSlotIndex;
                 }
 
                 var widget = _widget;
@@ -255,12 +345,6 @@ namespace ManagedSharpDemo
                     case Page.Home:
                         RefreshHome(widget);
                         break;
-                    case Page.Scenes:
-                        for (int i = 0; i < Scenes.Length; i++)
-                        {
-                            widget.SetElementText($"scene_{i}", Scenes[i].Label);
-                        }
-                        break;
                     case Page.Story:
                         RefreshStory(widget);
                         break;
@@ -269,20 +353,32 @@ namespace ManagedSharpDemo
                         break;
                 }
 
-                if (!widget.SetSwitcherPage("menu_pages", pageId))
+                if (!standalone)
                 {
-                    throw new InvalidOperationException($"Missing PAL3 menu page '{pageId}' in menu_pages.");
+                    string pageId = page switch
+                    {
+                        Page.Home => "home_page",
+                        Page.Story => "story_page",
+                        _ => throw new ArgumentOutOfRangeException(nameof(page))
+                    };
+                    if (!widget.SetSwitcherPage("menu_pages", pageId))
+                        throw new InvalidOperationException($"Missing PAL3 menu page '{pageId}' in menu_pages.");
                 }
 
                 _page = page;
-                widget.SetElementText("menu_status", _status);
-                widget.SetElementVisible("menu_status", _status.Length > 0);
+                RefreshStatus(widget);
             }
             catch (Exception e)
             {
                 if (opening) Close(pc);
                 DebugOverlay.Error("[PAL3 menu] " + e);
             }
+        }
+
+        private void RefreshStatus(URuntimeJsonWidget widget)
+        {
+            widget.SetElementText("menu_status", _status);
+            widget.SetElementVisible("menu_status", _status.Length > 0);
         }
 
         public void RemoveWidget()
@@ -299,6 +395,7 @@ namespace ManagedSharpDemo
             _status = "";
             _overwriteSlot = null;
             _page = Page.Home;
+            _sceneArea = null;
             pc.ShowMouseCursor = false;
             WidgetLibrary.SetInputMode_GameOnly(pc, flushInput: true);
         }
@@ -320,6 +417,18 @@ namespace ManagedSharpDemo
             widget.SetElementVisible("saves", _canTransition);
             widget.SetElementVisible("scenes", _canTransition);
             widget.SetElementVisible("story", _canTransition);
+            bool canSkipMaze = GetAvailableMazeSkipper() != null;
+            widget.SetElementVisible("maze_entrance", canSkipMaze);
+            widget.SetElementVisible("maze_exit", canSkipMaze);
+        }
+
+        private static MazeSkipper? GetAvailableMazeSkipper()
+        {
+            if (!Pal3Boot.HasPlayerControl()) return null;
+            var services = ServiceLocator.Instance;
+            if (services.Get<SceneManager>().GetCurrentScene() is not { } scene) return null;
+            var skipper = services.Get<MazeSkipper>();
+            return skipper.IsMazeSceneAndHasSkipperCommands(scene.GetSceneInfo()) ? skipper : null;
         }
 
         private void RefreshStory(URuntimeJsonWidget widget)
@@ -346,24 +455,34 @@ namespace ManagedSharpDemo
         private void RefreshSaves(URuntimeJsonWidget widget)
         {
             var saves = ServiceLocator.Instance.Get<SaveManager>();
-            bool canSave = !Pal3Boot.WaitingForMenuStart && _canTransition;
-            widget.SetElementText("save_heading", canSave ? "写入存档" : "进入游戏后可存档");
-            for (int slot = 0; slot <= SaveManager.ManualSlotCount; slot++)
-            {
-                bool exists = saves.SaveSlotExists(slot);
-                widget.SetElementVisible($"load_{slot}", exists);
-                widget.SetElementVisible($"empty_{slot}", !exists);
-                if (exists)
-                {
-                    string name = slot == 0 ? "自动存档" : $"存档 {slot}";
-                    widget.SetElementText($"load_{slot}", $"{name}  {saves.GetSaveSlotLastWriteTime(slot):MM-dd HH:mm}");
-                }
-                if (slot > 0)
-                {
-                    widget.SetElementVisible($"save_{slot}", canSave);
-                    widget.SetElementText($"save_{slot}", _overwriteSlot == slot ? $"确认覆盖 {slot}" : $"写入 {slot}");
-                }
-            }
+            for (int slot = SaveManager.AutoSaveSlotIndex; slot <= SaveManager.ManualSlotCount; slot++)
+                RefreshSaveSlotRow(widget, saves, slot);
+            RefreshSaveSelection(widget, saves);
         }
+
+        private void RefreshSaveSlotRow(URuntimeJsonWidget widget, SaveManager saves, int slot)
+        {
+            string selection = slot == _selectedSaveSlot ? "> " : "";
+            string summary = saves.SaveSlotExists(slot) ? $"{saves.GetSaveSlotLastWriteTime(slot):MM-dd HH:mm}" : "空";
+            widget.SetElementText($"slot_{slot}", $"{selection}{GetSaveSlotName(slot)}  ·  {summary}");
+        }
+
+        private void RefreshSaveSelection(URuntimeJsonWidget widget, SaveManager saves)
+        {
+            int slot = _selectedSaveSlot;
+            bool exists = saves.SaveSlotExists(slot);
+            bool canSave = CanWriteSelectedSlot;
+            widget.SetElementText("selected_slot_title", GetSaveSlotName(slot));
+            widget.SetElementText("selected_slot_status", exists
+                ? $"保存于 {saves.GetSaveSlotLastWriteTime(slot):MM-dd HH:mm}"
+                : "空存档");
+            widget.SetElementVisible("load_selected", exists);
+            widget.SetElementVisible("save_selected", canSave);
+            widget.SetElementText("save_selected", _overwriteSlot == slot ? "确认覆盖存档" : "写入存档");
+            widget.SetElementVisible("save_hint", !canSave);
+            widget.SetElementText("save_hint", slot == SaveManager.AutoSaveSlotIndex ? "由游戏自动写入" : "角色可操作时可存档");
+        }
+
+        private static string GetSaveSlotName(int slot) => slot == SaveManager.AutoSaveSlotIndex ? "自动存档" : $"存档 {slot}";
     }
 }

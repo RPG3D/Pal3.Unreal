@@ -26,7 +26,6 @@ namespace Pal3.Game.Effect
         public IGameEntity EffectGameEntity { get; private set; }
         public FireEffectType FireEffectType { get; private set; }
 
-        private (ITexture2D texture, bool hasAlphaChannel)[] _effectTextures = Array.Empty<(ITexture2D texture, bool hasAlphaChannel)>();
         private AnimatedBillboardRenderer _billboardRenderer;
         private PolyModelRenderer _sceneObjectRenderer;
         private IMaterial _spriteMaterial;
@@ -56,16 +55,17 @@ namespace Pal3.Game.Effect
 
             if (!string.IsNullOrEmpty(info.TexturePathFormat))
             {
-                _effectTextures = resourceProvider.GetEffectTextures(
+                var effectTextures = resourceProvider.GetEffectTextures(
                     GraphicsEffectType.Fire, info.TexturePathFormat);
 
-                ISprite[] sprites = new ISprite[_effectTextures.Length];
-                for (int i = 0; i < _effectTextures.Length; i++)
+                ISprite[] sprites = new ISprite[effectTextures.Length];
+                for (int i = 0; i < effectTextures.Length; i++)
                 {
-                    ITexture2D texture = _effectTextures[i].texture;
+                    ITexture2D texture = effectTextures[i].texture;
                     ISprite sprite = texture?.CreateSprite(0f, 0f,
                         texture.Width, texture.Height,
                         0.5f, 0f);
+                    if (sprite is UnitySprite frame) frame.SourceRowsBottomUp = TextureCoordinates.HasBottomUpEffectRows(texture);
                     sprites[i] = sprite;
                 }
 
@@ -81,7 +81,7 @@ namespace Pal3.Game.Effect
                 EffectGameEntity.Transform.LocalPosition = new Vector3(0f, yPosition, 0f);
 
                 _billboardRenderer = EffectGameEntity.AddComponent<AnimatedBillboardRenderer>();
-                _spriteMaterial = _effectTextures[0].hasAlphaChannel
+                _spriteMaterial = effectTextures[0].hasAlphaChannel
                     ? null
                     : materialManager.CreateOpaqueSpriteMaterial();
                 _billboardRenderer.Init(sprites, EffectConstants.AnimatedFireEffectFrameRate, _spriteMaterial);

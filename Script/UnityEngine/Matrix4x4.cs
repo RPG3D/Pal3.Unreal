@@ -1,4 +1,5 @@
 using System;
+using NumericsMatrix = System.Numerics.Matrix4x4;
 
 namespace UnityEngine
 {
@@ -42,40 +43,19 @@ namespace UnityEngine
 
         public static Matrix4x4 Inverse(Matrix4x4 m)
         {
-            float a = m.m00, b = m.m01, c = m.m02, d = m.m03;
-            float e = m.m10, f = m.m11, g = m.m12, h = m.m13;
-            float i = m.m20, j = m.m21, k = m.m22, l = m.m23;
-            float m0 = m.m30, n = m.m31, o = m.m32, p = m.m33;
+            var matrix = new NumericsMatrix(
+                m.m00, m.m01, m.m02, m.m03,
+                m.m10, m.m11, m.m12, m.m13,
+                m.m20, m.m21, m.m22, m.m23,
+                m.m30, m.m31, m.m32, m.m33);
+            if (MathF.Abs(matrix.GetDeterminant()) < 1e-12f || !NumericsMatrix.Invert(matrix, out var inverse))
+                return identity;
 
-            float det = a * (f * (k * p - l * o) - g * (j * p - l * n) + h * (j * o - k * n))
-                - b * (e * (k * p - l * o) - g * (i * p - l * m0) + h * (i * o - k * m0))
-                + c * (e * (j * p - l * n) - f * (i * p - l * m0) + h * (i * n - j * m0))
-                - d * (e * (j * o - k * n) - f * (i * o - k * m0) + g * (i * n - j * m0));
-            if (MathF.Abs(det) < 1e-12f) return identity;
-            float inv = 1f / det;
-
-            Matrix4x4 result = new(
-                new Vector4(
-                    (f * (k * p - l * o) - g * (j * p - l * n) + h * (j * o - k * n)) * inv,
-                    (g * (i * p - l * m0) - e * (k * p - l * o) - h * (i * o - k * m0)) * inv,
-                    (e * (j * p - l * n) - f * (i * p - l * m0) + h * (i * n - j * m0)) * inv,
-                    (f * (i * o - k * m0) - e * (j * o - k * n) - g * (i * n - j * m0)) * inv),
-                new Vector4(
-                    (b * (k * p - l * o) - c * (j * p - l * n) + d * (j * o - k * n)) * inv,
-                    (a * (k * p - l * o) - c * (i * p - l * m0) + d * (i * o - k * m0)) * inv,
-                    (a * (j * p - l * n) - b * (i * p - l * m0) - d * (i * n - j * m0)) * inv,
-                    (a * (j * o - k * n) - b * (i * o - k * m0) + c * (i * n - j * m0)) * inv),
-                new Vector4(
-                    (b * (g * p - h * o) - c * (f * p - h * n) + d * (f * o - g * n)) * inv,
-                    (a * (g * p - h * o) - c * (e * p - h * m0) + d * (e * o - g * m0)) * inv,
-                    (a * (f * p - h * n) - b * (e * p - h * m0) - d * (e * n - f * m0)) * inv,
-                    (a * (f * o - g * n) - b * (e * o - g * m0) + c * (e * n - f * m0)) * inv),
-                new Vector4(
-                    (b * (g * l - h * k) - c * (f * l - h * j) + d * (f * k - g * j)) * inv,
-                    (a * (g * l - h * k) - c * (e * l - h * i) + d * (e * k - g * i)) * inv,
-                    (a * (f * l - h * j) - b * (e * l - h * i) - d * (e * j - f * i)) * inv,
-                    (a * (f * k - g * j) - b * (e * k - g * i) + c * (e * j - f * i)) * inv));
-            return result;
+            return new Matrix4x4(
+                new Vector4(inverse.M11, inverse.M21, inverse.M31, inverse.M41),
+                new Vector4(inverse.M12, inverse.M22, inverse.M32, inverse.M42),
+                new Vector4(inverse.M13, inverse.M23, inverse.M33, inverse.M43),
+                new Vector4(inverse.M14, inverse.M24, inverse.M34, inverse.M44));
         }
 
         public static Matrix4x4 operator *(Matrix4x4 a, Matrix4x4 b)

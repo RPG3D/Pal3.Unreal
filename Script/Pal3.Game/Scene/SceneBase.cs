@@ -111,17 +111,9 @@ namespace Pal3.Game.Scene
         private void InitMeshData()
         {
             char separator = CpkConstants.DirectorySeparatorChar;
-
-            string meshFileRelativePath = $"{ScnFile.SceneInfo.CityName}{CpkConstants.FileExtension}{separator}" +
-                                   $"{ScnFile.SceneInfo.Model}{separator}";
-
-            // Switch to night version of the mesh model when LightMap flag is set to 1
-            if (ScnFile.SceneInfo.LightMap == 1)
-            {
-                meshFileRelativePath += $"1{separator}";
-            }
-
-            string sceneMetadataFilePrefix = meshFileRelativePath + ScnFile.SceneInfo.Model;
+            string sceneMetadataFilePrefix = _resourceProvider.GetSceneModelPrefix(ScnFile.SceneInfo, out bool usesDayFallback);
+            if (usesDayFallback)
+                EngineLogger.LogWarning($"Missing night mesh for {ScnFile.SceneInfo.CityName}/{ScnFile.SceneInfo.SceneName}, using {sceneMetadataFilePrefix}.pol");
 
             ITextureResourceProvider sceneTextureProvider = _resourceProvider.CreateTextureResourceProvider(
                 CoreUtility.GetDirectoryName(sceneMetadataFilePrefix, separator));

@@ -101,11 +101,6 @@ namespace Pal3.Game
         [SerializeField] private TextMeshProUGUI debugInfo;
         [SerializeField] private FpsCounter fpsCounter;
 
-        // WorldMap
-        [SerializeField] private CanvasGroup worldMapCanvasGroup;
-        [SerializeField] private GameObject worldMapRegionButtonPrefab;
-        [SerializeField] private GameObject worldMapBackground;
-
         // Main menu
         [SerializeField] private CanvasGroup mainMenuCanvasGroup;
         [SerializeField] private GameObject menuButtonPrefab;
@@ -319,14 +314,10 @@ namespace Pal3.Game
             );
 
             ServiceLocator.Instance.Register(_worldMapManager =
-                new WorldMapManager(eventSystem,
-                    _gameStateManager,
-                   _sceneManager,
-                   _inputManager,
-                   _scriptManager,
-                   worldMapCanvasGroup,
-                   worldMapRegionButtonPrefab,
-                   worldMapBackground)
+                new WorldMapManager(_gameStateManager,
+                    _sceneManager,
+                    _inputManager,
+                    _scriptManager)
             );
 
             ServiceLocator.Instance.Register(_postProcessManager =

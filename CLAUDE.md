@@ -6,7 +6,7 @@
 
 - 托管修改发布到 `Binaries/Managed/net10.0`。原生接口变更先构建 `SharpDemoEditor` 并更新对应 glue。启动失败时先检查构建退出码、实际加载的 DLL 和运行日志。
 - 默认测试地图为 `LV_Pal3`。单独启动的测试进程使用独立 `-abslog`，启动最多等待 5 分钟。结果已取得或启动超时时保留日志，只结束本次启动的测试进程。
-- 自动化使用 PAL3 游戏命令。起动回归前为测试进程设置独立的 `PAL3_AUTOMATION_DIR` 和 `PAL3_SAVE_DIR`。
+- 自动化使用 PAL3 游戏命令。起动回归前为测试进程设置独立的 `PAL3_AUTOMATION_DIR`，存档测试在项目的 `Saved/Saves` 中选择空槽位。
 - UI 源布局使用 JSON，交互与状态由 C# 管理，原生模块提供通用接口。优先沿用 PAL3.Unity 的 C# 玩法，在 wrapper 修复引擎差异。
 
 ## 运行时与移动端记录

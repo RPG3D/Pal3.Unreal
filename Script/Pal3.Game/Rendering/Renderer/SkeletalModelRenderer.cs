@@ -14,6 +14,7 @@ namespace Pal3.Game.Rendering.Renderer
     using Core.DataReader.Mtl;
     using Core.Primitives;
     using Core.Utilities;
+    using Data;
     using Engine.Core.Abstraction;
     using Engine.Core.Implementation;
     using Engine.Extensions;
@@ -380,6 +381,8 @@ namespace Pal3.Game.Rendering.Renderer
                 _allVerticesBuffer[subMeshIndex] = new Vector3[subMesh.Vertices.Length];
             }
 
+            bool flipV = TextureCoordinates.FlipCharacterV(_mainTexture.texture,
+                fallback: _mainTexture.textureName.EndsWith(".tga", StringComparison.OrdinalIgnoreCase));
             int index = 0;
             foreach (PhyFace phyFace in subMesh.Faces)
             {
@@ -387,7 +390,7 @@ namespace Pal3.Game.Rendering.Renderer
                 {
                     _indexBuffer[subMeshIndex][index] = phyFace.Indices[i];
                     renderMeshComponent.MeshDataBuffer.UvBuffer[index].x = phyFace.U[i, 0];
-                    renderMeshComponent.MeshDataBuffer.UvBuffer[index].y = phyFace.V[i, 0];
+                    renderMeshComponent.MeshDataBuffer.UvBuffer[index].y = TextureCoordinates.ConvertV(phyFace.V[i, 0], flipV);
                     renderMeshComponent.MeshDataBuffer.TriangleBuffer[index] = index;
                     index++;
                 }

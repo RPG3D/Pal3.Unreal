@@ -98,7 +98,7 @@ MyGame.exe -debughangdetection -log
 
 ## 6. PAL3 主菜单布局
 
-主菜单布局位于 `Script/ManagedSharpDemo/Layouts/Pal3StartMenu.json`。首页、场景、剧情和存读档是 `menu_pages` 下的四个页面。布局模块将 `type: "switcher"` 创建为 UMG `WidgetSwitcher`，C# 通过 `SetSwitcherPage(switcherId, pageId)` 选择直接子页，并更新按钮文字和可见性。
+主菜单布局位于 `Script/ManagedSharpDemo/Layouts/Pal3StartMenu.json`。首页和剧情由 UMG `WidgetSwitcher` 切换。场景页按原版场景档案分组，由 `Pal3TravelMenuLayout` 和大地图共用布局。四个既有场景保留预设落点，其余场景在选择时从导航数据找可行走的落点并避开自动触发区。存读档页面由 `Pal3SaveMenuLayout` 按槽位数量生成，左边滚动选档，右边读取或写入。
 
 文本和按钮的 `fontAsset` 可填写字体别名（如 `FZWB`）、包路径（如 `/Game/PAL3/Fonts/Pal3Weibei_Font`）或完整对象路径。省略时使用 `DefaultGame.ini` 中 `[RuntimeWidgetLayout.Fonts]` 的 `Default`。同一配置段的 `FontSizeOffset` 会加到每个 JSON 文本和按钮标签的字号上，当前为 `2`。C# 和蓝图可用 `AddFontMapping` 注册或覆盖别名。蓝图用 `SetDefaultFont`，C# 给 `DefaultFont` 属性赋值。运行时设置影响随后创建的控件。字体资产未安装时回退到 UE 默认字体。
 
@@ -185,7 +185,7 @@ $driver = '/Game/PAL3/Maps/LV_Pal3.LV_Pal3:PersistentLevel.Pal3Driver_C_0'
 
 ### 存档往返回归
 
-开始界面的「存档与读档」可读取自动存档和手动槽位 1–5，进入可操作状态后可写入手动槽位。界面覆盖旧存档需要再次确认。PAL3 存档默认位于项目的 `Saved/Saves`，仍使用上游的 `slot_N_v1.txt` 命令格式。启动 UE 前可用 `PAL3_SAVE_DIR` 指定独立目录，供测试隔离。
+在「存档与读档」左侧滚动选择自动存档或手动槽位 1–99，再用右侧按钮读取或写入。进入可操作状态后可写入手动槽位，覆盖旧存档需要再次确认。PAL3 统一使用 UE 的项目保存目录下的 `Saves`，存档仍采用上游的 `slot_N_v1.txt` 命令格式。
 
 ```powershell
 .\tools\pal3-play.ps1 slots -ObjectPath $driver
