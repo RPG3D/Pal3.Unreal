@@ -1,8 +1,23 @@
-# SharpDemo · UnrealSharp 跨平台适配与 PAL3 移植
+# SharpDemo = UE5 + UnrealSharp + Pal3.Unity
 
-SharpDemo 用于验证 UnrealSharp 在 UE5 上的 **Mono 与移动端 CoreCLR 跨平台适配**。项目覆盖运行时宿主、C# 绑定、托管程序集发布与打包，以及运行时调试和诊断。运行时实现位于 [UnrealSharp 子模块](Plugins/UnrealSharp)。
+SharpDemo 是 **UnrealSharp Mono 运行时移植**的配套验证工程，目标是让 UE5 项目里的 C# 代码也能在 Android、iOS 等移动平台上运行。项目把 Pal3.Unity 移植到 UE5，用实际游戏流程验证 Mono 宿主、C# 与 UE 绑定、托管程序集发布与打包、调试和运行时诊断，也用于验证移动端 CoreCLR 的适配。 [UnrealSharp 上游仓库](https://github.com/UnrealSharp/UnrealSharp)
 
-在这套运行时之上，工程将 PAL3.Unity 移植到 UE5。PAL3 为场景加载、剧情脚本、角色动画、输入、音频和 UI 提供可重复运行的验证场景。移植优先复用上游 C# 玩法，通过 wrapper 对接 UE。[上游代码复用设计](Docs/PAL3_PORTABILITY.md)
+[![SharpDemo 在 Android 平板上运行《仙剑奇侠传三》的剧情对白画面，点击查看原图](Docs/images/pal3-android-preview.png)](Docs/images/pal3-android.png)
+
+## 为什么选择 UnrealSharp
+
+- **强类型的 C# 脚本。** 编辑器和编译器能在运行前发现语法错误、类型不匹配，以及接口签名变化引起的调用错误。Lua 和 JavaScript 的动态类型检查通常发生在运行时。
+- **成熟的开发和调试工具链。** Visual Studio、Rider 和 VS Code 都支持 C# 开发，可以用 .NET SDK 构建，并使用自动补全、重构、断点、单步和调用栈检查。嵌入式 Lua 的断点调试依赖宿主或外部工具，QuickJS 可通过社区调试适配器接入 IDE。
+- **高性能的运行时和跨语言调用。** .NET 的 JIT 可将 IL 编译成原生机器码，Mono 解释器也能在限制动态代码生成的平台执行 IL。UnrealSharp 在构建时静态生成 UE API 的 C# glue，并通过 `delegate* unmanaged` 函数指针直接调用原生绑定入口，减少 C# 与 C++ 之间高频调用的动态查找和分发开销。
+- **已有引擎和游戏验证。** Unity、Godot 和 Flax Engine 都支持 C# 脚本，MonoGame 也用于《星露谷物语》等商业游戏。
+
+UE 商业游戏也有相关实践。CSharpLoader 项目记录了《黑神话：悟空》PC 版通过 USharp 运行部分 C# 游戏逻辑。《鸣潮》3.6 的官方公告披露了编程语言切换，社区实测记录了客户端的 C# 环境。
+
+## 为什么选择 Pal3.Unity
+
+- **规模适合反复测试。** 它是一套完整的 RPG 工程，场景加载、剧情脚本、角色动画、输入、音频、过场、UI 和存读档能在一次游戏流程中覆盖多个引擎子系统。按场景和剧情节点运行，也方便定位单项问题。
+- **有可运行的 Unity 版本作对照。** 可以用同一套游戏数据运行相同的场景和剧情，对照角色动作、镜头、交互和画面，及时发现 UE 移植引入的差异。 [Pal3.Unity 上游工程](https://github.com/0x7c13/Pal3.Unity)
+- **分层清晰，便于跨引擎移植。** `Pal3.Core` 处理资源格式和脚本指令，`Pal3.Game` 实现玩法，`Engine` 抽象实体、变换、贴图等引擎能力。SharpDemo 优先复用上游 C# 玩法，把 Unity 与 UE 的差异集中到引擎适配层，减少后续同步上游代码的成本。 [上游代码复用设计](Docs/PAL3_PORTABILITY.md)
 
 ## 运行时与平台
 
@@ -30,7 +45,7 @@ SharpDemo 用于验证 UnrealSharp 在 UE5 上的 **Mono 与移动端 CoreCLR �
 - 从原版游戏安装目录读取 PAL3 数据。启动 UE 前设置 `PAL3_DATA_PATH`，指向包含游戏资源的安装根目录。
 - macOS 调试时默认读取项目的 `Saved/PAL3`，也可以把该目录设为指向 Steam 游戏目录的符号链接。如果那里没有 `basedata/basedata.cpk`，则读取 `~/Library/Application Support/Steam/steamapps/common/PAL3`。
 - Android 默认读取内部共享存储的 `Download/PAL3`。保留原版的目录结构和文件名大小写，例如 `Download/PAL3/basedata/basedata.cpk`。首次启动缺权限时，点击「去授权」，在 Android 11 及以上的系统设置中开启「所有文件访问权限」。返回游戏后会重新检查。缺少数据文件时，补齐后点击「重试」。
-- iOS 启动时如果还没找到数据，可点「选择 PAL3 文件夹」，在系统文件选择器的「下载」中选中已下载到本机的 `PAL3`。保留 `basedata`、`scene`、`music` 等目录。游戏会记住授权并原地读取 CPK，也支持直接读取「我的 iPad/iPhone → SharpDemo → PAL3」。可将预先转换的 `pal3op.mp4` 放在 `PAL3/movie` 播放开场动画，游戏会按需把单个视频复制到本地缓存。
+- iOS 启动时如果还没找到数据，可点「选择 PAL3 文件夹」，在系统文件选择器的「下载」中选中已下载到本机的 `PAL3`。保留 `basedata`、`scene`、`music` 等目录。游戏会记住授权并原地读取 CPK，也支持直接读取「我的 iPad/iPhone → SharpDemo → PAL3」。
 - 新检出还需要本地托管依赖。在 `Script/Pal3.Core/Libraries` 放入 `Newtonsoft.Json.dll` 和 `INIFileParser.dll`。它们未纳入仓库，可从本地 PAL3.Unity 的 `Assets/Packages` 中取 `Newtonsoft.Json.13.0.3` 和 `ini-parser-netstandard.2.5.2` 的 `lib/netstandard2.0` 版本。
 
 在项目根目录的 PowerShell 运行，路径按本机环境调整。
@@ -66,7 +81,7 @@ try {
 
 PAL3 的宿主地图、材质和字体资产放在 `Content/PAL3`，由 `DefaultGame.ini` 的 `DirectoriesToAlwaysCook` 指定 Cook 目录。JSON-UMG 默认字体在同一文件的 `[RuntimeWidgetLayout.Fonts]` 中配置，目前指向方正魏碑。其他机器可将字体文件命名为 `Pal3Weibei.ttf`，在编辑器中导入 `Content/PAL3/Fonts`，并选择同时创建 Font 资产。未导入时使用 UE 默认字体。
 
-原版过场保存在 `movie/movie.cpk` 和 `movie/movie_end.cpk`。首次播放时，游戏在后台把对应 Bink 1 转成 MP4，加载界面显示准备阶段和转码进度。转码结果写入 UE 的 `Saved/Movies`，之后直接播放缓存。没有缓存时，游戏也会查找用户数据目录 `movie` 下的同名 MP4、MOV 或 WebM，具体格式支持取决于平台播放器。Windows 需要支持 libx264 的 FFmpeg，可将 `RUNTIME_BINK_FFMPEG` 设为 `ffmpeg.exe` 的绝对路径，或把程序放到 `Binaries/ThirdParty/FFmpeg/Win64/ffmpeg.exe`。Android 使用 [FFmpegKit Min 8.1.7](https://github.com/ffmpegkit-maintained/ffmpeg)（LGPL-3.0）、MediaCodec 和 Electra。准备或播放中都可跳过，失败时剧情继续。原版视频和转码文件均由用户的数据目录及应用缓存提供。
+Windows 和 Android 在首次播放原版过场时，将视频在运行时转成 MP4，写入 `Saved/Movies` 后播放。iOS 将 `PAL3/movie` 下预先转换的 MP4 缓存到 `Saved/Movies/Imported` 后播放。
 
 启动前设置 `PAL3_AUTOSTART=1` 或传入 `-PAL3Autostart`，可跳过标题菜单，直接进入开场并启用自动对白。
 
@@ -83,23 +98,3 @@ PAL3 的宿主地图、材质和字体资产放在 `Content/PAL3`，由 `Default
 | 自动化 | `tools/pal3-play.ps1` 通过 RC 或本地文件调用同一套游戏命令。移动使用游戏命令直接驱动 |
 
 主菜单的静态 JSON 定义首页和剧情两个 `WidgetSwitcher` 页面。场景页面按挂载的 PAL3 场景档案分组，调试跳转从导航数据选择可行走的落点。存读档页面按槽位数量生成。独立布局文件通过 UFS 随 UE 打包，运行时由 UE 文件接口按项目相对路径读取。C# 负责交互与数据，`RuntimeWidgetLayout` 提供通用的布局、换页和控件 API。诊断面板和对白栏由 `Pal3Hud` 使用 JSON UMG 呈现。旧 `UPal3DebugOverlay` 类仍承载 RC 查询和程序网格接口。[主菜单布局](Script/ManagedSharpDemo/Layouts/Pal3StartMenu.json)
-
-## 当前已知问题与后续项
-
-| 项目 | 当前状态 |
-|---|---|
-| 读档失败后的恢复 | 已复现。若回放在重置场景后失败，可能停在 `Cutscene`，无法直接重试。此项留待后续修复。调试中遇到时，结束并重开本次 PIE 或独立游戏后再加载有效存档 |
-| 增量构建的 UI glue | 旧 solution 缓存可能漏掉 `RuntimeWidgetLayout`，即使加载清单里有它。按上面的命令单独发布对应 glue，缓存问题留待修复 |
-| 文件自动化请求 | 无效文件名的 `*.request.json` 可能阻塞后续请求。测试用独立目录，已受影响时可换新会话目录或改用 RC |
-| 输入、画面与音频验收 | 已有 RC 回归覆盖场景、剧情、移动、选项和存读档。实体按键、前台 PIE 的视觉效果及脚步声听感仍需人工复测 |
-| MonoBehaviour 兼容 | 后续评估。现有玩法由 `APal3Driver` 驱动 `GameEntityScriptRuntime` |
-| UE 渲染内存预算 | 待测 Win64 和 Android 上的实际占用，区分普通贴图流送、网格流送、Nanite 和 PAL3 运行时生成的资源。按设备档位评估 `r.Streaming.PoolSize` 等配置，用同地图往返对比显存、加载时间与画质后再定值 |
-| PAL3 文件接口 | 后续优先用 UE 文件 API，减少托管代码直接使用 .NET 文件 I/O。评估把 CPK 的外部绝对路径、随机读取和目录枚举接到 UE 平台文件接口，回归 Android `Download/PAL3` 与桌面原版数据路径 |
-
-## 文档导航
-
-- [诊断、RC 与回归](Docs/DIAGNOSTICS.md)记录自动化命令、日志、Mono 堆快照和内存案例。
-- [旋转与坐标转换](Docs/QUATERNION_NOTES.md)记录当前 wrapper 的坐标契约和角色转向。
-- [画面与角色移植记录](Docs/PAL3_VISUAL_BRINGUP_2026-11-08.md)记录问题定位和历史验证结果。
-- [上游代码复用设计](Docs/PAL3_PORTABILITY.md)是分层讨论与后续方案。
-- [运行时历史记录](Docs/rebuild/SESSION-STATE.md)和 [UnrealSharp 上游补丁](Docs/upstream/README.md)用于追溯插件和移动端演进。
