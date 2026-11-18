@@ -215,7 +215,7 @@ namespace Pal3.Game
                 GameTimeProvider.Instance
             );
 
-            IGameEntity cameraEntity = new GameEntity(mainCamera.gameObject);
+            IGameEntity cameraEntity = GameEntity.FromGameObject(mainCamera.gameObject);
 
             ServiceLocator.Instance.Register<IPhysicsManager>(_physicsManager =
                 new PhysicsManager(mainCamera));
@@ -399,6 +399,7 @@ namespace Pal3.Game
                     _physicsManager)
             );
 
+            Pal3Boot.ConfigureMinimapLayout(miniMapCanvasGroup, miniMapImage);
             ServiceLocator.Instance.Register(_minimapManager =
                 new MinimapManager(cameraEntity.Transform,
                     _sceneManager,

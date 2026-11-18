@@ -14,18 +14,14 @@ namespace Engine.Core.Implementation
     /// <summary>
     /// Unity-MonoBehaviour-style lifecycle dispatcher. Primary target is
     /// <see cref="GameEntityScript"/>, but arbitrary "component" objects that keep
-    /// the Unity magic methods (private Awake/OnEnable/Start/Update/LateUpdate/
-    /// OnDisable - e.g. Pal3, which derives from Singleton instead of
-    /// GameEntityScript) are dispatched the same way. Methods are located via a
-    /// per-type reflection cache; the port's renamed virtuals (Init,
-    /// OnUpdateGameEntity, ...) are dispatched as well on GameEntityScript types.
+    /// Unity messages, such as the PAL3 singleton, are also supported. The
+    /// per-type cache resolves inherited private Unity messages.
     /// </summary>
     public static class GameEntityScriptRuntime
     {
         private sealed class ScriptInfo
         {
             public object Script = null!;
-            public MethodInfo? Awake;
             public MethodInfo? OnEnable;
             public MethodInfo? Start;
             public MethodInfo? Update;
@@ -99,7 +95,6 @@ namespace Engine.Core.Implementation
                 ScriptInfo si = new()
                 {
                     Script = script,
-                    Awake = cache.Awake,
                     OnEnable = cache.OnEnable,
                     Start = cache.Start,
                     Update = cache.Update,
@@ -108,10 +103,14 @@ namespace Engine.Core.Implementation
                 };
                 _active.Add(si);
 
+                // Preserve the port's serialized field setup for PAL3 scripts.
+                if (script is not MonoBehaviour || script is GameEntityScript)
+                    AutoFillStubFields(script, componentHost);
+                InvokeSafe(script, cache.Awake, "Awake");
+
                 if (script is MonoBehaviour behaviour)
                 {
                     si.FirstUpdateFrame = UnityEngine.Time.frameCount + 1;
-                    InvokeSafe(behaviour, cache.Awake, "Awake");
                     if (!si.Removed)
                     {
                         si.EnabledChanged = () => UpdateBehaviourEnabled(si, behaviour);
@@ -121,13 +120,7 @@ namespace Engine.Core.Implementation
                     return;
                 }
 
-                AutoFillStubFields(script, componentHost);
-                InvokeSafe(script, cache.Awake, "Awake");
                 InvokeSafe(script, cache.OnEnable, "OnEnable");
-                // Unity's OnEnable also drives the GameEntityScript virtual (upstream
-                // wires it in a private OnEnable method; the port's base class cannot
-                // declare one, so the runtime dispatches it explicitly).
-                if (script is GameEntityScript ges) ges.InvokeVirtualOnEnable();
             }
 
             // Start runs right before the first Update in Unity; when activating
@@ -211,13 +204,6 @@ namespace Engine.Core.Implementation
                             }
                         }
 
-                        // Disabled GameEntityScripts don't tick (Unity semantics);
-                        // plain components always tick.
-                        if (si.Script is GameEntityScript { enabled: false })
-                        {
-                            continue;
-                        }
-
                         // Crash triage: with PAL3_TRACE_UPDATES=1 the last logged name
                         // before an access violation identifies the culprit (managed
                         // exceptions are caught, native AVs are not).
@@ -234,11 +220,6 @@ namespace Engine.Core.Implementation
                             Engine.Diagnostics.ManagedDiagnostics.ReportSlow(
                                 $"{si.Script.GetType().Name}.Update", __ms);
                         }
-                        if (si.Script is GameEntityScript script)
-                        {
-                            script.InvokeVirtualOnUpdate(deltaTime);
-                        }
-
                     }
 
                     // Unity runs all LateUpdates after all Updates so the camera
@@ -252,15 +233,7 @@ namespace Engine.Core.Implementation
                         {
                             continue;
                         }
-                        if (si.Script is GameEntityScript { enabled: false })
-                        {
-                            continue;
-                        }
                         InvokeSafe(si.Script, si.LateUpdate, "LateUpdate");
-                        if (si.Script is GameEntityScript lateScript)
-                        {
-                            lateScript.InvokeVirtualOnLateUpdate(deltaTime);
-                        }
                     }
                 }
                 finally
@@ -309,7 +282,6 @@ namespace Engine.Core.Implementation
             }
 
             InvokeSafe(script, GetCache(script.GetType()).OnDisable, "OnDisable");
-            if (script is GameEntityScript ges) ges.InvokeVirtualOnDisable();
             CoroutineScheduler.StopAll(script);
         }
 
@@ -351,19 +323,19 @@ namespace Engine.Core.Implementation
                 OnDestroy = FindZeroArg(type, "OnDestroy"),
             };
 
-            // Override dispatch for OnUpdateGameEntity/OnLateUpdateGameEntity/OnDisableGameEntity
-            // is handled by GameEntityScript's internal bridge methods.
-
             lock (_gate) { _cache[type] = cache; }
             return cache;
         }
 
         private static MethodInfo? FindZeroArg(Type type, string name)
         {
-            MethodInfo? method = type.GetMethod(name, LifecycleFlags);
-            return method != null && method.GetParameters().Length == 0 && !method.IsAbstract
-                ? method
-                : null;
+            for (Type? current = type; current != null; current = current.BaseType)
+            {
+                MethodInfo? method = current.GetMethod(name, LifecycleFlags | BindingFlags.DeclaredOnly,
+                    binder: null, Type.EmptyTypes, modifiers: null);
+                if (method is { IsAbstract: false }) return method;
+            }
+            return null;
         }
 
         /// <summary>

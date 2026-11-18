@@ -31,12 +31,16 @@ namespace Pal3.Game
 {
     public static class Pal3Boot
     {
-        private sealed class LifecycleProbeScript : GameEntityScript
+        private sealed class LifecycleProbeScript : TickableGameEntityScript
         {
-            public int AwakeCount, OnEnableCount, UpdateCount, LateUpdateCount;
+            public int AwakeCount, OnEnableCount, OnDisableCount, OnDestroyCount, UpdateCount, LateUpdateCount;
+            public bool StartCompleted;
+            public bool EntityViewsMatch;
 
             private void Awake() { AwakeCount++; Debug.Log("[Pal3Boot] Awake"); }
-            private void OnEnable() { OnEnableCount++; Debug.Log("[Pal3Boot] OnEnable"); }
+            protected override void OnEnableGameEntity() { OnEnableCount++; Debug.Log("[Pal3Boot] OnEnable"); }
+            protected override void OnDisableGameEntity() => OnDisableCount++;
+            private void OnDestroy() => OnDestroyCount++;
 
             private IEnumerator Start()
             {
@@ -50,6 +54,7 @@ namespace Pal3.Game
                 yield return Nested();                   // nested IEnumerator
                 Debug.Log("[Pal3Boot] after nested coroutine");
                 yield return new WaitForSeconds(0.1f);   // CustomYieldInstruction
+                StartCompleted = true;
                 Debug.Log("[Pal3Boot] after WaitForSeconds(0.1f) - Start coroutine done");
             }
 
@@ -59,8 +64,8 @@ namespace Pal3.Game
                 yield return null;
             }
 
-            private void Update() { UpdateCount++; }
-            private void LateUpdate() { LateUpdateCount++; }
+            protected override void OnUpdateGameEntity(float deltaTime) => UpdateCount++;
+            protected override void OnLateUpdateGameEntity(float deltaTime) => LateUpdateCount++;
         }
 
         private static LifecycleProbeScript? _probe;
@@ -147,8 +152,27 @@ namespace Pal3.Game
             if (_probe != null) return; // already running
 
             Debug.Log("[Pal3Boot] Smoke probe starting");
-            _probe = new LifecycleProbeScript();
-            GameEntityScriptRuntime.Activate(_probe);
+            const string probeName = "LifecycleProbe";
+            var host = (GameEntity)GameEntityFactory.Create(probeName);
+            _probe = host.AddComponent<LifecycleProbeScript>();
+            GameObject view = _probe.gameObject;
+            var position = new Vector3(1, 2, 3);
+            view.transform.position = position;
+            var parent = (GameEntity)GameEntityFactory.Create("LifecycleProbeParent");
+            view.transform.SetParent(parent.UnityGameObject.transform);
+            var childActor = host.NativeObject as UnrealSharp.Engine.AActor;
+            var parentActor = parent.NativeObject as UnrealSharp.Engine.AActor;
+            _probe.EntityViewsMatch = ReferenceEquals(host, GameEntity.FromGameObject(view))
+                                   && ReferenceEquals(_probe, view.GetComponent<LifecycleProbeScript>())
+                                   && ReferenceEquals(_probe.transform, view.transform)
+                                   && ReferenceEquals(host.GetComponent<Transform>(), view.GetComponent<Transform>())
+                                   && host.Transform.Position == position
+                                   && ReferenceEquals(host, parent.FindChild(probeName))
+                                   && (childActor == null || childActor.AttachParentActor == parentActor);
+            view.transform.SetParent(null);
+            _probe.EntityViewsMatch &= parent.FindChild(probeName) == null
+                                    && (childActor == null || childActor.AttachParentActor == null);
+            parent.Destroy();
             _probeLifetime = 0f;
             _summaryLogged = false;
         }
@@ -184,16 +208,27 @@ namespace Pal3.Game
             if (_probeLifetime > 2.5f)
             {
                 _summaryLogged = true;
+                GameObject view = _probe.gameObject;
+                UnityEngine.Object.Destroy(view);
+                bool released = _probe.GameEntity.IsNativeObjectDisposed
+                             && view.GetComponent<LifecycleProbeScript>() == null
+                             && ReferenceEquals(_probe.GameEntity, GameEntity.FromGameObject(view));
                 bool ok = _probe.AwakeCount == 1
                        && _probe.OnEnableCount == 1
+                       && _probe.OnDisableCount == 1
+                       && _probe.OnDestroyCount == 1
+                       && _probe.StartCompleted
+                       && _probe.EntityViewsMatch
+                       && released
                        && _probe.UpdateCount > 30
                        && _probe.LateUpdateCount == _probe.UpdateCount;
                 Debug.Log(ok
-                    ? $"[Pal3Boot] SMOKE PASS - Update x{_probe.UpdateCount}, LateUpdate x{_probe.LateUpdateCount}"
+                    ? $"[Pal3Boot] SMOKE PASS - Update x{_probe.UpdateCount}, LateUpdate x{_probe.LateUpdateCount}, shared entity state"
                     : $"[Pal3Boot] SMOKE FAIL - Awake:{_probe.AwakeCount} OnEnable:{_probe.OnEnableCount} "
+                      + $"OnDisable:{_probe.OnDisableCount} OnDestroy:{_probe.OnDestroyCount} Start:{_probe.StartCompleted} "
+                      + $"EntityViews:{_probe.EntityViewsMatch} Released:{released} "
                       + $"Update:{_probe.UpdateCount} LateUpdate:{_probe.LateUpdateCount}");
 
-                GameEntityScriptRuntime.Deactivate(_probe);
                 _probe = null;
             }
         }
@@ -350,8 +385,42 @@ namespace Pal3.Game
             return GetIosSandboxDataPath();
         }
 
-        internal static string GetIosSandboxDataPath() =>
+        private static string GetIosSandboxDataPath() =>
             System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "PAL3");
+
+        internal static IEnumerable<string> GetGameDataSearchLocations(Settings.GameSettings settings)
+        {
+            var locations = settings.GetGameDataFolderSearchLocations();
+            if (!CanSelectPal3Folder) return locations;
+
+            string sandbox = GetIosSandboxDataPath();
+            if (!System.IO.File.Exists(System.IO.Path.Combine(sandbox, FileConstants.BaseDataCpkFileRelativePath)))
+                return locations;
+
+            // Keep the authorized folder first so an incomplete set of CPKs
+            // can fall back to the sandbox before the generic search paths.
+            string sandboxKey = System.IO.Path.TrimEndingDirectorySeparator(sandbox);
+            bool IsSandbox(string path) => string.Equals(
+                System.IO.Path.TrimEndingDirectorySeparator(path), sandboxKey, StringComparison.Ordinal);
+
+            var candidates = new List<string>(locations);
+            candidates.RemoveAll(IsSandbox);
+            string preferred = settings.GameDataFolderPath;
+            int fallbackIndex = !string.IsNullOrEmpty(preferred) && !IsSandbox(preferred) ? 1 : 0;
+            candidates.Insert(fallbackIndex, sandbox);
+            return candidates;
+        }
+
+        internal static void ConfigureMinimapLayout(CanvasGroup canvasGroup, UnityEngine.UI.Image image)
+        {
+            // The Unity Pal3 prefab gives MiniMapCanvasGroup a 280 x 280
+            // viewport and stretches the image to that viewport.
+            const float viewportSize = 280f;
+            var viewport = canvasGroup.GetComponent<UnityEngine.UI.RectTransform>();
+            viewport.sizeDelta = new Vector2(viewportSize, viewportSize);
+            viewport.rect = new Rect(-viewportSize / 2f, -viewportSize / 2f, viewportSize, viewportSize);
+            image.rectTransform.rect = viewport.rect;
+        }
 
         internal static void ReportDataLoadFailure(string message)
         {

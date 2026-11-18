@@ -11,6 +11,7 @@ namespace UnityEngine
         {
             switch (obj)
             {
+                case GameObject gameObject: gameObject.Destroy(); break;
                 case AActor a: a.DestroyActor(); break;
                 case UActorComponent c: c.DestroyComponent(c); break;
                 case UObject u: break; /* no-op on plain UObject */

@@ -8,8 +8,6 @@ namespace Pal3.Game.Data
     using System;
     using Core.FileSystem;
     using Engine.Core.Abstraction;
-    using Engine.Core.Implementation;
-    using Engine.DataLoader;
 
     public abstract class TextureProviderBase
     {
@@ -31,18 +29,7 @@ namespace Pal3.Game.Data
             }
 
             textureLoader.Load(data, out hasAlphaChannel);
-            var texture = textureLoader.ToTexture();
-            if (texture is UnityTexture2D native)
-            {
-                native.PixelRows = textureLoader switch
-                {
-                    TgaTextureLoader => TexturePixelRows.TopDown,
-                    BmpTextureLoader => TexturePixelRows.BottomUp,
-                    DxtTextureLoader => TexturePixelRows.DdsFileOrder,
-                    _ => TexturePixelRows.Unspecified
-                };
-            }
-            return texture;
+            return textureLoader.ToTexture();
         }
     }
 }

@@ -1,8 +1,7 @@
-// ---------------------------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------------------------
 //  Copyright (c) 2021-2025, Jiaqi (0x7c13) Liu. All rights reserved.
 //  See LICENSE file in the project root for license information.
 // ---------------------------------------------------------------------------------------------
-// Ported from upstream PAL3.Unity (Engine/DataLoader).
 
 namespace Engine.DataLoader
 {
@@ -42,7 +41,7 @@ namespace Engine.DataLoader
 
             for (int y = 0; y < height / 2; y++)
             {
-                for (int x = 0, o1 = y * width, o2 = (height - y - 1) * width; x < width; x++, o1++, o2++)
+                for(int x = 0, o1 = y * width, o2 = (height - y - 1) * width; x < width; x++, o1++, o2++)
                 {
                     (_image.ImageData[o1], _image.ImageData[o2]) = (_image.ImageData[o2], _image.ImageData[o1]);
                 }
@@ -78,6 +77,7 @@ namespace Engine.DataLoader
             finally
             {
                 ArrayPool<byte>.Shared.Return(rawRgbaDataBuffer);
+                _image = null;
             }
         }
     }

@@ -40,11 +40,23 @@ namespace Engine.Core.Implementation
 
         public ITransform Transform { get { _transform ??= new UETransform(_actor); return _transform; } }
 
-        public void SetParent(IGameEntity parent, bool worldStays)
+        public void SetParent(IGameEntity? parent, bool worldStays)
         {
-            if (parent is not UEGameEntity ue) return;
+            if (parent == null || parent is UEGameEntity)
+                TrySetParent((UEGameEntity?)parent, worldStays);
+        }
+
+        public bool TrySetParent(UEGameEntity? parent, bool worldStays)
+        {
+            if (IsNativeObjectDisposed || parent?.IsNativeObjectDisposed == true) return false;
+            if (parent == null)
+            {
+                var detachRule = worldStays ? EDetachmentRule.KeepWorld : EDetachmentRule.KeepRelative;
+                _actor.DetachFromActor(detachRule, detachRule, detachRule);
+                return _actor.AttachParentActor == null;
+            }
             var rule = worldStays ? EAttachmentRule.KeepWorld : EAttachmentRule.KeepRelative;
-            _actor.AttachToActor(ue._actor, new FName("None"), rule, rule, rule, false);
+            return _actor.AttachToActor(parent._actor, new FName("None"), rule, rule, rule, false);
         }
 
         public T AddComponent<T>() where T : class { if (!typeof(UActorComponent).IsAssignableFrom(typeof(T))) throw new ArgumentException(typeof(T).Name); return (T)AddComponentInternal(typeof(T)); }

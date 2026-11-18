@@ -1,4 +1,4 @@
-﻿// ---------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------
 //  Copyright (c) 2021-2025, Jiaqi (0x7c13) Liu. All rights reserved.
 //  See LICENSE file in the project root for license information.
 // ---------------------------------------------------------------------------------------------
@@ -13,8 +13,7 @@ namespace Engine.Logging
         public static void Log(string message, [CallerFilePath] string callerFilePath = "")
         {
             string callerClassName = Path.GetFileNameWithoutExtension(callerFilePath);
-            string line = $"[{callerClassName}] {message}";
-            UnityEngine.Debug.Log(line);
+            UnityEngine.Debug.Log($"[{callerClassName}] {message}");
         }
 
         public static void LogWarning(string message, [CallerFilePath] string callerFilePath = "")

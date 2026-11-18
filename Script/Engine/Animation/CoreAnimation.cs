@@ -2,12 +2,6 @@
 //  Copyright (c) 2021-2025, Jiaqi (0x7c13) Liu. All rights reserved.
 //  See LICENSE file in the project root for license information.
 // ---------------------------------------------------------------------------------------------
-// Restored to the upstream IEnumerator coroutine form (an earlier port pass had
-// converted these to async Task / await Task.Yield — those continuations ran on
-// the UE task-graph game-thread queue, which can execute inside the engine's
-// PostTickComponentUpdate phase; transform/component writes from there hit
-// "Assertion failed: !bPostTickComponentUpdate" (LevelTick.cpp). Coroutines run
-// inside our TickAll instead, which is a normal actor-tick context.)
 
 namespace Engine.Animation
 {
@@ -90,6 +84,7 @@ namespace Engine.Animation
             {
                 onValueChanged?.Invoke(to);
             }
+            yield return null;
         }
 
         public static IEnumerator MoveAsync(this ITransform target,
@@ -109,10 +104,8 @@ namespace Engine.Animation
                 yield return null;
             }
 
-            if (!target.IsNativeObjectDisposed && !cancellationToken.IsCancellationRequested)
-            {
-                target.Position = toPosition;
-            }
+            if (!target.IsNativeObjectDisposed && !cancellationToken.IsCancellationRequested) target.Position = toPosition;
+            yield return null;
         }
 
         public static IEnumerator ShakeAsync(this ITransform target,
@@ -135,6 +128,7 @@ namespace Engine.Animation
             }
 
             if (!target.IsNativeObjectDisposed) target.LocalPosition = originalPosition;
+            yield return null;
         }
 
         public static IEnumerator OrbitAroundCenterPointAsync(this ITransform target,
@@ -149,7 +143,6 @@ namespace Engine.Animation
             Quaternion startRotation = target.Rotation;
 
             float timePast = 0f;
-            int _probeFrame = 0;
             while (timePast < duration && !target.IsNativeObjectDisposed && !cancellationToken.IsCancellationRequested)
             {
                 Quaternion newRotation = Quaternion.Slerp(startRotation, toRotation,
@@ -157,15 +150,6 @@ namespace Engine.Animation
 
                 Vector3 direction = (newRotation * Vector3.forward).normalized;
                 Vector3 newPosition = centerPoint + direction * -(distance + (timePast / duration) * distanceDelta);
-
-                // Orbit probe: pin down mid-flight pose vs endpoints (camera dips
-                // below the floor during horizontal orbits despite endpoints being OK).
-                if ((_probeFrame++ % 20) == 0)
-                {
-                    UnityEngine.Debug.Log($"[OrbitProbe] t={timePast:F2}/{duration} "
-                        + $"startE={startRotation.eulerAngles} toE={toRotation.eulerAngles} "
-                        + $"curE={newRotation.eulerAngles} dir={direction} pos={newPosition}");
-                }
 
                 target.SetPositionAndRotation(newPosition, newRotation);
 
@@ -178,6 +162,8 @@ namespace Engine.Animation
                 Vector3 newPosition = centerPoint + (toRotation * Vector3.forward).normalized * -(distance + distanceDelta);
                 target.SetPositionAndRotation(newPosition, toRotation);
             }
+
+            yield return null;
         }
 
         public static IEnumerator RotateAsync(this ITransform target,
@@ -200,10 +186,8 @@ namespace Engine.Animation
                 yield return null;
             }
 
-            if (!target.IsNativeObjectDisposed && !cancellationToken.IsCancellationRequested)
-            {
-                target.Rotation = toRotation;
-            }
+            if (!target.IsNativeObjectDisposed && !cancellationToken.IsCancellationRequested) target.Rotation = toRotation;
+            yield return null;
         }
     }
 }

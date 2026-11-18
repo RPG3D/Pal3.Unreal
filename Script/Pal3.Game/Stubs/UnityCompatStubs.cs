@@ -882,6 +882,8 @@ namespace UnityEngine.Rendering.PostProcessing
 
 namespace Engine.Renderer
 {
+    using global::Pal3.Game.Data;
+
     /// <summary>
     /// Static-mesh renderer stub. The full Render(...) surface mirrors the call shape in
     /// CvdModelRenderer so the ported mesh pipeline compiles; real UE rendering is deferred.
@@ -893,7 +895,7 @@ namespace Engine.Renderer
     /// ignored for now - UE's default material is used (texture pipeline is a later
     /// phase). This is what makes the PAL3 level visible at all.
     /// </summary>
-    public class StaticMeshRenderer : Engine.Core.Implementation.IUeStubComponent
+    public class StaticMeshRenderer : Engine.Core.Implementation.IUeStubComponent, IDisposable
     {
         public bool receiveShadows;
         public bool ReceiveShadows { get => receiveShadows; set => receiveShadows = value; }
@@ -904,6 +906,8 @@ namespace Engine.Renderer
         private UnrealSharp.ProceduralMeshComponent.UProceduralMeshComponent? _mesh;
         private UnityEngine.Mesh? _animatedMesh;
         private UnityEngine.Bounds? _localBounds;
+        private UnityMaterial? _mv3Material;
+        private Action? _onMeshBindingChanged;
 
         // Default lit material for every section: the ported game's own materials are
         // still stubs, and UE skips sections whose material is null.
@@ -1015,6 +1019,8 @@ namespace Engine.Renderer
             }
 
             var ueVertices = new UnrealSharp.CoreUObject.FVector[vertexCount];
+            UnityMaterial? modelMaterial = materials is { Length: > 0 } ? materials[0] as UnityMaterial : null;
+            Action? meshBindingChanged = null;
             void CopyVertices(UnityEngine.Vector3[] source)
             {
                 for (int i = 0; i < vertexCount; i++)
@@ -1068,13 +1074,17 @@ namespace Engine.Renderer
 
                 var uv0 = new System.Collections.Generic.List<UnrealSharp.CoreUObject.FVector2D>(
                     hasUv0 ? vertexCount : 0);
-                if (hasUv0)
+                bool flipV = modelMaterial?.FlipMainTextureV == true;
+                void CopyMainTextureUvs()
                 {
+                    if (!hasUv0) return;
+                    uv0.Clear();
                     foreach (UnityEngine.Vector2 uv in mainTextureUvs.uvs)
                     {
-                        uv0.Add(new UnrealSharp.CoreUObject.FVector2D(uv.x, uv.y));
+                        uv0.Add(new UnrealSharp.CoreUObject.FVector2D(uv.x, TextureCoordinates.ConvertV(uv.y, flipV)));
                     }
                 }
+                CopyMainTextureUvs();
 
                 var uv1 = new System.Collections.Generic.List<UnrealSharp.CoreUObject.FVector2D>(
                     hasUv1 ? vertexCount : 0);
@@ -1100,6 +1110,30 @@ namespace Engine.Renderer
                 UnrealSharp.SharpDemo.UPal3DebugOverlay.CreateProceduralSection(
                     _mesh, 0, ueVertices, ueTriangles, ueNormals, uv0, uv1, !isDynamic);
                 ++UploadCount;
+                if (modelMaterial is { UsesMv3TextureCoordinates: true } mv3Material)
+                {
+                    var meshComponent = _mesh;
+                    var currentMaterial = mv3Material.UeMaterial;
+                    meshBindingChanged = () =>
+                    {
+                        if (_mesh != meshComponent || !UnrealSharp.CoreUObject.UObjectExtensions.IsValid(meshComponent))
+                            return;
+                        if (hasUv0 && flipV != mv3Material.FlipMainTextureV)
+                        {
+                            flipV = mv3Material.FlipMainTextureV;
+                            CopyMainTextureUvs();
+                            UnrealSharp.SharpDemo.UPal3DebugOverlay.CreateProceduralSection(
+                                meshComponent, 0, ueVertices, ueTriangles, ueNormals, uv0, uv1, !isDynamic);
+                            ++RenderCalls;
+                            ++UploadCount;
+                        }
+                        if (currentMaterial != mv3Material.UeMaterial && mv3Material.UeMaterial is { } updatedMaterial)
+                        {
+                            meshComponent.SetMaterial(0, updatedMaterial);
+                            currentMaterial = updatedMaterial;
+                        }
+                    };
+                }
                 UnrealSharp.CoreUObject.FVector actorPos = _actor.ActorLocation;
                 foreach (UnrealSharp.CoreUObject.FVector p in ueVertices)
                 {
@@ -1143,6 +1177,13 @@ namespace Engine.Renderer
             }
 
             UnityEngine.Mesh result = new();
+            DetachMaterial();
+            if (meshBindingChanged != null)
+            {
+                _mv3Material = modelMaterial!;
+                _onMeshBindingChanged = meshBindingChanged;
+                _mv3Material.MeshBindingChanged += _onMeshBindingChanged;
+            }
             _animatedMesh = isDynamic ? result : null;
             _localBounds = isDynamic ? null : CalculateLocalBounds(vertices);
             if (isDynamic)
@@ -1174,12 +1215,22 @@ namespace Engine.Renderer
             return _defaultMaterial;
         }
 
+        private void DetachMaterial()
+        {
+            if (_mv3Material != null) _mv3Material.MeshBindingChanged -= _onMeshBindingChanged;
+            _mv3Material = null;
+            _onMeshBindingChanged = null;
+        }
+
         public void Dispose()
         {
-            if (_mesh != null && _actor != null)
+            DetachMaterial();
+            if (UnrealSharp.CoreUObject.UObjectExtensions.IsValid(_mesh)
+                && UnrealSharp.CoreUObject.UObjectExtensions.IsValid(_actor))
             {
-                _mesh.DestroyComponent(_actor);
+                _mesh!.DestroyComponent(_actor!);
             }
+            _animatedMesh?.Destroy();
             _mesh = null;
             _animatedMesh = null;
             _localBounds = null;
@@ -1209,131 +1260,6 @@ namespace Engine.Services
         bool TryGetValue(string name, out ITexture2D texture);
         bool TryGetValue(string name, out (ITexture2D texture, bool hasAlphaChannel) result);
         void DisposeAll();
-    }
-}
-
-namespace Engine.Core.Implementation
-{
-    // Base class for managed game-entity scripts (replaces MonoBehaviour lifecycle).
-    // Real UE impl: drive via AActor tick. Members expanded as usage demands.
-    public class GameEntityScript
-    {
-        public Engine.Core.Abstraction.IGameEntity GameEntity { get; set; }
-        public bool enabled = true;
-
-        /// <summary>
-        /// The transform of the wrapped game entity. Mirrors UnityEngine.Component.transform
-        /// (the port uses the PascalCase member on the script, resolved to ITransform).
-        /// </summary>
-        public Engine.Core.Abstraction.ITransform Transform => GameEntity.Transform;
-
-        /// <summary>
-        /// Lowercase UnityEngine-style transform. Returns a stub UnityEngine.Transform so
-        /// `foreach (Transform child in transform)` compiles; child enumeration is empty.
-        /// Use <see cref="Transform"/> for real ITransform access.
-        /// </summary>
-        public UnityEngine.Transform transform => _stubTransform ??= new UnityEngine.Transform();
-        private UnityEngine.Transform? _stubTransform;
-
-        /// <summary>
-        /// The wrapped game entity itself (UnityEngine.GameObject analog).
-        /// </summary>
-        public Engine.Core.Abstraction.IGameEntity gameObject => GameEntity;
-
-        /// <summary>
-        /// Coroutine runner (Unity-style IEnumerator coroutines). Fed into the
-        /// frame-driven <see cref="Engine.Core.Implementation.CoroutineScheduler"/>,
-        /// pumped by the UE driver actor (APal3Driver.Tick).
-        /// </summary>
-        public UnityEngine.Coroutine StartCoroutine(System.Collections.IEnumerator routine)
-            => Engine.Core.Implementation.CoroutineScheduler.Run(routine, this);
-
-        public UnityEngine.Coroutine StartCoroutine(System.Threading.Tasks.Task task)
-            => Engine.Core.Implementation.CoroutineScheduler.Run(WaitForTask(task), this);
-
-        private static System.Collections.IEnumerator WaitForTask(System.Threading.Tasks.Task task)
-        {
-            while (!task.IsCompleted) yield return null;
-        }
-
-        public void StopCoroutine(System.Collections.IEnumerator routine)
-            => Engine.Core.Implementation.CoroutineScheduler.Stop(routine);
-
-        public void StopCoroutine(UnityEngine.Coroutine routine)
-            => Engine.Core.Implementation.CoroutineScheduler.Stop(routine);
-
-        public void StopAllCoroutines()
-            => Engine.Core.Implementation.CoroutineScheduler.StopAll(this);
-
-        /// <summary>
-        /// MonoBehaviour-style component lookup on the wrapped game entity.
-        /// </summary>
-        public T[] GetComponentsInChildren<T>() where T : class =>
-            GameEntity?.GetComponentsInChildren<T>() ?? Array.Empty<T>();
-
-        /// <summary>
-        /// Destroys the wrapped game entity. Mirrors UnityEngine.Object.Destroy.
-        /// </summary>
-        public void Destroy() => GameEntity?.Destroy();
-
-        protected virtual void Init() { }
-        protected virtual void OnEnableGameEntity() { }
-        protected virtual void OnDisableGameEntity() { }
-        protected virtual void OnUpdateGameEntity(float deltaTime) { }
-        protected virtual void OnLateUpdateGameEntity(float deltaTime) { }
-        protected virtual void OnFixedUpdateGameEntity(float deltaTime) { }
-        protected virtual void OnCollisionEnterGameEntity(Engine.Core.Abstraction.IGameEntity other) { }
-        protected virtual void OnCollisionExitGameEntity(Engine.Core.Abstraction.IGameEntity other) { }
-        protected virtual void OnTriggerEnterGameEntity(Engine.Core.Abstraction.IGameEntity other) { }
-        protected virtual void OnTriggerExitGameEntity(Engine.Core.Abstraction.IGameEntity other) { }
-
-        // Internal bridges letting GameEntityScriptRuntime (same assembly) invoke the
-        // protected virtuals above only when a derived type actually overrides them.
-        private bool? _overridesOnEnable, _overridesOnUpdate, _overridesOnLateUpdate, _overridesOnDisable;
-
-        private bool IsOverridden(string methodName)
-        {
-            System.Reflection.MethodInfo? method = GetType().GetMethod(methodName,
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            // Compare the DECLARING type of the found (most-derived) method with the base
-            // class. Comparing GetBaseDefinition() instead would always yield the base
-            // declaration, i.e. the check was permanently false and no virtual lifecycle
-            // hook (OnEnable/OnUpdate/OnLateUpdate/OnDisable) ever reached a subclass.
-            return method != null && method.DeclaringType != typeof(GameEntityScript);
-        }
-
-        internal void InvokeVirtualOnEnable()
-        {
-            _overridesOnEnable ??= IsOverridden(nameof(OnEnableGameEntity));
-            if (_overridesOnEnable == true)
-            {
-                UnityEngine.Debug.Log($"[Lifecycle] OnEnableGameEntity -> {GetType().Name}");
-                OnEnableGameEntity();
-            }
-        }
-
-        internal void InvokeVirtualOnUpdate(float deltaTime)
-        {
-            _overridesOnUpdate ??= IsOverridden(nameof(OnUpdateGameEntity));
-            if (_overridesOnUpdate == true) OnUpdateGameEntity(deltaTime);
-        }
-
-        internal void InvokeVirtualOnLateUpdate(float deltaTime)
-        {
-            _overridesOnLateUpdate ??= IsOverridden(nameof(OnLateUpdateGameEntity));
-            if (_overridesOnLateUpdate == true) OnLateUpdateGameEntity(deltaTime);
-        }
-
-        internal void InvokeVirtualOnDisable()
-        {
-            _overridesOnDisable ??= IsOverridden(nameof(OnDisableGameEntity));
-            if (_overridesOnDisable == true) OnDisableGameEntity();
-        }
-    }
-
-    public class TickableGameEntityScript : GameEntityScript
-    {
-        // Tickable variant - real UE impl drives tick via AActor.
     }
 }
 
@@ -1520,7 +1446,6 @@ namespace Pal3.Game.Data
         public bool IsNativeObjectDisposed => false;
         public UnityEngine.Rect TextureRect { get; }
         public UnityEngine.Vector2 Pivot { get; }
-        internal bool SourceRowsBottomUp { get; set; }
 
         public UnitySprite(ITexture2D texture, UnityEngine.Rect textureRect, UnityEngine.Vector2 pivot)
         {
@@ -1531,9 +1456,12 @@ namespace Pal3.Game.Data
 
         /// <summary>Normalizes a bottom-origin sprite rectangle to the decoded texture's UV coordinates.</summary>
         public (float Left, float Top, float Right, float Bottom) GetTextureUVs()
+            => GetTextureUVs(rowsBottomUp: false);
+
+        internal (float Left, float Top, float Right, float Bottom) GetTextureUVs(bool rowsBottomUp)
         {
             var rect = TextureRect;
-            bool flip = !SourceRowsBottomUp;
+            bool flip = !rowsBottomUp;
             return (rect.xMin / Texture.Width, TextureCoordinates.ConvertV(rect.yMax / Texture.Height, flip),
                 rect.xMax / Texture.Width, TextureCoordinates.ConvertV(rect.yMin / Texture.Height, flip));
         }
@@ -1553,6 +1481,11 @@ namespace Pal3.Game.Data
         private readonly UnityEngine.Material? _material;
         private readonly string _shaderName = "";
         public UnrealSharp.Engine.UMaterialInterface? UeMaterial { get; private set; }
+        internal bool UsesMv3TextureCoordinates { get; set; }
+        internal bool FlipMainTextureV { get; set; }
+        internal event Action? MeshBindingChanged;
+
+        internal void NotifyMeshBindingChanged() => MeshBindingChanged?.Invoke();
 
         public UnityMaterial(UnityEngine.Material material, bool isClone) { _material = material; }
 
@@ -1584,7 +1517,7 @@ namespace Pal3.Game.Data
 
         public void SetInt(int propertyId, int value)
         {
-            string? name = Engine.Services.ShaderUtility.GetPropertyNameById(propertyId);
+            string? name = UnityEngine.Shader.GetPropertyName(propertyId);
             if (name == "_BlendDstFactor")
             {
                 // Unity BlendMode: One = 1 -> additive (InvertColorBlend), 
@@ -1643,7 +1576,7 @@ namespace Pal3.Game.Data
         public void SetFloat(int propertyId, float value)
         {
             if (UeMaterial == null) return;
-            switch (Engine.Services.ShaderUtility.GetPropertyNameById(propertyId))
+            switch (UnityEngine.Shader.GetPropertyName(propertyId))
             {
                 case "_HasShadowTex":
                     UnrealSharp.SharpDemo.UPal3AssetHelper.SetScalarParameter(
@@ -1667,7 +1600,7 @@ namespace Pal3.Game.Data
         public void SetColor(int propertyId, global::Pal3.Core.Primitives.Color value)
         {
             if (UeMaterial == null) return;
-            if (Engine.Services.ShaderUtility.GetPropertyNameById(propertyId) != "_TintColor") return;
+            if (UnityEngine.Shader.GetPropertyName(propertyId) != "_TintColor") return;
             _tint = value;
             ApplyTint();
         }
@@ -1758,7 +1691,7 @@ namespace Pal3.Game.Data
 
             string? name = propertyId == 0
                 ? "_MainTex"
-                : Engine.Services.ShaderUtility.GetPropertyNameById(propertyId) ?? "_MainTex";
+                : UnityEngine.Shader.GetPropertyName(propertyId) ?? "_MainTex";
 
             string? parameter = name switch
             {

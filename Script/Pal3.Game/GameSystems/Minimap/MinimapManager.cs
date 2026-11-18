@@ -87,11 +87,8 @@ namespace Pal3.Game.GameSystems.Minimap
                 _currentLayerIndex = command.LayerIndex;
                 _miniMapImage.sprite = _miniMapSprites[_currentLayerIndex].NativeObject as Sprite;
 
-                if (_miniMapWidth > 0f)
-                {
-                    float scale = MathF.Max(layer.Width, layer.Height) / _miniMapWidth * MINIMAP_SCALE;
-                    _miniMapImage.rectTransform.localScale = new Vector3(scale, scale, 1f);
-                }
+                float scale = MathF.Max(layer.Width, layer.Height) / _miniMapWidth * MINIMAP_SCALE;
+                _miniMapImage.rectTransform.localScale = new Vector3(scale, scale, 1f);
             }
 
             // NOTE: the texture is flipped vertically compared to the tilemap space

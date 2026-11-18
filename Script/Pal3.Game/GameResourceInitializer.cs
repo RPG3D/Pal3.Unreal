@@ -94,7 +94,7 @@ namespace Pal3.Game
             int codepage = gameSettings.Language == Language.SimplifiedChinese ? 936 : 950;
 
             // Init file system
-            Queue<string> gameDataFolderSearchLocations = new(gameSettings.GetGameDataFolderSearchLocations());
+            Queue<string> gameDataFolderSearchLocations = new(Pal3Boot.GetGameDataSearchLocations(gameSettings));
             ICpkFileSystem cpkFileSystem = null;
 
             if (gameDataFolderSearchLocations.Count == 0)
@@ -190,7 +190,7 @@ namespace Pal3.Game
             ServiceLocator.Instance.Register<ITextureFactory>(textureFactory);
 
             // Init TextureLoaderFactory
-            TextureLoaderFactory textureLoaderFactory = new (textureFactory);
+            ITextureLoaderFactory textureLoaderFactory = new UeTextureLoaderFactory(textureFactory);
             ServiceLocator.Instance.Register<ITextureLoaderFactory>(textureLoaderFactory);
 
             // Init MaterialFactory
@@ -198,15 +198,16 @@ namespace Pal3.Game
             ServiceLocator.Instance.Register<IMaterialFactory>(materialFactory);
 
             // Init material factories
-            IMaterialManager unlitMaterialManager = new UnlitMaterialManager(materialFactory);
+            IMaterialManager unlitMaterialManager =
+                new Engine.Renderer.UeModelMaterialManager(new UnlitMaterialManager(materialFactory));
 
             IMaterialManager litMaterialManager = null;
             // Only create litMaterialFactory when toon materials are present
             if (_toonOpaqueMaterial != null && _toonTransparentMaterial != null)
             {
-                litMaterialManager = new LitMaterialManager(materialFactory,
+                litMaterialManager = new Engine.Renderer.UeModelMaterialManager(new LitMaterialManager(materialFactory,
                     new UnityMaterial(_toonOpaqueMaterial, isClone: false),
-                    new UnityMaterial(_toonTransparentMaterial, isClone: false));
+                    new UnityMaterial(_toonTransparentMaterial, isClone: false)));
             }
 
             // Pre-allocate material pool, since it is very costly to create new materials at runtime

@@ -16,7 +16,7 @@ namespace UnityEngine
         private GameObject? ComponentHost => this as GameObject ?? _gameObject;
         protected internal void BindGameObject(GameObject owner) => _gameObject = owner;
         private Transform? _transform;
-        public Transform transform => _transform ??= new Transform();
+        public Transform transform => ComponentHost?.HostedTransform ?? (_transform ??= new Transform());
         public virtual bool enabled { get; set; } = true;
 
         // Lazily-created attached stub components (GetComponent<T> analog). In
@@ -64,13 +64,13 @@ namespace UnityEngine
 
     public class Transform : Component
     {
-        public Vector3 position;
-        public Vector3 localPosition;
-        public Quaternion rotation;
-        public Vector3 localScale = Vector3.one;
-        public Vector3 forward => Vector3.forward;
-        public void SetParent(Transform parent, bool worldPositionStays = true) { }
-        public void LookAt(Vector3 target) { }
+        public virtual Vector3 position { get; set; }
+        public virtual Vector3 localPosition { get; set; }
+        public virtual Quaternion rotation { get; set; }
+        public virtual Vector3 localScale { get; set; } = Vector3.one;
+        public virtual Vector3 forward => Vector3.forward;
+        public virtual void SetParent(Transform? parent, bool worldPositionStays = true) { }
+        public virtual void LookAt(Vector3 target) { }
         public Vector3 TransformPoint(Vector3 p) => p;
         public Vector3 InverseTransformPoint(Vector3 p) => p;
 
@@ -106,15 +106,20 @@ namespace UnityEngine
         private Func<Type, object?>? _addHostedComponent;
         private Func<Type, object?>? _findHostedComponent;
         private Func<Type, IEnumerable<object>>? _findHostedChildren;
+        private Action? _destroyHost;
+        internal Transform? HostedTransform { get; private set; }
 
         // UnrealSharp portability. Bind to the same component registry that
         // drives the entity's MonoBehaviour callbacks on the game thread.
         public void BindComponentHost(Func<Type, object?> add, Func<Type, object?> find,
-            Func<Type, IEnumerable<object>> findInChildren)
+            Func<Type, IEnumerable<object>> findInChildren, Transform transform, Action destroy)
         {
             _addHostedComponent = add;
             _findHostedComponent = find;
             _findHostedChildren = findInChildren;
+            _destroyHost = destroy;
+            HostedTransform = transform;
+            BindComponent(transform);
         }
 
         public void ReleaseComponentHost()
@@ -123,7 +128,12 @@ namespace UnityEngine
             _addHostedComponent = static _ => null;
             _findHostedComponent = static _ => null;
             _findHostedChildren = static _ => Array.Empty<object>();
+            _destroyHost = null;
         }
+
+        public void BindComponent(Component component) => component.BindGameObject(this);
+
+        public new void Destroy() => _destroyHost?.Invoke();
 
         internal bool TryFindHostedComponent(Type type, out object? component)
         {
@@ -140,7 +150,7 @@ namespace UnityEngine
             if (!typeof(Component).IsAssignableFrom(type) || type.IsAbstract)
                 throw new ArgumentException("Expected a concrete Unity component type.", nameof(type));
             var component = (_addHostedComponent != null ? _addHostedComponent(type) : Activator.CreateInstance(type)) as Component;
-            component?.BindGameObject(this);
+            if (component != null) BindComponent(component);
             return component;
         }
 
@@ -161,8 +171,6 @@ namespace UnityEngine
         public Color GetColor(string n) => Color.white;
         public Texture? GetTexture(string n) => null;
     }
-
-    public class Shader { public string name = ""; public static Shader? Find(string n) => null; }
 
     public class Mesh
     {

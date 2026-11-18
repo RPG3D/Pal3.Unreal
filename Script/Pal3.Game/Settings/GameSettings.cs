@@ -12,7 +12,6 @@ namespace Pal3.Game.Settings
     using System.Reflection;
     using System.Text;
     using Constants;
-    using Core.Contract.Constants;
     using Core.Utilities;
     using Engine.Logging;
     using Engine.Utilities;
@@ -291,16 +290,6 @@ namespace Pal3.Game.Settings
             if (!string.IsNullOrEmpty(GameDataFolderPath))
             {
                 yield return GameDataFolderPath;
-            }
-
-            if (Pal3Boot.CanSelectPal3Folder)
-            {
-                string sandboxPath = Pal3Boot.GetIosSandboxDataPath();
-                if (!string.Equals(sandboxPath, GameDataFolderPath, StringComparison.Ordinal) &&
-                    File.Exists(Path.Combine(sandboxPath, FileConstants.BaseDataCpkFileRelativePath)))
-                {
-                    yield return sandboxPath;
-                }
             }
 
             // Try current executable directory on Windows and Linux

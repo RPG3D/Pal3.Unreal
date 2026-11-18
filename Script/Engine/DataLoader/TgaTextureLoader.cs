@@ -2,7 +2,6 @@
 //  Copyright (c) 2021-2025, Jiaqi (0x7c13) Liu. All rights reserved.
 //  See LICENSE file in the project root for license information.
 // ---------------------------------------------------------------------------------------------
-// Ported from upstream PAL3.Unity (Engine/DataLoader).
 
 namespace Engine.DataLoader
 {
@@ -55,28 +54,6 @@ namespace Engine.DataLoader
                     break;
                 default:
                     throw new Exception("TGA texture had non 32/24 bit depth");
-            }
-
-            // TGA image descriptor byte 17, bit 5: 0 = bottom-left origin (rows are
-            // stored bottom-up). The avatar portraits use that layout, which rendered
-            // them upside down in the HUD until this flip was added.
-            if ((data[17] & 0x20) == 0)
-            {
-                FlipRowsVertically(_rawRgbaDataBuffer, _width, _height);
-            }
-        }
-
-        private static void FlipRowsVertically(byte[] rgba, int width, int height)
-        {
-            int rowBytes = width * 4;
-            var temp = new byte[rowBytes];
-            for (int y = 0; y < height / 2; y++)
-            {
-                int top = y * rowBytes;
-                int bottom = (height - 1 - y) * rowBytes;
-                Buffer.BlockCopy(rgba, top, temp, 0, rowBytes);
-                Buffer.BlockCopy(rgba, bottom, rgba, top, rowBytes);
-                Buffer.BlockCopy(temp, 0, rgba, bottom, rowBytes);
             }
         }
 

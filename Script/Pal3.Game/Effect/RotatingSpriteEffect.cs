@@ -52,7 +52,6 @@ namespace Pal3.Game.Effect
             }
 
             ISprite sprite = texture.CreateSprite(0f, 0f, texture.Width, texture.Height, 0.5f, 0.5f);
-            if (sprite is UnitySprite groundSprite) groundSprite.SourceRowsBottomUp = TextureCoordinates.HasBottomUpEffectRows(texture);
             _spriteRenderer = _root.AddComponent<AnimatedBillboardRenderer>();
             _spriteRenderer.ShowGroundSprite(sprite, useAdditiveBlend: !hasAlphaChannel);
         }

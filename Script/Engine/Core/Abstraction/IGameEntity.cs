@@ -18,17 +18,6 @@ namespace Engine.Core.Abstraction
         public string Name { get; set; }
 
         /// <summary>
-        /// UnityEngine-style lowercase alias for <see cref="Name"/>. Default interface
-        /// implementation so existing IGameEntity implementors (e.g. stub GameEntity)
-        /// keep compiling without declaring it.
-        /// </summary>
-        public string name
-        {
-            get => Name;
-            set => Name = value;
-        }
-
-        /// <summary>
         /// Gets or sets a value indicating whether the game entity is static.
         /// </summary>
         public bool IsStatic { get; set; }

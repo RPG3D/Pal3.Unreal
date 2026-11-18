@@ -31,7 +31,7 @@ namespace UnityEngine
 
         public bool isActiveAndEnabled => _owner != null && !_destroyed && enabled;
 
-        public void AttachToGameEntity(IGameEntity owner, GameObject gameObject)
+        public virtual void AttachToGameEntity(IGameEntity owner, GameObject gameObject)
         {
             if (_owner != null || _destroyed) throw new InvalidOperationException("The component is already attached or destroyed.");
             _owner = owner ?? throw new ArgumentNullException(nameof(owner));
@@ -51,8 +51,10 @@ namespace UnityEngine
         public Coroutine StartCoroutine(IEnumerator routine)
         {
             if (_owner == null || _destroyed) throw new InvalidOperationException("Attach the component before starting a coroutine.");
-            return CoroutineScheduler.RunImmediately(routine, this);
+            return StartAttachedCoroutine(routine);
         }
+
+        protected virtual Coroutine StartAttachedCoroutine(IEnumerator routine) => CoroutineScheduler.RunImmediately(routine, this);
 
         public void StopCoroutine(IEnumerator routine) => CoroutineScheduler.Stop(routine);
         public void StopCoroutine(Coroutine routine) => CoroutineScheduler.Stop(routine);

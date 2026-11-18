@@ -6,15 +6,17 @@
 > 本文只做设计与清单，不含代码改动。
 > 依据：对上游 `D:\Code\PAL3.Unity\Assets\Scripts` 与移植侧 `D:\UEProject\SharpDemo\Script` 的实测统计（2026-11-06）。
 
-## 2026-11-15 实施现状
+## 实施现状
 
-Unity 工作树 `D:/Code/PAL3.Unity-UnrealSharp` 使用 `codex/unrealsharp-portability`，基于原版 `cfed96a2`。首次按原版 Git 跟踪的 C# 路径对比，统一行尾后，`Pal3.Core` 有 290 个文件一致、2 个文件存在差异。`Pal3.Game` 有 138 个文件一致、79 个文件存在差异、2 个原版路径在 UE 侧缺失。
-
-该工作树的本地验证版本为 Unity `7000.0.0a12`。项目同时带上对应的 URP、Input System 和导入配置。GBK 注册与桌面 URP 分辨率缩放在 Unity 的 `Engine` 模块处理。打开 `Assets/Scenes/Game.unity` 进入 Play Mode 可验证游戏启动。编码 DLL 来自 Microsoft 的 [System.Text.Encoding.CodePages 4.5.1](https://www.nuget.org/packages/System.Text.Encoding.CodePages/4.5.1)，许可与声明位于 Unity 工作树的 `Notes/ThirdParty/CodePages`。
+Unity 工作树 `D:/Code/PAL3.Unity-UnrealSharp` 使用 `codex/unrealsharp-portability`。工程、包版本和输入绑定对齐上游 `cfed96a2` 的 Unity `6000.5.0f1` 配置。
 
 第一批在 `Engine.Coroutine` 共享 `CoroutineYieldInstruction.cs`。Unity 后端返回 Unity 自带的 yield 指令。UE 后端由帧调度器按游戏时间等待，同一个时长指令每次 yield 都重新开始。两边调用方继续使用同一套接口。
 
 UE 的托管实体可以用 `IGameEntity.AddComponent<T>()` 挂载 `MonoBehaviour`。兼容层复用现有的 UE 帧驱动，处理初始化、启用与禁用、首帧 Start、Update、LateUpdate、销毁和协程停止。
+
+PAL3 的 UE 实体脚本通过 `GameEntityScript : MonoBehaviour` 接入这条生命周期。实体适配器负责提供已有的实体和变换。帧驱动按类型查找继承的私有回调，原版 `TickableGameEntityScript.cs` 可以直接驱动角色和场景组件的 Update 与 LateUpdate。固定物理步进和碰撞回调的对接仍由 UE 宿主决定。
+
+`GameEntityScript.cs` 与 Unity 6 移植分支共用。Unity 的组件和碰撞消息保存在其专用实现，UE 通过附着的宿主解析实体，并保留 PAL3 现有的协程首帧时序。已绑定的 `GameObject` 复用宿主的组件、根节点变换及销毁路径。
 
 后续一批在 UE 恢复了原版 `Pal3.Instance` 类型名，45 个业务文件可以逐字节共用。UnrealSharp 的类型注册代码通过 `global::` 解析完整名称，使生成代码能区分同名类型和命名空间。
 
@@ -22,14 +24,16 @@ UE 的托管实体向 `UnityEngine.GameObject` 绑定组件注册表，供 `AddC
 
 RC 的限时移动现在由 UE 输入桥通过现有的 `Movement` action 提供方向，原版移动逻辑负责寻路、朝向、动作和步声。停止时间按模拟帧取整。UE 的实体适配器也支持递归组件查找，供姿态诊断和网格边界查询使用。这一批恢复了 `PlayerGamePlayManager.cs`、`PlayerGamePlayManager.Movement.cs` 和 `VertexAnimationActorActionController.cs` 三个原版文件。
 
-UE 现在直接编译 Unity 7 分支生成的 `PlayerInputActions.cs`。原版火焰流程通过 `AnimatedBillboardRenderer` 使用 UE 实现的贴图区域、朝向镜头和逐帧播放。火焰业务文件与 Unity 侧只差缺帧时的空值防护。组件在实体销毁时释放自己的网格和临时材质，网格上传沿用按值传数组的入口。
+UE 直接编译 Unity 6 基线的 `PlayerInputActions.cs`、`TextureProviderBase.cs`、三种贴图解码器和 `ITextureFactory`。UE 的贴图加载适配器在上传前统一 TGA 行方向，并保留 BMP、DDS 的行序给渲染器。火焰和地面精灵的 UV 适配由 `AnimatedBillboardRenderer` 处理。火焰业务文件仍保留缺帧防护。组件在实体销毁时释放自己的网格和临时材质。
+
+UE 的 `Shader.PropertyToID` 为着色器参数分配进程内唯一 ID，材质适配器通过 ID 找回参数名。MV3 和 MSH 的材质适配器利用现有的模型类型和贴图行序，将 UV 转换放到网格上传时处理。MV3 换贴图时，只有 V 方向变化才重传网格。两边共用上游的 `ShaderUtility.cs`、`Mv3ModelRenderer.cs` 和 `SkeletalModelRenderer.cs`。
 
 ### 剩余差异的收敛方式
 
 | 范围 | 可行方案 | 验收重点 |
 |---|---|---|
 | 实体、输入和界面控件 | 优先给 UE wrapper 补业务实际调用的 Unity API。输入两边共用 `.inputactions` 的绑定定义，生成代码随各自 Input System 版本构建。 | 对比组件查询顺序、活动状态、输入释放和切图清理 |
-| 角色材质和 UV | 将 MV3 的纹理坐标约定迁到 UE 渲染适配层，可用既有 `RendererType.Mv3` 携带模型类型。 | 同场景对比 MV3 角色、CVD 景物和 POL 烘焙贴图。三类都会提交动态或静态网格，需要显式识别模型类型。 |
+| 场景材质和精灵 | 继续用模型类型和贴图行序隔离 UV 约定。地面旋转精灵可通过 `SpriteRenderer` 对接 UE。 | 对比 POL 的烘焙贴图和水面、CVD 景物，以及地面精灵的朝向和离地高度。 |
 | 音频、过场与界面呈现 | 共用命令、播放状态和等待条件。Unity 继续调用原生控件和播放器，UE 宿主提供 JSON UMG、音频实例与 Bink 转码。 | 跳过、播放失败、切图取消和资源回收 |
 | 分帧加载与存档 | 共用地图数据读取和存档命令。宿主分批创建资源，并在场景提交后恢复读档指令。 | 失败恢复、跨场景时序、旧存档兼容和读档期间的输入屏蔽 |
 | 脚本失败、交互和脚步声修复 | 这些差异直接修正了游戏行为。适合先在两端做同一回归，再把通用修复同步回共享源码。 | 剧情等待能结束、物件不可重复触发、脚步声请求能够取消 |

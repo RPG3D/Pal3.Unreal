@@ -15,7 +15,7 @@ namespace Engine.Renderer
 {
     // UnrealSharp portability. Implements the upstream billboard API using
     // a UE quad and the existing game-thread coroutine scheduler.
-    public sealed class AnimatedBillboardRenderer : GameEntityScript
+    public sealed class AnimatedBillboardRenderer : TickableGameEntityScript
     {
         private readonly record struct FrameGeometry(
             float Width, float Height, float PivotX, float PivotY,
@@ -109,7 +109,8 @@ namespace Engine.Renderer
             Vector2 pivot = unitySprite?.Pivot ?? new Vector2(0.5f, 0.5f);
             if (region.width <= 0f || region.height <= 0f) return;
 
-            var uv = unitySprite?.GetTextureUVs() ?? (Left: 0f, Top: 0f, Right: 1f, Bottom: 1f);
+            var uv = unitySprite?.GetTextureUVs(TextureCoordinates.HasBottomUpEffectRows(source))
+                ?? (Left: 0f, Top: 0f, Right: 1f, Bottom: 1f);
             var geometry = new FrameGeometry(region.width, region.height, pivot.x, pivot.y,
                 uv.Left, uv.Top, uv.Right, uv.Bottom);
             if (_geometry != geometry)

@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Engine.Core.Abstraction;
 using UnrealSharp.CoreUObject;
 using Engine.Services;
@@ -42,10 +43,11 @@ public static class GameEntityFactory
 
     public static IGameEntity Create(string name, IGameEntity? parent, bool worldPositionStays = false)
     {
-        var entity = Create(name);
-        if (parent != null)
+        var entity = new GameEntity(name);
+        if (parent != null && !entity.TrySetParent(parent, worldPositionStays))
         {
-            entity.SetParent(parent, worldPositionStays);
+            entity.Destroy();
+            throw new InvalidOperationException($"Could not attach entity '{name}' to its parent.");
         }
         return entity;
     }
@@ -64,6 +66,9 @@ public static class GameEntityFactory
 /// </summary>
 public sealed class GameEntity : IGameEntity
 {
+    // Keep the owner for a hosted GameObject, including after teardown.
+    // The weak key lets the pair be collected when the view is no longer used.
+    private static readonly ConditionalWeakTable<UnityEngine.GameObject, GameEntity> Owners = new();
     private readonly UnityEngine.GameObject _gameObject;
     private readonly Engine.Core.Implementation.UEGameEntity? _ue;
 
@@ -77,7 +82,7 @@ public sealed class GameEntity : IGameEntity
         if (_ue != null) Name = name;
     }
 
-    public GameEntity(UnityEngine.GameObject gameObject)
+    private GameEntity(UnityEngine.GameObject gameObject)
     {
         _gameObject = gameObject;
         Name = gameObject?.name ?? "";
@@ -89,6 +94,13 @@ public sealed class GameEntity : IGameEntity
         {
             _ue = Engine.Core.Implementation.UEGameEntityFactory.Wrap(actor) as Engine.Core.Implementation.UEGameEntity;
         }
+    }
+
+    internal static GameEntity FromGameObject(UnityEngine.GameObject gameObject)
+    {
+        var entity = Owners.GetValue(gameObject, static view => new GameEntity(view));
+        _ = entity.UnityGameObject;
+        return entity;
     }
 
     public string Name
@@ -134,11 +146,52 @@ public sealed class GameEntity : IGameEntity
             {
                 UeActor = _ue?.NativeObject as UnrealSharp.Engine.AActor
             };
+            _unityGameObject = gameObject;
+            Owners.GetValue(gameObject, _ => this);
+            gameObject.BindComponentHost(AddComponent, FindManagedComponent,
+                type => EnumerateComponentsInChildren(type), new HostedTransform(this), Destroy);
             if (_destroyed) gameObject.ReleaseComponentHost();
-            else gameObject.BindComponentHost(AddComponent, FindManagedComponent,
-                type => EnumerateComponentsInChildren(type));
-            return _unityGameObject = gameObject;
+            return gameObject;
         }
+    }
+
+    private sealed class HostedTransform(GameEntity entity) : UnityEngine.Transform
+    {
+        private GameEntity Entity => entity;
+
+        public override UnityEngine.Vector3 position
+        {
+            get => entity.Transform.Position;
+            set => entity.Transform.Position = value;
+        }
+
+        public override UnityEngine.Vector3 localPosition
+        {
+            get => entity.Transform.LocalPosition;
+            set => entity.Transform.LocalPosition = value;
+        }
+
+        public override UnityEngine.Quaternion rotation
+        {
+            get => entity.Transform.Rotation;
+            set => entity.Transform.Rotation = value;
+        }
+
+        public override UnityEngine.Vector3 localScale
+        {
+            get => entity.Transform.LocalScale;
+            set => entity.Transform.LocalScale = value;
+        }
+
+        public override UnityEngine.Vector3 forward => entity.Transform.Forward;
+
+        public override void SetParent(UnityEngine.Transform? parent, bool worldPositionStays = true)
+        {
+            if (parent == null) entity.SetParent(null, worldPositionStays);
+            else if (parent is HostedTransform host) entity.SetParent(host.Entity, worldPositionStays);
+        }
+
+        public override void LookAt(UnityEngine.Vector3 target) => entity.Transform.LookAt(target);
     }
 
     // Unity-style components with no managed/UE equivalent (StaticMeshRenderer,
@@ -203,8 +256,17 @@ public sealed class GameEntity : IGameEntity
         _ue?.Destroy();
     }
 
-    public void SetParent(IGameEntity parent, bool worldPositionStays)
+    public void SetParent(IGameEntity? parent, bool worldPositionStays)
+        => TrySetParent(parent, worldPositionStays);
+
+    internal bool TrySetParent(IGameEntity? parent, bool worldPositionStays)
     {
+        if (_destroyed || parent?.IsNativeObjectDisposed == true) return false;
+        for (var ancestor = parent as GameEntity; ancestor != null; ancestor = ancestor._parent)
+        {
+            if (ReferenceEquals(this, ancestor)) return false;
+        }
+
         // The UE side needs the parent's inner UEGameEntity: passing the composite
         // GameEntity made UEGameEntity.SetParent bail out ("parent is not UEGameEntity"),
         // so NO managed entity was ever attached to its parent actor. Scene geometry
@@ -216,17 +278,20 @@ public sealed class GameEntity : IGameEntity
             Engine.Core.Implementation.UEGameEntity ueEntity => ueEntity,
             _ => null,
         };
-        if (_ue != null && parentUe != null)
+        if (_ue != null)
         {
-            _ue.SetParent(parentUe, worldPositionStays);
+            if (parent != null && parentUe == null) return false;
+            if (!_ue.TrySetParent(parentUe, worldPositionStays)) return false;
         }
 
-        if (!ReferenceEquals(_parent, parent))
+        var managedParent = parent as GameEntity;
+        if (!ReferenceEquals(_parent, managedParent))
         {
             _parent?._children.Remove(this);
-            _parent = parent as GameEntity;
+            _parent = managedParent;
             _parent?._children.Add(this);
         }
+        return true;
     }
 
     /// <summary>
@@ -236,6 +301,7 @@ public sealed class GameEntity : IGameEntity
     /// </summary>
     public T AddComponent<T>() where T : class
     {
+        if (_destroyed) return null!;
         if (typeof(Engine.Core.Implementation.GameEntityScript).IsAssignableFrom(typeof(T)))
         {
             return (T)(object)AttachScript(typeof(T));
@@ -291,13 +357,17 @@ public sealed class GameEntity : IGameEntity
             behaviour.AttachToGameEntity(this, UnityGameObject);
             Engine.Core.Implementation.GameEntityScriptRuntime.Activate(behaviour);
         }
+        else if (component is UnityEngine.Component view)
+        {
+            UnityGameObject.BindComponent(view);
+        }
         return true;
     }
 
     private Engine.Core.Implementation.GameEntityScript AttachScript(Type type)
     {
         var script = (Engine.Core.Implementation.GameEntityScript)Activator.CreateInstance(type)!;
-        script.GameEntity = this;
+        script.AttachToGameEntity(this, UnityGameObject);
         _scripts.Add(script);
         Engine.Core.Implementation.GameEntityScriptRuntime.Activate(script);
         return script;
@@ -315,6 +385,7 @@ public sealed class GameEntity : IGameEntity
 
     private object? FindManagedComponent(Type type)
     {
+        if (type == typeof(UnityEngine.Transform)) return _destroyed ? null : UnityGameObject.transform;
         foreach (Engine.Core.Implementation.GameEntityScript script in _scripts)
         {
             if (type.IsInstanceOfType(script)) return script;
@@ -352,6 +423,7 @@ public sealed class GameEntity : IGameEntity
     private IEnumerable<object> EnumerateComponentsInChildren(Type type, Func<GameEntity, object?>? findNative = null)
     {
         if (_destroyed) yield break;
+        if (type == typeof(UnityEngine.Transform)) yield return UnityGameObject.transform;
         foreach (Engine.Core.Implementation.GameEntityScript script in _scripts)
         {
             if (type.IsInstanceOfType(script)) yield return script;

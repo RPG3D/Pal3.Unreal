@@ -65,7 +65,6 @@ namespace Pal3.Game.Effect
                     ISprite sprite = texture?.CreateSprite(0f, 0f,
                         texture.Width, texture.Height,
                         0.5f, 0f);
-                    if (sprite is UnitySprite frame) frame.SourceRowsBottomUp = TextureCoordinates.HasBottomUpEffectRows(texture);
                     sprites[i] = sprite;
                 }
 

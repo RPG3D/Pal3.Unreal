@@ -12,7 +12,6 @@ namespace Pal3.Game.Rendering.Renderer
     using Core.DataReader.Pol;
     using Core.Primitives;
     using Core.Utilities;
-    using Data;
     using Dev.Presenters;
     using Engine.Core.Abstraction;
     using Engine.Core.Implementation;
@@ -255,39 +254,22 @@ namespace Pal3.Game.Rendering.Renderer
             mv3Mesh.GameBoxNormals.ToUnityNormals(
                 _renderMeshComponents[index].MeshDataBuffer.NormalBuffer);
 
-            _renderMeshComponents[index].MeshRenderer = meshRenderer;
-            WriteSubMeshUVs(index, TextureCoordinates.FlipCharacterV(_textures[index], fallback: true));
-            UploadSubMesh(index);
-        }
+            mv3Mesh.Uvs.ToUnityVector2s(
+                _renderMeshComponents[index].MeshDataBuffer.UvBuffer);
 
-        private void WriteSubMeshUVs(int index, bool flipV)
-        {
-            var source = _meshes[index].Uvs;
-            var uvs = _renderMeshComponents[index].MeshDataBuffer.UvBuffer;
-            source.ToUnityVector2s(uvs);
-            if (flipV)
-            {
-                for (int i = 0; i < uvs.Length; i++)
-                    uvs[i].y = TextureCoordinates.ConvertV(uvs[i].y, flip: true);
-            }
-        }
-
-        private void UploadSubMesh(int index)
-        {
-            var component = _renderMeshComponents[index];
-            var buffers = component.MeshDataBuffer;
-            var mesh = component.MeshRenderer.Render(
-                vertices: buffers.VertexBuffer,
-                triangles: buffers.TriangleBuffer,
-                normals: buffers.NormalBuffer,
-                mainTextureUvs: (channel: 0, uvs: buffers.UvBuffer),
+            Mesh renderMesh = meshRenderer.Render(
+                vertices: _renderMeshComponents[index].MeshDataBuffer.VertexBuffer,
+                triangles: _renderMeshComponents[index].MeshDataBuffer.TriangleBuffer,
+                normals: _renderMeshComponents[index].MeshDataBuffer.NormalBuffer,
+                mainTextureUvs: (channel: 0, uvs: _renderMeshComponents[index].MeshDataBuffer.UvBuffer),
                 secondaryTextureUvs: default, // MV3 models don't have secondary texture
                 materials: _materials[index],
                 isDynamic: true);
 
-            mesh.RecalculateTangents();
-            component.Mesh?.Destroy();
-            component.Mesh = mesh;
+            renderMesh.RecalculateTangents();
+
+            _renderMeshComponents[index].Mesh = renderMesh;
+            _renderMeshComponents[index].MeshRenderer = meshRenderer;
         }
 
         public void StartAnimation(int loopCount = -1)
@@ -307,22 +289,11 @@ namespace Pal3.Game.Rendering.Renderer
         {
             if (!textureName.Contains(".")) textureName += MV3_MODEL_DEFAULT_TEXTURE_EXTENSION;
 
-            var texture = _textureProvider.GetTexture(textureName, out var hasAlphaChannel);
-            if (texture != null)
-            {
-                bool previousFlip = TextureCoordinates.FlipCharacterV(_textures[0], fallback: true);
-                bool nextFlip = TextureCoordinates.FlipCharacterV(texture, fallback: true);
-                if (previousFlip != nextFlip)
-                {
-                    WriteSubMeshUVs(0, nextFlip);
-                    UploadSubMesh(0);
-                }
-                _textures[0] = texture;
-            }
+            _textures[0] = _textureProvider.GetTexture(textureName, out var hasAlphaChannel);
             _textureHasAlphaChannel[0] = hasAlphaChannel;
 
             // Change the texture for the first sub-mesh only
-            _materialManager.UpdateMaterial(_materials[0][0], texture, _textureHasAlphaChannel[0] ?
+            _materialManager.UpdateMaterial(_materials[0][0], _textures[0], _textureHasAlphaChannel[0] ?
                 GameBoxBlendFlag.AlphaBlend :
                 GameBoxBlendFlag.Opaque);
         }
