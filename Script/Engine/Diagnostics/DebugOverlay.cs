@@ -57,11 +57,27 @@ namespace Engine.Diagnostics
         {
             if (string.IsNullOrEmpty(text)) return;
             text = text.Replace('\n', ' ').Replace('\r', ' ');
+            const string scriptMarker = " Script [";
+            int scriptStart = category == "LOG" && text.StartsWith("[PalScriptRunner] ", StringComparison.Ordinal)
+                ? text.IndexOf(scriptMarker, StringComparison.Ordinal) : -1;
+            if (scriptStart >= 0)
+            {
+                text = text[(scriptStart + scriptMarker.Length)..];
+                int commandStart = text.IndexOf("]: ", StringComparison.Ordinal);
+                int parametersStart = text.IndexOf(" {", StringComparison.Ordinal);
+                if (commandStart >= 0 && parametersStart >= commandStart + 3)
+                {
+                    var command = text.AsSpan(commandStart + 3, parametersStart - commandStart - 3);
+                    if (command.StartsWith("DialogueRenderText", StringComparison.Ordinal) ||
+                        command.StartsWith("DialogueAddSelections", StringComparison.Ordinal))
+                        text = text[..parametersStart];
+                }
+            }
             if (text.Length > 112) text = text[..112] + "…";
             lock (Gate)
             {
                 if (Lines.Count == Capacity) Lines.Dequeue();
-                Lines.Enqueue($"[{category}] {text}");
+                Lines.Enqueue(scriptStart >= 0 ? text : $"[{category}] {text}");
                 _version++;
             }
         }
