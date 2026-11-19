@@ -7,6 +7,7 @@ using Pal3.Game.Dev;
 using Pal3.Game.Scene;
 using Pal3.Game.State;
 using UnrealSharp.Engine;
+using UnrealSharp.CoreUObject;
 using UnrealSharp.InputCore;
 using UnrealSharp.RuntimeWidgetLayout;
 using UnrealSharp.UMG;
@@ -35,6 +36,8 @@ namespace ManagedSharpDemo
         private Page _page;
         private int _storyPage;
         private (string City, string Scene)[]? _sceneEntries;
+        private Task<(string City, string Scene)[]>? _sceneQuery;
+        private bool _openScenesWhenReady;
         private string? _sceneArea;
         private int _selectedSaveSlot;
         private bool _canTransition;
@@ -117,6 +120,7 @@ namespace ManagedSharpDemo
                 HandleClick(pc, id);
             }
 
+            CompleteSceneQuery(pc);
             return true;
         }
 
@@ -143,7 +147,7 @@ namespace ManagedSharpDemo
             switch (id)
             {
                 case "new": Launch(pc, "new game", Pal3Boot.StartFromMenu); return;
-                case "scenes": _sceneArea = null; Navigate(pc, Page.Scenes); return;
+                case "scenes": OpenScenes(pc); return;
                 case "story": _storyPage = 0; Navigate(pc, Page.Story); return;
                 case "saves": Navigate(pc, Page.Saves); return;
                 case "load_selected" when _page == Page.Saves:
@@ -258,6 +262,7 @@ namespace ManagedSharpDemo
 
         private void Navigate(APlayerController pc, Page page)
         {
+            _openScenesWhenReady = false;
             _status = "";
             _overwriteSlot = null;
             Show(pc, page);
@@ -278,11 +283,11 @@ namespace ManagedSharpDemo
 
         private string BuildSceneLayout()
         {
-            _sceneEntries ??= ServiceLocator.Instance.Get<GameResourceProvider>().ListSceneEntries();
+            var entries = _sceneEntries ?? throw new InvalidOperationException("场景目录尚未加载。");
             var destinations = _sceneArea is { } area
-                ? _sceneEntries.Where(entry => entry.City == area)
+                ? entries.Where(entry => entry.City == area)
                     .Select(entry => ($"scene_{entry.Scene}", entry.Scene.ToUpperInvariant())).ToArray()
-                : _sceneEntries.Select(entry => entry.City).Distinct()
+                : entries.Select(entry => entry.City).Distinct()
                     .OrderBy(city => city[0] == 'q' ? 0 : 1).ThenBy(city => city, StringComparer.Ordinal)
                     .Select(city => ($"area_{city}", SceneAreaNames.GetValueOrDefault(city) ?? city.ToUpperInvariant())).ToArray();
             string title = _sceneArea is { } city ? $"切换场景 · {SceneAreaLabel(city)}" : "切换 PAL3 场景";
@@ -292,6 +297,71 @@ namespace ManagedSharpDemo
 
         private static string SceneAreaLabel(string city) => SceneAreaNames.TryGetValue(city, out string? name)
             ? $"{name} {city.ToUpperInvariant()}" : city.ToUpperInvariant();
+
+        private void OpenScenes(APlayerController pc)
+        {
+            _sceneArea = null;
+            if (_sceneEntries != null)
+            {
+                Navigate(pc, Page.Scenes);
+                return;
+            }
+
+            if (_sceneQuery == null)
+            {
+                // Resolve services on the game thread. The provider caches the background query for this session.
+                var resources = ServiceLocator.Instance.Get<GameResourceProvider>();
+                _sceneQuery = resources.ListSceneEntriesAsync();
+            }
+            _openScenesWhenReady = true;
+            _status = "";
+            if (_widget is { } widget)
+            {
+                RefreshHome(widget);
+                RefreshStatus(widget);
+            }
+        }
+
+        private void CompleteSceneQuery(APlayerController pc)
+        {
+            if (_sceneQuery is not { IsCompleted: true } query) return;
+            _sceneQuery = null;
+            bool openScenes = _openScenesWhenReady && _widget != null && _page == Page.Home;
+            _openScenesWhenReady = false;
+            try
+            {
+                _sceneEntries = query.GetAwaiter().GetResult();
+                if (openScenes) Navigate(pc, Page.Scenes);
+            }
+            catch (Exception error)
+            {
+                DebugOverlay.Error("[PAL3 scene catalog] " + error);
+                if (openScenes)
+                    _status = "地图查询失败 · " + error.GetBaseException().Message;
+            }
+            if (_widget is { } widget && _page == Page.Home)
+            {
+                RefreshHome(widget);
+                RefreshStatus(widget);
+            }
+        }
+
+        private static void AddSceneQuerySpinner(URuntimeJsonWidget widget)
+        {
+            if (widget.WidgetTree.RootWidget is not UCanvasPanel root ||
+                root.GetChildAt(0) is not UBorder { Content: UCanvasPanel panel } ||
+                panel.GetChildAt(0) is not UWidgetSwitcher pages ||
+                pages.GetWidgetAtIndex(0) is not UCanvasPanel home ||
+                home.GetChildAt(home.ChildrenCount - 1) is not UCanvasPanel holder ||
+                holder.Slot is not UCanvasPanelSlot holderSlot)
+                return;
+
+            var spinner = UObject.NewObject<UCircularThrobber>(widget.WidgetTree);
+            spinner.Radius = 12f;
+            spinner.Period = 0.8f;
+            spinner.Visibility = ESlateVisibility.HitTestInvisible;
+            holder.AddChildToCanvas(spinner).Size = holderSlot.Size;
+        }
 
         private void Launch(APlayerController pc, string target, Action action)
         {
@@ -333,6 +403,7 @@ namespace ManagedSharpDemo
                     if (nextWidget == null) throw new InvalidOperationException("无法显示 PAL3 菜单。");
                     RemoveWidget();
                     _widget = nextWidget;
+                    if (!standalone) AddSceneQuerySpinner(nextWidget);
                     if (standalone) Pal3UiLayout.ConfigureMenuScroll(nextWidget);
                     if (page == Page.Saves) _selectedSaveSlot = SaveManager.AutoSaveSlotIndex;
                 }
@@ -383,6 +454,7 @@ namespace ManagedSharpDemo
 
         public void RemoveWidget()
         {
+            _openScenesWhenReady = false;
             if (_widget == null) return;
             URuntimeJsonWidgetLibrary.RemoveJsonWidget(_widget);
             _widget = null;
@@ -402,6 +474,8 @@ namespace ManagedSharpDemo
 
         private void RefreshHome(URuntimeJsonWidget widget)
         {
+            widget.SetElementText("scenes", _openScenesWhenReady ? "正在查询地图…" : "切换 PAL3 场景");
+            widget.SetElementVisible("scene_scan_spinner", _openScenesWhenReady);
             bool atTitle = Pal3Boot.WaitingForMenuStart;
             widget.SetElementText("home_title", atTitle ? "仙剑奇侠传三" : "PAL3 主菜单");
             widget.SetElementText("home_hint", Pal3TouchStick.IsSupported

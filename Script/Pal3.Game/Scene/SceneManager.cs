@@ -48,7 +48,8 @@ namespace Pal3.Game.Scene
         private CombatScene _currentCombatScene;
 
         private readonly HashSet<int> _sceneObjectIdsToNotLoadFromSaveState = new ();
-        private const double LoadBudgetMs = 8;
+        // Soft game-thread budget during scene transitions. Yield after the current batch completes.
+        private const double LoadBudgetMs = 12;
         private SceneLoadJob? _load;
 
         private sealed record SceneLoadJob(IEnumerator<SceneLoadStep> Batches, Action? OnReady,

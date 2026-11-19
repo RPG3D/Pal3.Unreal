@@ -12,6 +12,7 @@ namespace Pal3.Game.Data
     using System.Linq;
     using System.Text;
     using System.Threading;
+    using System.Threading.Tasks;
     using Command;
     using Command.Extensions;
     using Constants;
@@ -66,6 +67,8 @@ namespace Pal3.Game.Data
         private readonly Dictionary<int, UnityEngine.Object> _vfxEffectPrefabCache = new ();
 
         private readonly Dictionary<Type, Dictionary<string, object>> _gameResourceFileCache = new ();
+        private readonly object _sceneCatalogLock = new();
+        private Task<(string City, string Scene)[]>? _sceneCatalog;
 
         private readonly int _codepage;
 
@@ -129,6 +132,18 @@ namespace Pal3.Game.Data
         public bool FileExists(string path)
         {
             return _fileSystem.FileExists(path);
+        }
+
+        public Task<(string City, string Scene)[]> ListSceneEntriesAsync()
+        {
+            lock (_sceneCatalogLock)
+            {
+                // Keep the query and its successful result across menu recreation and scene cache clears.
+                // A new resource provider is created when the game session restarts.
+                if (_sceneCatalog == null || _sceneCatalog.IsFaulted || _sceneCatalog.IsCanceled)
+                    _sceneCatalog = Task.Run(ListSceneEntries);
+                return _sceneCatalog;
+            }
         }
 
         public (string City, string Scene)[] ListSceneEntries()

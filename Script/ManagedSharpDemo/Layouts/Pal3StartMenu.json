@@ -31,7 +31,8 @@
                     {"type": "button", "id": "transparent_sticks", "text": "摇杆全透明 · 关闭", "fontSize": 24, "position": [234, 384], "size": [400, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
                     {"type": "button", "id": "maze_entrance", "text": "迷宫入口", "fontSize": 24, "position": [28, 454], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
                     {"type": "button", "id": "maze_exit", "text": "迷宫出口或剧情点", "fontSize": 24, "position": [441, 454], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
-                    {"type": "button", "id": "resume", "text": "返回游戏", "fontSize": 24, "position": [650, 572], "size": [190, 59], "normalColor": [0.11, 0.22, 0.29, 1]}
+                    {"type": "button", "id": "resume", "text": "返回游戏", "fontSize": 24, "position": [650, 572], "size": [190, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "canvas", "id": "scene_scan_spinner", "position": [380, 317], "size": [30, 30]}
                   ]
                 },
                 {
