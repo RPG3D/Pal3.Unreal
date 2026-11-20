@@ -192,7 +192,7 @@ namespace
 	{
 		UTextBlock* Text = Tree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		const FString Content = GetString(Element, TEXT("text"), DefaultText);
-		Text->SetText(FText::FromString(Content));
+		Text->SetText(URuntimeJsonWidgetLibrary::GetLocalizedText(GetString(Element, TEXT("textKey")), Content));
 		bool bWrap = false;
 		Element->TryGetBoolField(TEXT("wrap"), bWrap);
 		Text->SetAutoWrapText(bWrap);
@@ -351,6 +351,11 @@ bool URuntimeJsonWidget::ConsumeClickedButton(FName& OutElementId)
 
 bool URuntimeJsonWidget::SetElementText(const FString& ElementId, const FString& Text)
 {
+	return SetElementTextValue(ElementId, FText::FromString(Text));
+}
+
+bool URuntimeJsonWidget::SetElementTextValue(const FString& ElementId, const FText& Text)
+{
 	UWidget* Element = ElementsById.FindRef(ElementId).Get();
 	if (UButton* Button = Cast<UButton>(Element))
 	{
@@ -358,7 +363,7 @@ bool URuntimeJsonWidget::SetElementText(const FString& ElementId, const FString&
 	}
 	if (UTextBlock* TextBlock = Cast<UTextBlock>(Element))
 	{
-		TextBlock->SetText(FText::FromString(Text));
+		TextBlock->SetText(Text);
 		if (UScrollBox* ScrollBox = Cast<UScrollBox>(TextBlock->GetParent())) ScrollBox->ScrollToStart();
 		return true;
 	}

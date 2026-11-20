@@ -47,6 +47,7 @@ namespace Pal3.Game.Video
         private bool _disposed;
         public bool IsPreparing => _waiter != null && _video == null;
         public string PreparationPhase => _activePreparation?.Conversion == null ? "正在读取过场动画…" : "正在转换过场动画…";
+        public string PreparationTextKey => _activePreparation?.Conversion == null ? "loading.video_read" : "loading.video_convert";
         public float PreparationProgress => _activePreparation?.Conversion is { } conversion && conversion.IsValid()
             ? conversion.QueryProgress() : -1f;
 

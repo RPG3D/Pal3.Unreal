@@ -114,6 +114,7 @@ namespace ManagedSharpDemo
         private void UpdateLoading(float deltaTime)
         {
             string? phase = null;
+            string textKey = "";
             float progress = -1f;
             if (Pal3Boot.IsGameReady)
             {
@@ -123,11 +124,13 @@ namespace ManagedSharpDemo
                 if (scene.IsLoading)
                 {
                     phase = scene.LoadingPhase;
+                    textKey = scene.LoadingTextKey;
                     progress = scene.LoadingProgress;
                 }
                 else if (video.IsPreparing)
                 {
                     phase = video.PreparationPhase;
+                    textKey = video.PreparationTextKey;
                     progress = video.PreparationProgress;
                 }
             }
@@ -152,7 +155,7 @@ namespace ManagedSharpDemo
             if (_loadingText != phase)
             {
                 _loadingText = phase;
-                _loading.SetElementText("loading_phase", _loadingText);
+                Pal3UiText.Set(_loading, "loading_phase", textKey, _loadingText);
             }
             if (_loadingProgress != progress)
             {

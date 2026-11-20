@@ -167,13 +167,13 @@ namespace Pal3.Game.Scene
 
             RenderSkyBox();
             SetupNavMesh();
-            yield return new("正在布置场景", .80f);
+            yield return new("loading.arranging", "正在布置场景", .80f);
 
             int loadedActors = 0;
             foreach (GameActor actor in Actors.Values)
             {
                 CreateActorObject(actor, actorTintColor, Tilemap);
-                yield return new("正在加载角色", .80f + .12f * ++loadedActors / Actors.Count);
+                yield return new("loading.actors", "正在加载角色", .80f + .12f * ++loadedActors / Actors.Count);
             }
             foreach (var phase in InitSceneObjects())
             {
@@ -269,8 +269,8 @@ namespace Pal3.Game.Scene
                 IsWaterSurfaceOpaque()))
             {
                 yield return batch.IsTexture
-                    ? new("正在加载场景纹理", .28f + .22f * batch.Fraction)
-                    : new("正在构建场景网格", .50f + .26f * batch.Fraction);
+                    ? new("loading.textures", "正在加载场景纹理", .28f + .22f * batch.Fraction)
+                    : new("loading.mesh", "正在构建场景网格", .50f + .26f * batch.Fraction);
             }
 
             if (SceneCvdMesh != null)
@@ -280,7 +280,7 @@ namespace Pal3.Game.Scene
                     SceneCvdMesh.Value.TextureProvider,
                     _materialManager);
                 cvdMeshRenderer.LoopAnimation(SCENE_CVD_ANIMATION_DEFAULT_TIMESCALE);
-                yield return new("正在构建场景动画", .78f);
+                yield return new("loading.animation", "正在构建场景动画", .78f);
             }
         }
 
@@ -444,7 +444,7 @@ namespace Pal3.Game.Scene
                 {
                     ActivateSceneObject(sceneObject.ObjectInfo.Id);
                 }
-                yield return new("正在加载场景物件", .92f + .07f * ++loadedObjects / SceneObjects.Count);
+                yield return new("loading.objects", "正在加载场景物件", .92f + .07f * ++loadedObjects / SceneObjects.Count);
             }
         }
 

@@ -68,12 +68,12 @@ namespace Pal3.Game.Scene
 
             InitActorMovementMaxYDifferentialValues();
             InitMeshData();
-            yield return new("正在读取场景模型", .20f);
+            yield return new("loading.model", "正在读取场景模型", .20f);
             InitNavData();
-            yield return new("正在读取导航数据", .24f);
+            yield return new("loading.navigation", "正在读取导航数据", .24f);
             InitSceneObjectData();
             InitActorData();
-            yield return new("正在读取角色与物件数据", .28f);
+            yield return new("loading.actor_data", "正在读取角色与物件数据", .28f);
         }
 
         private void InitActorMovementMaxYDifferentialValues()

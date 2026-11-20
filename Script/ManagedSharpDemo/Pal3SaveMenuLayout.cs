@@ -38,7 +38,7 @@ internal static class Pal3SaveMenuLayout
                             type = "canvas",
                             children = new object[]
                             {
-                                Text("saves_title", "存档与读档", 28, 20, 812, 54, 36),
+                                Text("saves_title", "存档与读档", 28, 20, 812, 54, 36, "menu.saves"),
                                 new
                                 {
                                     type = "scrollbox", id = "save_slots", position = new[] { 28, 88 },
@@ -47,11 +47,11 @@ internal static class Pal3SaveMenuLayout
                                 },
                                 Text("selected_slot_title", "", ActionX, 104, ActionWidth, 50, 30),
                                 Text("selected_slot_status", "", ActionX, 158, ActionWidth, 68, 22),
-                                Button("load_selected", ActionX, 242, ActionWidth, "读取存档"),
-                                Button("save_selected", ActionX, 314, ActionWidth, "写入存档"),
-                                Text("save_hint", "进入游戏后可存档", ActionX, 314, ActionWidth, 56, 22),
+                                Button("load_selected", ActionX, 242, ActionWidth, "读取存档", "save.load"),
+                                Button("save_selected", ActionX, 314, ActionWidth, "写入存档", "save.write"),
+                                Text("save_hint", "进入游戏后可存档", ActionX, 314, ActionWidth, 56, 22, "save.enter_hint"),
                                 Text("menu_status", "", 28, 583, 626, 48, 22),
-                                Button("saves_back", 681, 572, 159, "返回")
+                                Button("saves_back", 681, 572, 159, "返回", "common.back")
                             }
                         }
                     }
@@ -60,15 +60,16 @@ internal static class Pal3SaveMenuLayout
         });
     }
 
-    private static object Button(string id, int x, int y, int width, string text = "") => new
+    private static object Button(string id, int x, int y, int width, string text = "", string textKey = "") => new
     {
-        type = "button", id, text, fontSize = 24, position = new[] { x, y },
+        type = "button", id, text, textKey, fontSize = 24, position = new[] { x, y },
         size = new[] { width, RowHeight }, normalColor = ButtonColor
     };
 
-    private static object Text(string id, string text, int x, int y, int width, int height, int fontSize) => new
+    private static object Text(string id, string text, int x, int y, int width, int height, int fontSize,
+        string textKey = "") => new
     {
-        type = "text", id, text, fontSize, align = "left", wrap = true, color = LabelColor,
+        type = "text", id, text, textKey, fontSize, align = "left", wrap = true, color = LabelColor,
         position = new[] { x, y }, size = new[] { width, height }
     };
 }

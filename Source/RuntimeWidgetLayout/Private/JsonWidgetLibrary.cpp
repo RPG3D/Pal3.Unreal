@@ -1,6 +1,7 @@
 // JsonWidgetLibrary.cpp
 #include "JsonWidgetLibrary.h"
 #include "JsonWidget.h"
+#include "JsonWidgetLocalization.h"
 
 #include "Blueprint/UserWidget.h"
 #include "Engine/Engine.h"
@@ -65,6 +66,21 @@ URuntimeJsonWidget* CreateWidgetInViewport(UObject* WorldContextObject,
 		*PC->GetName(), PC->bShowMouseCursor ? 1 : 0, ZOrder, *Widget->GetPathName());
 	return Widget;
 }
+}
+
+FText URuntimeJsonWidgetLibrary::GetLocalizedText(const FString& TextKey, const FString& NativeText)
+{
+	return JsonWidgetLocalization::Resolve(TextKey, NativeText);
+}
+
+FString URuntimeJsonWidgetLibrary::GetLanguage()
+{
+	return JsonWidgetLocalization::GetLanguage();
+}
+
+bool URuntimeJsonWidgetLibrary::SetLanguage(const FString& Language)
+{
+	return JsonWidgetLocalization::SetLanguage(Language);
 }
 
 void URuntimeJsonWidgetLibrary::AddFontMapping(FName Alias, const FString& FontAssetPath)

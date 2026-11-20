@@ -11,6 +11,7 @@ using UnrealSharp.CoreUObject;
 using UnrealSharp.InputCore;
 using UnrealSharp.RuntimeWidgetLayout;
 using UnrealSharp.UMG;
+using UnrealSharp.Core;
 
 namespace ManagedSharpDemo
 {
@@ -41,7 +42,7 @@ namespace ManagedSharpDemo
         private string? _sceneArea;
         private int _selectedSaveSlot;
         private bool _canTransition;
-        private string _status = "";
+        private FText? _status;
         private int? _overwriteSlot;
 
         // Returns true when gameplay keyboard input should be suppressed this frame.
@@ -140,6 +141,11 @@ namespace ManagedSharpDemo
                     touchStick.FullyTransparent = !touchStick.FullyTransparent;
                     Show(pc, _page);
                     return;
+                case "language":
+                    string language = URuntimeJsonWidgetLibrary.Language.StartsWith("en", StringComparison.OrdinalIgnoreCase)
+                        ? "zh-CN" : "en";
+                    URuntimeJsonWidgetLibrary.SetLanguage(language);
+                    return;
                 case "resume": Close(pc); return;
             }
             if (!_canTransition) return;
@@ -180,7 +186,7 @@ namespace ManagedSharpDemo
                     if (entries.Any(entry => entry.City == area))
                     {
                         _sceneArea = area;
-                        _status = "";
+                        _status = null;
                         Show(pc, Page.Scenes, rebuild: true);
                     }
                 }
@@ -220,7 +226,7 @@ namespace ManagedSharpDemo
             int previousSlot = _selectedSaveSlot;
             _selectedSaveSlot = slot;
             _overwriteSlot = null;
-            _status = "";
+            _status = null;
             var saves = ServiceLocator.Instance.Get<SaveManager>();
             RefreshSaveSlotRow(widget, saves, previousSlot);
             RefreshSaveSlotRow(widget, saves, slot);
@@ -235,18 +241,20 @@ namespace ManagedSharpDemo
                 if (_overwriteSlot != slot && ServiceLocator.Instance.Get<SaveManager>().SaveSlotExists(slot))
                 {
                     _overwriteSlot = slot;
-                    _status = $"再次点击存档 {slot} 确认覆盖。";
+                    _status = Pal3UiText.Format("save.confirm_status", "再次点击存档 {Slot} 确认覆盖。",
+                        Pal3UiText.Number("Slot", slot));
                 }
                 else
                 {
                     _overwriteSlot = null;
                     Pal3Boot.SaveToSlot(slot);
-                    _status = $"已写入存档 {slot}。";
+                    _status = Pal3UiText.Format("save.written", "已写入存档 {Slot}。",
+                        Pal3UiText.Number("Slot", slot));
                 }
             }
             catch (Exception e)
             {
-                _status = e.GetBaseException().Message;
+                _status = new FText(e.GetBaseException().Message);
                 DebugOverlay.Error("[PAL3 save] " + e);
             }
             Show(pc, Page.Saves);
@@ -263,7 +271,7 @@ namespace ManagedSharpDemo
         private void Navigate(APlayerController pc, Page page)
         {
             _openScenesWhenReady = false;
-            _status = "";
+            _status = null;
             _overwriteSlot = null;
             Show(pc, page);
         }
@@ -277,7 +285,7 @@ namespace ManagedSharpDemo
             }
 
             _sceneArea = null;
-            _status = "";
+            _status = null;
             Show(pc, Page.Scenes, rebuild: true);
         }
 
@@ -314,7 +322,7 @@ namespace ManagedSharpDemo
                 _sceneQuery = resources.ListSceneEntriesAsync();
             }
             _openScenesWhenReady = true;
-            _status = "";
+            _status = null;
             if (_widget is { } widget)
             {
                 RefreshHome(widget);
@@ -337,7 +345,8 @@ namespace ManagedSharpDemo
             {
                 DebugOverlay.Error("[PAL3 scene catalog] " + error);
                 if (openScenes)
-                    _status = "地图查询失败 · " + error.GetBaseException().Message;
+                    _status = Pal3UiText.Format("menu.query_failed", "地图查询失败 · {Reason}",
+                        Pal3UiText.Text("Reason", new FText(error.GetBaseException().Message)));
             }
             if (_widget is { } widget && _page == Page.Home)
             {
@@ -378,10 +387,11 @@ namespace ManagedSharpDemo
             Close(pc);
         }
 
-        private static string FormatLoadError(string reason)
+        private static FText FormatLoadError(string reason)
         {
             reason = reason.Replace('\n', ' ').Replace('\r', ' ');
-            return "加载失败 · " + (reason.Length > 46 ? reason[..46] + "…" : reason);
+            return Pal3UiText.Format("menu.load_failed", "加载失败 · {Reason}",
+                Pal3UiText.Text("Reason", new FText(reason.Length > 46 ? reason[..46] + "…" : reason)));
         }
 
         private void Show(APlayerController pc, Page page, bool rebuild = false)
@@ -448,8 +458,8 @@ namespace ManagedSharpDemo
 
         private void RefreshStatus(URuntimeJsonWidget widget)
         {
-            widget.SetElementText("menu_status", _status);
-            widget.SetElementVisible("menu_status", _status.Length > 0);
+            widget.SetElementTextValue("menu_status", _status ?? FText.None);
+            widget.SetElementVisible("menu_status", _status != null);
         }
 
         public void RemoveWidget()
@@ -464,7 +474,7 @@ namespace ManagedSharpDemo
         {
             if (_widget == null) return;
             RemoveWidget();
-            _status = "";
+            _status = null;
             _overwriteSlot = null;
             _page = Page.Home;
             _sceneArea = null;
@@ -474,18 +484,27 @@ namespace ManagedSharpDemo
 
         private void RefreshHome(URuntimeJsonWidget widget)
         {
-            widget.SetElementText("scenes", _openScenesWhenReady ? "正在查询地图…" : "切换 PAL3 场景");
+            if (_openScenesWhenReady) Pal3UiText.Set(widget, "scenes", "menu.querying", "正在查询地图…");
+            else Pal3UiText.Set(widget, "scenes", "menu.scenes", "切换 PAL3 场景");
             widget.SetElementVisible("scene_scan_spinner", _openScenesWhenReady);
             bool atTitle = Pal3Boot.WaitingForMenuStart;
-            widget.SetElementText("home_title", atTitle ? "仙剑奇侠传三" : "PAL3 主菜单");
-            widget.SetElementText("home_hint", Pal3TouchStick.IsSupported
+            if (atTitle) Pal3UiText.Set(widget, "home_title", "game.title", "仙剑奇侠传三");
+            else Pal3UiText.Set(widget, "home_title", "menu.title", "PAL3 主菜单");
+            string hintKey = Pal3TouchStick.IsSupported
+                ? (atTitle ? "menu.hint_touch_title" : "menu.hint_touch_game")
+                : (atTitle ? "menu.hint_keyboard_title" : "menu.hint_keyboard_game");
+            string hint = Pal3TouchStick.IsSupported
                 ? (atTitle ? "开始游戏后点 Menu 打开菜单" : "点返回游戏关闭菜单")
-                : (atTitle ? "开始游戏后按 Tab 打开菜单" : "Tab 返回游戏"));
-            widget.SetElementText("diagnostics", DebugOverlay.IsOverlayVisible ? "诊断面板 · 开启" : "诊断面板 · 关闭");
-            widget.SetElementText("auto", Pal3Boot.AutoDialogueEnabled ? "自动推进对白 · 开启" : "自动推进对白 · 关闭");
+                : (atTitle ? "开始游戏后按 Tab 打开菜单" : "Tab 返回游戏");
+            Pal3UiText.Set(widget, "home_hint", hintKey, hint);
+            Pal3UiText.Set(widget, "diagnostics", "menu.diagnostics_state", "诊断面板 · {State}",
+                Pal3UiText.Text("State", OnOff(DebugOverlay.IsOverlayVisible)));
+            Pal3UiText.Set(widget, "auto", "menu.auto_state", "自动推进对白 · {State}",
+                Pal3UiText.Text("State", OnOff(Pal3Boot.AutoDialogueEnabled)));
             widget.SetElementVisible("transparent_sticks", Pal3TouchStick.IsSupported);
             if (Pal3TouchStick.IsSupported)
-                widget.SetElementText("transparent_sticks", touchStick.FullyTransparent ? "摇杆全透明 · 开启" : "摇杆全透明 · 关闭");
+                Pal3UiText.Set(widget, "transparent_sticks", "menu.sticks_state", "摇杆全透明 · {State}",
+                    Pal3UiText.Text("State", OnOff(touchStick.FullyTransparent)));
             widget.SetElementVisible("resume", !atTitle);
             widget.SetElementVisible("new", _canTransition);
             widget.SetElementVisible("saves", _canTransition);
@@ -537,8 +556,13 @@ namespace ManagedSharpDemo
         private void RefreshSaveSlotRow(URuntimeJsonWidget widget, SaveManager saves, int slot)
         {
             string selection = slot == _selectedSaveSlot ? "> " : "";
-            string summary = saves.SaveSlotExists(slot) ? $"{saves.GetSaveSlotLastWriteTime(slot):MM-dd HH:mm}" : "空";
-            widget.SetElementText($"slot_{slot}", $"{selection}{GetSaveSlotName(slot)}  ·  {summary}");
+            using var summary = saves.SaveSlotExists(slot)
+                ? new FText($"{saves.GetSaveSlotLastWriteTime(slot):MM-dd HH:mm}")
+                : Pal3UiText.Get("save.empty", "空");
+            using var name = GetSaveSlotName(slot);
+            Pal3UiText.Set(widget, $"slot_{slot}", "save.row", "{Selection}{SlotName}  ·  {Summary}",
+                Pal3UiText.Text("Selection", new FText(selection)),
+                Pal3UiText.Text("SlotName", name), Pal3UiText.Text("Summary", summary));
         }
 
         private void RefreshSaveSelection(URuntimeJsonWidget widget, SaveManager saves)
@@ -546,17 +570,27 @@ namespace ManagedSharpDemo
             int slot = _selectedSaveSlot;
             bool exists = saves.SaveSlotExists(slot);
             bool canSave = CanWriteSelectedSlot;
-            widget.SetElementText("selected_slot_title", GetSaveSlotName(slot));
-            widget.SetElementText("selected_slot_status", exists
-                ? $"保存于 {saves.GetSaveSlotLastWriteTime(slot):MM-dd HH:mm}"
-                : "空存档");
+            using var name = GetSaveSlotName(slot);
+            widget.SetElementTextValue("selected_slot_title", name);
+            if (exists)
+                Pal3UiText.Set(widget, "selected_slot_status", "save.saved_at", "保存于 {Time}",
+                    Pal3UiText.Text("Time", new FText($"{saves.GetSaveSlotLastWriteTime(slot):MM-dd HH:mm}")));
+            else Pal3UiText.Set(widget, "selected_slot_status", "save.empty_slot", "空存档");
             widget.SetElementVisible("load_selected", exists);
             widget.SetElementVisible("save_selected", canSave);
-            widget.SetElementText("save_selected", _overwriteSlot == slot ? "确认覆盖存档" : "写入存档");
+            if (_overwriteSlot == slot) Pal3UiText.Set(widget, "save_selected", "save.confirm", "确认覆盖存档");
+            else Pal3UiText.Set(widget, "save_selected", "save.write", "写入存档");
             widget.SetElementVisible("save_hint", !canSave);
-            widget.SetElementText("save_hint", slot == SaveManager.AutoSaveSlotIndex ? "由游戏自动写入" : "角色可操作时可存档");
+            if (slot == SaveManager.AutoSaveSlotIndex)
+                Pal3UiText.Set(widget, "save_hint", "save.auto_hint", "由游戏自动写入");
+            else Pal3UiText.Set(widget, "save_hint", "save.control_hint", "角色可操作时可存档");
         }
 
-        private static string GetSaveSlotName(int slot) => slot == SaveManager.AutoSaveSlotIndex ? "自动存档" : $"存档 {slot}";
+        private static FText GetSaveSlotName(int slot) => slot == SaveManager.AutoSaveSlotIndex
+            ? Pal3UiText.Get("save.auto", "自动存档")
+            : Pal3UiText.Format("save.slot", "存档 {Slot}", Pal3UiText.Number("Slot", slot));
+
+        private static FText OnOff(bool on) => on
+            ? Pal3UiText.Get("common.on", "开启") : Pal3UiText.Get("common.off", "关闭");
     }
 }

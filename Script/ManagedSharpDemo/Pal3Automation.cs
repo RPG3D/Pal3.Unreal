@@ -136,6 +136,11 @@ namespace ManagedSharpDemo
                     return Snapshot();
                 case "list":
                     return new { checkpoints = Pal3StartMenu.Stories, scenes = Pal3StartMenu.Scenes.Select(scene => scene.Label) };
+                case "language":
+                    if (!string.IsNullOrWhiteSpace(request.Argument) &&
+                        !UnrealSharp.RuntimeWidgetLayout.URuntimeJsonWidgetLibrary.SetLanguage(request.Argument))
+                        throw new ArgumentException("Unsupported UI language.");
+                    return new { language = UnrealSharp.RuntimeWidgetLayout.URuntimeJsonWidgetLibrary.Language };
                 case "auto":
                     if (!bool.TryParse(request.Argument, out bool auto)) throw new ArgumentException("Use true or false.");
                     Pal3Boot.AutoDialogueEnabled = auto;

@@ -30,6 +30,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "RuntimeWidgetLayout")
 	bool SetElementText(const FString& ElementId, const FString& Text);
 
+	UFUNCTION(BlueprintCallable, Category = "RuntimeWidgetLayout|Localization")
+	bool SetElementTextValue(const FString& ElementId, const FText& Text);
+
 	UFUNCTION(BlueprintCallable, Category = "RuntimeWidgetLayout")
 	bool SetElementProgress(const FString& ElementId, float Percent);
 

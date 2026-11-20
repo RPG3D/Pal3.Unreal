@@ -73,6 +73,19 @@ Build/*/**
 !Build/**/*.sh
 !Build/**/*.command
 
+# iOS app icon source catalog
+!Build/IOS/Resources/
+!Build/IOS/Resources/Assets.xcassets/
+!Build/IOS/Resources/Assets.xcassets/Contents.json
+!Build/IOS/Resources/Assets.xcassets/AppIcon.appiconset/
+!Build/IOS/Resources/Assets.xcassets/AppIcon.appiconset/Contents.json
+!Build/IOS/Resources/Assets.xcassets/AppIcon.appiconset/*.png
+
+# Android launcher icon resources
+!Build/Android/res/
+!Build/Android/res/drawable*/
+!Build/Android/res/drawable*/icon.png
+
 # Built data for maps
 *_BuiltData.uasset
 
@@ -92,6 +105,9 @@ Content/ParagonShinbi/
 # Locally supplied PAL3 font and its generated composite asset.
 /Content/PAL3/Fonts/Pal3Weibei.uasset
 /Content/PAL3/Fonts/Pal3Weibei_Font.uasset
+
+# Original PAL3 startup videos are not distributed with the project.
+/Content/Movies/
 
 # Don't include launchSettings (contains local dev paths)
 /Script/Properties/launchSettings.json

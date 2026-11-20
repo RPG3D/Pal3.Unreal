@@ -14,6 +14,16 @@ class RUNTIMEWIDGETLAYOUT_API URuntimeJsonWidgetLibrary : public UBlueprintFunct
 	GENERATED_BODY()
 
 public:
+	/** Resolves a JSON language-pack entry using the supplied native text as fallback. */
+	UFUNCTION(BlueprintCallable, Category = "RuntimeWidgetLayout|Localization")
+	static FText GetLocalizedText(const FString& TextKey, const FString& NativeText);
+
+	UFUNCTION(BlueprintPure, Category = "RuntimeWidgetLayout|Localization")
+	static FString GetLanguage();
+
+	UFUNCTION(BlueprintCallable, Category = "RuntimeWidgetLayout|Localization")
+	static bool SetLanguage(const FString& Language);
+
 	/** Adds or replaces a font alias for subsequently created JSON widgets. */
 	UFUNCTION(BlueprintCallable, Category = "RuntimeWidgetLayout|Fonts")
 	static void AddFontMapping(FName Alias, const FString& FontAssetPath);

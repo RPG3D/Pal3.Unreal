@@ -64,6 +64,7 @@ namespace Pal3.Game.Scene
 
         public bool IsLoading => _load != null;
         public string LoadingPhase { get; private set; } = "";
+        public string LoadingTextKey { get; private set; } = "";
         public float LoadingProgress { get; private set; }
         public string? LastLoadError { get; private set; }
 
@@ -124,6 +125,7 @@ namespace Pal3.Game.Scene
             if (IsLoading) throw new InvalidOperationException("A PAL3 scene is already loading.");
             LastLoadError = null;
             LoadingPhase = "正在准备场景";
+            LoadingTextKey = "loading.preparing";
             LoadingProgress = 0;
             _load = new SceneLoadJob(LoadBatches(city, scene).GetEnumerator(), onReady, onFailure, Stopwatch.StartNew());
         }
@@ -190,6 +192,7 @@ namespace Pal3.Game.Scene
                         return;
                     }
                     LoadingPhase = load.Batches.Current.Phase;
+                    LoadingTextKey = load.Batches.Current.TextKey;
                     LoadingProgress = load.Batches.Current.Progress;
                 } while (Stopwatch.GetElapsedTime(frameStart).TotalMilliseconds < LoadBudgetMs);
             }
@@ -214,6 +217,7 @@ namespace Pal3.Game.Scene
             var load = _load;
             _load = null;
             LoadingPhase = "";
+            LoadingTextKey = "";
             LoadingProgress = 0;
             load?.Batches.Dispose();
         }
@@ -224,7 +228,7 @@ namespace Pal3.Game.Scene
                 FileConstants.GetScnFileVirtualPath(sceneCityName, sceneName));
             SceFile sceFile = _resourceProvider.GetGameResourceFile<SceFile>(
                 FileConstants.GetSceneSceFileVirtualPath(sceneCityName));
-            yield return new("正在读取场景描述", .04f);
+            yield return new("loading.description", "正在读取场景描述", .04f);
 
             if (_currentGameScene != null) Pal3.Instance.Execute(new SceneLeavingCurrentSceneNotification());
             try
@@ -233,7 +237,7 @@ namespace Pal3.Game.Scene
                 {
                     foreach (var _ in root.DestroyDescendantsInBatches())
                     {
-                        yield return new("正在卸载旧场景", .08f);
+                        yield return new("loading.unloading", "正在卸载旧场景", .08f);
                     }
                 }
             }
@@ -241,7 +245,7 @@ namespace Pal3.Game.Scene
             {
                 DisposeCurrentScene(notifyLeaving: false);
             }
-            yield return new("正在卸载旧场景", .14f);
+            yield return new("loading.unloading", "正在卸载旧场景", .14f);
             bool committed = false;
             try
             {

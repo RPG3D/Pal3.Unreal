@@ -1,25 +1,25 @@
 # SharpDemo = UE5 + UnrealSharp + Pal3.Unity
 
-[下载 Android APK（v0.0.1）](https://github.com/RPG3D/Pal3.Unreal/releases/tag/v0.0.1)
+简体中文 | [English](README_EN.md)
 
-SharpDemo 是 **UnrealSharp Mono 移植**的配套工程，用来验证 UE5 中的 C# 代码在 Android、iOS 等移动平台上的运行。项目将 Pal3.Unity 移植到 UE5，通过实际游戏流程验证运行时宿主、C# 与 UE 的绑定、托管程序集的发布与打包，以及调试和诊断。工程也用于验证移动端 CoreCLR 适配。 [UnrealSharp 上游仓库](https://github.com/UnrealSharp/UnrealSharp)
+[下载 Android APK（v0.0.2）](https://github.com/RPG3D/Pal3.Unreal/releases/tag/v0.0.2)
+
+SharpDemo 是 **UnrealSharp 移动平台移植项目**的配套工程，用来验证 UnrealSharp 在 Android、iOS 等移动平台上的运行。项目将 Pal3.Unity 移植到 UE5，通过实际游戏流程验证运行时宿主、C# 与 UE 的绑定、托管程序集的发布与打包，以及调试和诊断。工程也用于验证移动端 CoreCLR 适配。 [UnrealSharp 上游仓库](https://github.com/UnrealSharp/UnrealSharp)
 
 [![SharpDemo 在 Android 平板上运行《仙剑奇侠传三》的剧情对白画面，点击查看原图](Docs/images/pal3-android-preview.png)](Docs/images/pal3-android.png)
 
 ## 为什么选择 UnrealSharp
 
 - **强类型的 C# 脚本。** 编辑器和编译器能在运行前发现语法错误、类型不匹配，以及接口签名变化引起的调用错误。Lua 和 JavaScript 的动态类型检查通常发生在运行时。
-- **成熟的开发和调试工具链。** C# 可用 .NET SDK 构建，在 Visual Studio、Rider 或配有 C# 扩展的 VS Code 中完成代码导航、重构、断点调试和调用栈检查。UE 内嵌的 Lua 和以 QuickJS 运行的 JavaScript 缺少统一的 IDE 调试流程，断点、单步和变量查看通常需要针对各自的宿主或插件额外接入和配置。
+- **成熟的开发和调试工具链。** C# 可用 .NET SDK 构建，在 Visual Studio、Rider 或配有 C# 扩展的 VS Code 中完成代码导航、重构、断点调试和调用栈检查。C++/C# 混合调试的支持情况取决于 IDE、平台和运行时。UE 内嵌的 Lua 和以 QuickJS 运行的 JavaScript 的 IDE 调试取决于对应宿主或插件，断点、单步和变量查看通常需要额外接入和配置。
 - **高性能的运行时和跨语言调用。** .NET 的 JIT 可将 IL 编译成原生机器码，Mono 解释器也能在限制动态代码生成的平台执行 IL。UnrealSharp 在构建时静态生成 UE API 的 C# glue，并通过 `delegate* unmanaged` 函数指针直接调用原生绑定入口，减少 C# 与 C++ 之间高频调用的动态查找和分发开销。
-- **已有引擎和游戏验证。** Unity、Godot 和 Flax Engine 都支持 C# 脚本，MonoGame 也用于《星露谷物语》等商业游戏。
-
-UE 商业游戏也有使用 C# 的案例。CSharpLoader 项目记录了《黑神话：悟空》PC 版通过 USharp 运行部分 C# 游戏逻辑。《鸣潮》3.6 的官方公告披露了编程语言切换，社区实测记录了客户端的 C# 环境。
+- **已有引擎和游戏验证。** Unity、Godot 和 Flax Engine 都支持 C# 脚本。部分商业游戏也有使用 C# 的案例。《黑神话：悟空》PC 版通过 USharp 运行部分 C# 游戏逻辑。《鸣潮》3.6 的客户端脚本层改用 C#。 [CSharpLoader 项目说明](https://github.com/czastack/B1CSharpLoader/blob/master/README.md) · [极客湾实测分析](https://www.bilibili.com/video/av117353606022815/)
 
 ## 为什么选择 Pal3.Unity
 
 - **规模适合反复测试。** 一段 RPG 流程就能覆盖场景加载、剧情脚本、角色动画、输入、音频、过场、UI 和存读档。定位问题时，可以直接跳到对应场景或剧情节点。
 - **有可运行的 Unity 版本作对照。** 可以用同一套游戏数据运行相同的场景和剧情，对照角色动作、镜头、交互和画面，及时发现 UE 移植引入的差异。 [Pal3.Unity 上游工程](https://github.com/0x7c13/Pal3.Unity)
-- **分层清晰，便于跨引擎移植。** `Pal3.Core` 处理资源格式和脚本指令，`Pal3.Game` 实现玩法，`Engine` 抽象实体、变换、贴图等引擎能力。SharpDemo 优先复用上游 C# 玩法，把 Unity 与 UE 的差异集中到引擎适配层，减少后续同步上游代码的成本。 [上游代码复用设计](Docs/PAL3_PORTABILITY.md)
+- **架构优雅，分层清晰，便于跨引擎移植。** `Pal3.Core` 处理资源格式和脚本指令，`Pal3.Game` 实现玩法，`Engine` 抽象实体、变换、贴图等引擎能力。SharpDemo 优先复用上游 C# 玩法，把 Unity 与 UE 的差异集中到引擎适配层，减少后续同步上游代码的成本。 [上游代码复用设计](Docs/PAL3_PORTABILITY.md)
 
 ## 运行时与平台
 
@@ -98,6 +98,7 @@ PAL3 的宿主地图、材质和字体资产放在 `Content/PAL3`，由 `Default
 | 操作 | 入口 |
 |---|---|
 | 开始、选剧情、切场景、读档 | 标题菜单或可操作状态下的 Tab 菜单。切场景在当前 UE 世界内加载 PAL3 地图 |
+| 界面语言 | 主菜单点「English」切换英文，按钮随后显示「中文」用于切回。每次启动默认中文 |
 | 移动 | WASD 或方向键 |
 | 交互和继续对白 | E 交互，Space 或 Enter 继续对白。当前交互目标上方会显示提示 |
 | 镜头 | Q/R、鼠标滚轮或手柄右摇杆横向转动。固定室内机位和剧情镜头按原作锁定 |
@@ -107,3 +108,5 @@ PAL3 的宿主地图、材质和字体资产放在 `Content/PAL3`，由 `Default
 | 自动化 | `tools/pal3-play.ps1` 通过 RC 或本地文件调用同一套游戏命令。移动使用游戏命令直接驱动 |
 
 JSON 定义 UMG 布局，C# 负责交互与数据。`RuntimeWidgetLayout` 提供通用的布局、换页和控件 API。主菜单的首页和剧情页通过 `WidgetSwitcher` 切换，场景页按 PAL3 场景档案分组，存读档页按槽位生成。布局文件随 UE 打包为 UFS 文件，运行时通过 UE 文件接口按项目相对路径读取。 [主菜单布局](Script/ManagedSharpDemo/Layouts/Pal3StartMenu.json)
+
+界面的中文原文保留在布局和托管文本模板中，英文翻译放在 [Lang-en.json](Script/ManagedSharpDemo/Layouts/Lang-en.json)，通过 `textKey` 匹配。文本动态注册到 UE 原生多语言系统，并以 `FText` 显示。
