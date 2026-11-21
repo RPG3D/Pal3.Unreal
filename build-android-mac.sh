@@ -22,7 +22,8 @@ set -euo pipefail
 
 PROJ=/Users/admin/Documents/GitHub/SharpDemo
 UPROJECT="$PROJ/SharpDemo.uproject"
-ENGINE=/Users/admin/Documents/Code/UE5/Engine
+ENGINE="${UE_ENGINE_ROOT:-/Users/admin/Documents/Code/UE5.9/Engine}"
+if [ -d "$ENGINE/Engine/Build" ]; then ENGINE="$ENGINE/Engine"; fi
 UAT="$ENGINE/Build/BatchFiles/RunUAT.sh"
 BUILD="$ENGINE/Build/BatchFiles/Mac/Build.sh"
 SCRIPTS="$PROJ/Plugins/UnrealSharp/Build/Scripts"
@@ -82,10 +83,11 @@ log "Step 2 OK"
 
 # ---- Step 3: PackageProjectMobile --------------------------------------------
 log "Step 3: PackageProjectMobile"
-"$UAT" PackageProjectMobile -ScriptDir="$SCRIPTS" -Project="$UPROJECT" \
-  -UEBuildConfig=Development -TargetPlatform=Android -nocompileuat \
+dotnet run --project "$PROJ/tools/ManagedModules/ModulePublisher.csproj" -- Android all \
+  --publish-host --engine-root "$ENGINE" --configuration Development --architecture arm64 \
   > "$LOGS/combo$COMBO-package.log" 2>&1 || { echo "FAIL step 3"; tail -20 "$LOGS/combo$COMBO-package.log"; exit 1; }
 log "Step 3 OK: $(ls "$PROJ/Content/Managed/Android" | wc -l | tr -d ' ') files in Content/Managed/Android"
+
 
 # ---- Step 4: Editor UBT build (cook prerequisite) ----------------------------
 log "Step 4: Editor UBT build"

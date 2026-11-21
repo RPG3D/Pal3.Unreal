@@ -111,6 +111,9 @@ Content/ParagonShinbi/
 
 # Don't include launchSettings (contains local dev paths)
 /Script/Properties/launchSettings.json
+/Script/GameHost.Contracts/Properties/launchSettings.json
+/Script/GameHost/Properties/launchSettings.json
+/Script/Pal3.Frontend/Properties/launchSettings.json
 /Script/ProjectGlue
 
 /Windows/
@@ -154,3 +157,6 @@ Script/ManagedSharpDemo/pre.xml
 # Python bytecode (dev tooling)
 __pycache__/
 *.pyc
+
+# UnrealSharp user-solution stamp (generated next to ManagedSharpDemo.sln)
+Script/ManagedSharpDemo.sln.projects.json

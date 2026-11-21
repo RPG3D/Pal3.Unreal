@@ -1,13 +1,21 @@
-{
+﻿{
   "keyActions": { "Tab": "menu_tab", "Escape": "menu_escape" },
   "root": {
     "type": "canvas",
     "children": [
       {
+        "type": "image",
+        "id": "menu_logo",
+        "anchor": "bottom_left",
+        "position": [24, -24],
+        "size": [500, 253],
+        "preserveAspect": true
+      },
+      {
         "type": "border",
         "anchor": "center",
         "size": [868, 652],
-        "color": [0.035, 0.055, 0.075, 0.98],
+        "color": [0.035, 0.055, 0.075, 0.70],
         "child": {
           "type": "canvas",
           "children": [
@@ -21,7 +29,7 @@
                   "id": "home_page",
                   "children": [
                     {"type": "text", "id": "home_title", "text": "仙剑奇侠传三", "textKey": "game.title", "fontSize": 36, "align": "left", "position": [28, 20], "size": [812, 56], "color": [0.96, 0.89, 0.74, 1]},
-                    {"type": "text", "id": "home_hint", "text": "开始游戏后按 Tab 打开菜单", "textKey": "menu.hint_keyboard_title", "fontSize": 22, "position": [28, 78], "size": [812, 36], "color": [0.96, 0.89, 0.74, 1]},
+                    {"type": "text", "id": "home_hint", "text": "开始游戏后按 Tab 打开菜单", "textKey": "menu.hint_keyboard_title", "fontSize": 22, "position": [28, 78], "size": [560, 36], "color": [0.96, 0.89, 0.74, 1]},
                     {"type": "button", "id": "diagnostics", "text": "诊断面板", "textKey": "menu.diagnostics", "fontSize": 24, "position": [28, 134], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
                     {"type": "button", "id": "auto", "text": "自动推进对白", "textKey": "menu.auto", "fontSize": 24, "position": [441, 134], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
                     {"type": "button", "id": "new", "text": "开始新游戏", "textKey": "menu.new", "fontSize": 24, "position": [28, 232], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
@@ -31,6 +39,7 @@
                     {"type": "button", "id": "transparent_sticks", "text": "摇杆全透明 · 关闭", "textKey": "menu.sticks_default", "fontSize": 24, "position": [28, 384], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
                     {"type": "button", "id": "maze_entrance", "text": "迷宫入口", "textKey": "menu.maze_entrance", "fontSize": 24, "position": [28, 454], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
                     {"type": "button", "id": "maze_exit", "text": "迷宫出口或剧情点", "textKey": "menu.maze_exit", "fontSize": 24, "position": [441, 454], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
+                    {"type": "button", "id": "variant", "text": "游戏版本 · PAL3", "textKey": "menu.variant_state", "fontSize": 24, "position": [28, 513], "size": [812, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
                     {"type": "button", "id": "resume", "text": "返回游戏", "textKey": "common.resume", "fontSize": 24, "position": [650, 572], "size": [190, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
                     {"type": "button", "id": "language", "text": "English", "textKey": "menu.language", "fontSize": 24, "position": [441, 384], "size": [399, 59], "normalColor": [0.11, 0.22, 0.29, 1]},
                     {"type": "canvas", "id": "scene_scan_spinner", "position": [380, 317], "size": [30, 30]}

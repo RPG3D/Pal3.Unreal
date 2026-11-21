@@ -3,6 +3,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AssemblyName>Pal3A.Engine</AssemblyName>
+    <DefineConstants>$(DefineConstants);PAL3A</DefineConstants>
   </PropertyGroup>
   <Import Project="..\..\Plugins\UnrealSharp\UnrealSharp.Shared.props" />
   <ItemGroup>
@@ -15,5 +17,9 @@
     <Reference Include="RuntimeBinkVideo">
       <HintPath>../../Binaries/Managed/net10.0/RuntimeBinkVideo.dll</HintPath>
     </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Pal3.Core/Pal3A.Core.csproj" />
+    <ProjectReference Include="../UnityEngine/Pal3A.UnityEngine.csproj" />
   </ItemGroup>
 </Project>

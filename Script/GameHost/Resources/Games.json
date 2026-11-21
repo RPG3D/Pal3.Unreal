@@ -1,0 +1,6 @@
+{
+  "games": [
+    { "id": "pal3", "title": "仙剑奇侠传三", "entryAssembly": "Pal3.Frontend", "entryType": "ManagedSharpDemo.Pal3GameModule" },
+    { "id": "pal3a", "title": "仙剑奇侠传三外传 问情篇", "entryAssembly": "Pal3A.Frontend", "entryType": "ManagedSharpDemo.Pal3GameModule" }
+  ]
+}

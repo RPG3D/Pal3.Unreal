@@ -11,7 +11,11 @@ namespace Pal3.Game;
 /// Place in level or set as DefaultPawnClass in GameMode.
 /// </summary>
 [UClass]
+#if PAL3A
+public partial class AApl3ATestActor : AActor
+#else
 public partial class AApl3TestActor : AActor
+#endif
 {
     public override void BeginPlay()
     {

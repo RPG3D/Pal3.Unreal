@@ -6,6 +6,13 @@
 #include "GameFramework/PlayerController.h"
 #include "ProceduralMeshComponent.h"
 
+#if WITH_EDITOR
+#include "Editor.h"
+#include "IAssetViewport.h"
+#include "LevelEditor.h"
+#include "PlayInEditorDataTypes.h"
+#endif
+
 void UPal3DebugOverlay::CreateProceduralSection(UProceduralMeshComponent* Mesh, int32 SectionIndex,
 	TArray<FVector> Vertices, TArray<int32> Triangles, TArray<FVector> Normals,
 	TArray<FVector2D> UV0, TArray<FVector2D> UV1, bool bCreateCollision)
@@ -44,10 +51,24 @@ int64 UPal3DebugOverlay::FingerprintMeshSection(UProceduralMeshComponent* Mesh, 
 
 void UPal3DebugOverlay::ExecConsoleCommand(const FString& Command)
 {
-	if (GEngine && GEngine->GameViewport && !Command.IsEmpty())
+	if (!GEngine || Command.IsEmpty())
+	{
+		return;
+	}
+
+	if (GEngine->GameViewport)
 	{
 		GEngine->GameViewport->Exec(nullptr, *Command, *GLog);
+		return;
 	}
+
+#if WITH_EDITOR
+	// No game viewport outside PIE: route through the editor's own exec handler.
+	if (GEditor)
+	{
+		GEditor->Exec(nullptr, *Command, *GLog);
+	}
+#endif
 }
 
 UWorld* UPal3DebugOverlay::FindGameWorld()
@@ -194,3 +215,67 @@ FString UPal3DebugOverlay::DumpActorPositions(const FString& ClassContains, int3
 	}
 	return Out;
 }
+
+FString UPal3DebugOverlay::FindActorPaths(const FString& NameContains, int32 MaxCount)
+{
+	FString Out;
+	UWorld* World = FindGameWorld();
+	if (!World)
+	{
+		return TEXT("no game world");
+	}
+
+	int32 Shown = 0;
+	for (TActorIterator<AActor> It(World); It && Shown < MaxCount; ++It)
+	{
+		AActor* Actor = *It;
+		if (!Actor)
+		{
+			continue;
+		}
+
+		const FString Name = Actor->GetName();
+		const FString ClassName = Actor->GetClass()->GetName();
+		if (!NameContains.IsEmpty() &&
+			!Name.Contains(NameContains, ESearchCase::IgnoreCase) &&
+			!ClassName.Contains(NameContains, ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
+
+		Out += Actor->GetPathName();
+		Out += TEXT(" | ");
+		Out += ClassName;
+		Out += TEXT("\n");
+		++Shown;
+	}
+
+	return Out.IsEmpty() ? FString(TEXT("(no match)")) : Out;
+}
+
+#if WITH_EDITOR
+void UPal3DebugOverlay::StartPieSession()
+{
+	if (!GEditor)
+	{
+		return;
+	}
+
+	FLevelEditorModule& LevelEditorModule = FModuleManager::LoadModuleChecked<FLevelEditorModule>("LevelEditor");
+	FRequestPlaySessionParams Params;
+	Params.WorldType = EPlaySessionWorldType::PlayInEditor;
+	if (TSharedPtr<IAssetViewport> ActiveViewport = LevelEditorModule.GetFirstActiveViewport())
+	{
+		Params.DestinationSlateViewport = ActiveViewport;
+	}
+	GEditor->RequestPlaySession(Params);
+}
+
+void UPal3DebugOverlay::StopPieSession()
+{
+	if (GEditor)
+	{
+		GEditor->RequestEndPlayMap();
+	}
+}
+#endif

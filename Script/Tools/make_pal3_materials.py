@@ -11,6 +11,21 @@ mel = unreal.MaterialEditingLibrary
 tools = unreal.AssetToolsHelpers.get_asset_tools()
 
 
+def add_sprite_alpha_override(mat, tex, opacity):
+    # Pal3/Sprite forces sampled alpha to 1, even for 24-bit TGA decoders
+    # that fill the unused alpha byte with 0. Other additive users keep
+    # sampling texture alpha unless their material instance opts in.
+    ignore_alpha = mel.create_material_expression(mat, unreal.MaterialExpressionScalarParameter, -950, 850)
+    ignore_alpha.set_editor_property("parameter_name", "IgnoreTextureAlpha")
+    ignore_alpha.set_editor_property("default_value", 0.0)
+    alpha = mel.create_material_expression(mat, unreal.MaterialExpressionLinearInterpolate, -500, 650)
+    alpha.set_editor_property("const_b", 1.0)
+    if not (mel.connect_material_expressions(tex, "A", alpha, "A")
+            and mel.connect_material_expressions(ignore_alpha, "", alpha, "Alpha")
+            and mel.connect_material_expressions(alpha, "", opacity, "A")):
+        raise RuntimeError("Cannot connect the sprite alpha override")
+
+
 def add_local_light(mat, surface, tex):
     def node(name, x, y):
         return mel.create_material_expression(mat, getattr(unreal, "MaterialExpression" + name), x, y)
@@ -132,6 +147,8 @@ def build(name, blend):
         opacity = expr(unreal.MaterialExpressionMultiply, -250, 250)
         mel.connect_material_expressions(tex, "A", opacity, "A")
         mel.connect_material_expressions(tint, "A", opacity, "B")
+        if blend == unreal.BlendMode.BLEND_ADDITIVE:
+            add_sprite_alpha_override(mat, tex, opacity)
         mel.connect_material_property(opacity, "", unreal.MaterialProperty.MP_OPACITY)
 
     mel.recompile_material(mat)

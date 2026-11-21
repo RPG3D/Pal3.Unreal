@@ -1,8 +1,17 @@
-{
+﻿{
   "culture": "en",
   "displayName": "English",
   "strings": {
+    "host.choose": "Choose a game",
+    "host.start": "Start Game",
+    "host.hint": "Select a game above, then press Start",
+    "host.current": "Selected game: {Game}",
+    "host.none": "None",
+    "host.selected": "Selected · ",
+    "host.game.pal3": "Chinese Paladin 3",
+    "host.game.pal3a": "Chinese Paladin 3 Gaiden",
     "game.title": "Chinese Paladin 3",
+    "game.title.a": "Chinese Paladin 3 Gaiden",
     "menu.title": "PAL3 Menu",
     "menu.new": "New Game",
     "menu.saves": "Save / Load",
@@ -15,6 +24,7 @@
     "menu.maze_entrance": "Maze Entrance",
     "menu.maze_exit": "Maze Exit / Story Point",
     "menu.language": "中文",
+    "menu.variant_state": "Game Variant · {State}",
     "common.resume": "Resume",
     "common.back": "Back",
     "common.previous": "Previous",

@@ -465,6 +465,11 @@ bool URuntimeJsonWidget::SetElementImage(const FString& ElementId, UTexture2D* T
 		{
 			Brush.DrawAs = ESlateBrushDrawType::NoDrawType;
 		}
+		UE_LOG(LogTemp, Verbose,
+			TEXT("[JsonImage] %s tex=%dx%d mips=%d uv=(%.3f,%.3f,%.3f,%.3f) imageSize=(%.0f,%.0f)"),
+			*ElementId, Texture ? Texture->GetSizeX() : 0, Texture ? Texture->GetSizeY() : 0,
+			Texture ? Texture->GetNumMips() : 0,
+			U0, V0, U1, V1, Brush.ImageSize.X, Brush.ImageSize.Y);
 		Image->SetBrush(Brush);
 		return true;
 	}

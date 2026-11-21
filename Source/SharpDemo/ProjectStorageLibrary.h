@@ -35,8 +35,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "SharpDemo|Storage")
 	static FString ResolveAuthorizedPal3Folder();
 
+	/** Resolves a persisted folder grant owned by the caller's storage key. Empty uses the legacy grant. */
+	UFUNCTION(BlueprintCallable, Category = "SharpDemo|Storage")
+	static FString ResolveAuthorizedFolder(const FString& StorageKey);
+
 	UFUNCTION(BlueprintCallable, Category = "SharpDemo|Storage")
 	static void RequestPal3FolderSelection(const FString& RequiredFile);
+
+	UFUNCTION(BlueprintCallable, Category = "SharpDemo|Storage")
+	static void RequestFolderSelection(const FString& StorageKey, const FString& RequiredFile);
 
 	UFUNCTION(BlueprintCallable, Category = "SharpDemo|Storage")
 	static EPal3FolderSelectionResult ConsumePal3FolderSelectionResult();

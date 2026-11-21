@@ -43,26 +43,13 @@ rem UnrealSharp's GetDotNetDirectory() matches against ("Program Files\dotnet\")
 set "DOTNET_DISABLE_BUILD_SERVERS=1"
 set "PLUGIN_DIR=%PROJ_DIR%\Plugins\UnrealSharp"
 
-rem -- Runtime mode: auto-detect Mono vs MobileClr (CoreCLR) branch --
-rem   Mono branch : Build/Scripts/BuildCommands/PackageProjectMono.cs exists
-rem   MobileClr   : PackageProjectMobile.cs exists (CoreCLR)
-rem   (bUseMono in DefaultEngine.ini is honored by the Mono branch only; on
-rem    MobileClr the ini switch is inert - CoreCLR is unconditional.)
+rem mobile20261120 publishes application assemblies independently of the runtime.
+rem DotNetRuntimeSDK stages the matching Mono/CoreCLR BCL and native library.
 set "PACKAGE_CMD=PackageProjectMobile"
-if exist "%PLUGIN_DIR%\Build\Scripts\BuildCommands\PackageProjectMono.cs" set "PACKAGE_CMD=PackageProjectMono"
 
-rem -- .NET SDK selection per detected mode --
-rem   Mono branch                : plugin pins SDK 10.0.201 (Managed/global.json, net10.0
-rem                                managed) -> use machine-wide .NET 10 only.
-rem   MobileClr (CoreCLR) branch : managed code targets net11.0 -> prefer the local
-rem                                .NET 11 RC SDK, fall back to machine-wide.
-if exist "%PLUGIN_DIR%\Build\Scripts\BuildCommands\PackageProjectMono.cs" (
-    set "PATH=C:\Program Files\dotnet\;%PATH%"
-) else (
-    set "DOTNET11_SDK_DIR=D:\Code\DotNet11Sdk"
-    if not exist "!DOTNET11_SDK_DIR!\dotnet.exe" set "DOTNET11_SDK_DIR="
-    set "PATH=!DOTNET11_SDK_DIR!;C:\Program Files\dotnet\;%PATH%"
-)
+
+rem The plugin pins .NET 10 through Managed/global.json.
+set "PATH=C:\Program Files\dotnet\;%PATH%"
 
 rem -- Config --
 set "BUILD_CONFIG=Development"
@@ -107,7 +94,8 @@ echo [Step 1/4] Building Game target (Win64, generates UHT/Game/ glue)...
 echo ==============================================================
 set "STEP1_ARGS=SharpDemo Win64 %BUILD_CONFIG% -Project="%PROJ_FILE%" -WaitMutex"
 call "%BUILD%" %STEP1_ARGS%
-if %ERRORLEVEL% neq 0 (
+set "GAME_BUILD_RESULT=%ERRORLEVEL%"
+if %GAME_BUILD_RESULT% neq 0 (
     echo [FAIL] Step 1 - native Game build failed
     exit /b 1
 )
@@ -118,10 +106,9 @@ rem Step 2 - Publish managed DLLs to Content/Managed/Android
 rem ============================================================================
 echo.
 echo ==============================================================
-echo [Step 2/4] Publishing managed DLLs (%PACKAGE_CMD%)...
+echo [Step 2/4] Publishing complete managed bundle...
 echo ==============================================================
-set "STEP2_ARGS=%PACKAGE_CMD% -ScriptDir="%PLUGIN_DIR%\Build\Scripts" -Project="%PROJ_FILE%" -UEBuildConfig=%BUILD_CONFIG% -TargetPlatform=Android -nocompileuat"
-call "%UAT%" %STEP2_ARGS%
+dotnet run --project "%PROJ_DIR%\tools\ManagedModules\ModulePublisher.csproj" -- Android all --configuration %BUILD_CONFIG% --architecture arm64 --publish-host --engine-root "%ENGINE%"
 if %ERRORLEVEL% neq 0 (
     echo [FAIL] Step 2 - %PACKAGE_CMD% failed
     exit /b 1

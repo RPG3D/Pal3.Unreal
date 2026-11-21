@@ -1,4 +1,4 @@
-// Smoke bootstrap for the managed runtime layer. Invoked by the UE driver
+﻿// Smoke bootstrap for the managed runtime layer. Invoked by the UE driver
 // actor (APal3Driver.BeginPlay). Verifies the Unity-style lifecycle dispatch
 // (Awake/OnEnable/Start/Update/LateUpdate) and every CoroutineScheduler yield
 // operand (null / float / Task / nested IEnumerator) actually run per-frame.
@@ -184,15 +184,12 @@ namespace Pal3.Game
         {
             get
             {
-                try
-                {
-                    return s_InputActions ??= Engine.Services.ServiceLocator.Instance
-                        .Get<global::Pal3.Game.Input.PlayerInputActions>();
-                }
-                catch (Exception)
-                {
-                    return null; // not registered yet (early boot)
-                }
+                // The UE keyboard bridge ticks while resource initialization is
+                // still running. A missing service then is expected, not a failed
+                // Get() to log and catch on every frame.
+                if (!IsGameReady) return null;
+                return s_InputActions ??= Engine.Services.ServiceLocator.Instance
+                    .Get<global::Pal3.Game.Input.PlayerInputActions>();
             }
         }
 
@@ -235,10 +232,26 @@ namespace Pal3.Game
 
         /// <summary>
         /// Default PAL3 game data location (Steam install). Overridable via the
-        /// PAL3_DATA_PATH environment variable.
+        /// PAL3_DATA_PATH / PAL3A_DATA_PATH environment variable.
         /// </summary>
-        private const string DefaultDataPath = @"E:\Program Files (x86)\Steam\steamapps\common\PAL3\";
-        private const string AndroidDataPath = "/sdcard/Download/PAL3";
+        // Data folder name follows the compiled variant: PAL3 (仙剑三) vs PAL3A (仙三外传).
+#if PAL3A
+        private const string GameDataFolderName = "PAL3A";
+#else
+        private const string GameDataFolderName = "PAL3";
+#endif
+        private static string DefaultDataPath =>
+            $@"E:\Program Files (x86)\Steam\steamapps\common\{GameDataFolderName}\";
+        private static string AndroidDataPath => $"/sdcard/Download/{GameDataFolderName}";
+
+        // Keep the existing PAL3 iOS bookmark, with a separate grant for PAL3A.
+        public static string DataFolderStorageKey => Constants.GameConstants.IsPal3A ? GameDataFolderName : string.Empty;
+        public static string DataFolderDisplayName => GameDataFolderName;
+#if PAL3A
+        public static string RequiredDataFile => FileConstants.ScnCpkFileRelativePath;
+#else
+        public static string RequiredDataFile => FileConstants.BaseDataCpkFileRelativePath;
+#endif
 
         private static bool _fullBootStarted;
         private static IGameEntity? _resourceInitializer;
@@ -289,21 +302,21 @@ namespace Pal3.Game
 
         private static string GetMacDataPath()
         {
-            string localPath = System.IO.Path.Combine(Application.persistentDataPath, "PAL3");
+            string localPath = System.IO.Path.Combine(Application.persistentDataPath, GameDataFolderName);
             if (System.IO.File.Exists(System.IO.Path.Combine(localPath, FileConstants.BaseDataCpkFileRelativePath)))
             {
                 return localPath;
             }
 
             return System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                "Library", "Application Support", "Steam", "steamapps", "common", "PAL3");
+                "Library", "Application Support", "Steam", "steamapps", "common", GameDataFolderName);
         }
 
         public static void RunFullBoot()
         {
             if (_fullBootStarted) return;
 
-            string dataPath = Environment.GetEnvironmentVariable("PAL3_DATA_PATH");
+            string dataPath = Environment.GetEnvironmentVariable(GameDataFolderName + "_DATA_PATH");
             string platform = UnrealSharp.Engine.UGameplayStatics.PlatformName;
             bool isAndroid = platform == "Android";
             CanSelectPal3Folder = platform == "IOS" && string.IsNullOrWhiteSpace(dataPath);
@@ -322,21 +335,22 @@ namespace Pal3.Game
                 !UnrealSharp.SharpDemo.UProjectStorageLibrary.HasSharedStorageAccess();
             if (StoragePermissionRequired)
             {
-                BootError = "读取 Download/PAL3 需要文件访问权限。请点击「去授权」。";
+                BootError = $"读取 Download/{GameDataFolderName} 需要文件访问权限。请点击「去授权」。";
                 return;
             }
 
             if (isAndroid && dataPath == AndroidDataPath &&
                 !System.IO.File.Exists(System.IO.Path.Combine(dataPath, FileConstants.BaseDataCpkFileRelativePath)))
             {
-                BootError = "找不到 Download/PAL3/basedata/basedata.cpk。请放入原版游戏数据后重试。";
+                BootError = $"找不到 Download/{GameDataFolderName}/basedata/basedata.cpk。请放入原版游戏数据后重试。";
                 return;
             }
 
             if (CanSelectPal3Folder &&
-                !System.IO.File.Exists(System.IO.Path.Combine(dataPath, FileConstants.BaseDataCpkFileRelativePath)))
+                (!System.IO.File.Exists(System.IO.Path.Combine(dataPath, FileConstants.BaseDataCpkFileRelativePath)) ||
+                 !System.IO.File.Exists(System.IO.Path.Combine(dataPath, RequiredDataFile))))
             {
-                BootError = "请选择「下载」中包含 basedata/basedata.cpk 的 PAL3 文件夹，或将原版数据放到 SharpDemo 文件夹后重试。";
+                BootError = $"请选择包含原版 {GameDataFolderName} 数据（{RequiredDataFile}）的文件夹，或将数据放到 Documents/{GameDataFolderName} 后重试。";
                 return;
             }
 
@@ -375,9 +389,9 @@ namespace Pal3.Game
 
         private static string GetIosDataPath()
         {
-            string selected = UnrealSharp.SharpDemo.UProjectStorageLibrary.ResolveAuthorizedPal3Folder();
+            string selected = UnrealSharp.SharpDemo.UProjectStorageLibrary.ResolveAuthorizedFolder(DataFolderStorageKey);
             if (!string.IsNullOrEmpty(selected) &&
-                System.IO.File.Exists(System.IO.Path.Combine(selected, FileConstants.BaseDataCpkFileRelativePath)))
+                System.IO.File.Exists(System.IO.Path.Combine(selected, RequiredDataFile)))
             {
                 return selected;
             }
@@ -386,7 +400,7 @@ namespace Pal3.Game
         }
 
         private static string GetIosSandboxDataPath() =>
-            System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "PAL3");
+            System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), GameDataFolderName);
 
         internal static IEnumerable<string> GetGameDataSearchLocations(Settings.GameSettings settings)
         {
@@ -394,7 +408,7 @@ namespace Pal3.Game
             if (!CanSelectPal3Folder) return locations;
 
             string sandbox = GetIosSandboxDataPath();
-            if (!System.IO.File.Exists(System.IO.Path.Combine(sandbox, FileConstants.BaseDataCpkFileRelativePath)))
+            if (!System.IO.File.Exists(System.IO.Path.Combine(sandbox, RequiredDataFile)))
                 return locations;
 
             // Keep the authorized folder first so an incomplete set of CPKs
@@ -546,6 +560,10 @@ namespace Pal3.Game
                 ServiceLocator.Instance.Get<ScriptManager>()
                     .AddScript(ScriptConstants.InitScriptId);
                 ServiceLocator.Instance.Get<TeamManager>().AddActor(0);
+#if PAL3A
+                // Match the upstream new-game entry point before starting the story.
+                Pal3.Instance.Execute(new TaskOpenCommand(TaskConstants.InitTaskId));
+#endif
                 bool ok = ServiceLocator.Instance.Get<GameStateManager>()
                     .TryGoToState(GameState.Cutscene);
                 Debug.Log($"[Pal3Boot] start: reset + main story var + init script {ScriptConstants.InitScriptId} "
@@ -622,9 +640,6 @@ namespace Pal3.Game
                 new ActorSetTilePositionCommand(-1, tileX, tileY),
                 new ActorEnablePlayerControlCommand(-1),
                 new CameraFollowPlayerCommand(1),
-                // Preset 2 was chosen after comparing menu and doorway entry in several rooms.
-                // The comparison covered a subset of indoor maps, and doorway scripts can use other presets.
-                new CameraSetDefaultTransformCommand(2),
                 new CameraFadeInCommand(),
                 new PlayerEnableInputCommand(1)
             ]);

@@ -8,9 +8,11 @@
           { "type": "text", "id": "boot_error", "wrap": true, "fontSize": 25,
             "position": [40, 95], "size": [740, 140] },
           { "type": "button", "id": "boot_permission", "text": "去授权", "fontSize": 25,
-            "position": [145, 255], "size": [240, 68] },
+            "position": [40, 255], "size": [240, 68] },
           { "type": "button", "id": "boot_retry", "text": "重试", "fontSize": 25,
-            "position": [435, 255], "size": [240, 68] }
+            "position": [290, 255], "size": [240, 68] },
+          { "type": "button", "id": "boot_variant", "text": "游戏版本：PAL3", "fontSize": 23,
+            "position": [540, 255], "size": [240, 68] }
         ] }
       }
     ]

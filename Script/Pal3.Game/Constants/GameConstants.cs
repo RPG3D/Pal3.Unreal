@@ -23,6 +23,13 @@ namespace Pal3.Game.Constants
         public const string AppNameCNFull = "仙劍奇俠傳三外传";
         #endif
 
+        /// <summary>True when this assembly set was compiled for 仙三外传（问情篇）.</summary>
+        #if PAL3A
+        public const bool IsPal3A = true;
+        #else
+        public const bool IsPal3A = false;
+        #endif
+
         public const string CompanyName = "Jackil";
 
         public const string AppIdentifierPrefix = "com" + "." + CompanyName;

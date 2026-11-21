@@ -1,19 +1,7 @@
 <Project>
-  <!--
-    Master switch for the managed Pal3 port (Pal3.Core, Pal3.Game, and the Engine /
-    UnityEngine shims they depend on).
-
-    Disabled by default: Pal3.Core compiles against DLLs under Pal3.Core/Libraries that
-    are gitignored and therefore absent in a clean checkout, which makes the UnrealSharp
-    managed build (BuildUserSolution -> dotnet publish) fail with CS0246.
-
-    Re-enable with: dotnet publish Script -p:EnablePal3=true
-    or by flipping the default below.
-  -->
   <PropertyGroup>
-    <!-- Default ON: the editor's startup managed build (UnrealSharp BuildUserSolution)
-         doesn't pass -p:EnablePal3, so a false default here silently strips the whole
-         PAL3 port from Binaries/Managed on every editor launch. -->
-    <EnablePal3 Condition="'$(EnablePal3)' == ''">true</EnablePal3>
+    <!-- Paired game projects share sources, with independent NuGet/compiler intermediates. -->
+    <BaseIntermediateOutputPath>obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
+    <DefaultItemExcludes>$(DefaultItemExcludes);$(MSBuildProjectDirectory)/obj/**;$(MSBuildProjectDirectory)/bin/**</DefaultItemExcludes>
   </PropertyGroup>
 </Project>

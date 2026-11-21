@@ -14,7 +14,8 @@ set -euo pipefail
 
 PROJ=/Users/admin/Documents/GitHub/SharpDemo
 UPROJECT="$PROJ/SharpDemo.uproject"
-ENGINE=/Users/admin/Documents/Code/UE5/Engine
+ENGINE="${UE_ENGINE_ROOT:-/Users/admin/Documents/Code/UE5.9/Engine}"
+if [ -d "$ENGINE/Engine/Build" ]; then ENGINE="$ENGINE/Engine"; fi
 UAT="$ENGINE/Build/BatchFiles/RunUAT.sh"
 BUILD="$ENGINE/Build/BatchFiles/Mac/Build.sh"
 SCRIPTS="$PROJ/Plugins/UnrealSharp/Build/Scripts"
@@ -70,10 +71,11 @@ log "Step 2 OK"
 
 # ---- Step 3: PackageProjectMobile (IOS) ---------------------------------------
 log "Step 3: PackageProjectMobile -TargetPlatform=IOS"
-"$UAT" PackageProjectMobile -ScriptDir="$SCRIPTS" -Project="$UPROJECT" \
-  -UEBuildConfig=Development -TargetPlatform=IOS -nocompileuat \
+dotnet run --project "$PROJ/tools/ManagedModules/ModulePublisher.csproj" -- IOS all \
+  --publish-host --engine-root "$ENGINE" --configuration Development --architecture arm64 \
   > "$LOGS/ios-$EDITOR_RT-$TARGET_RT-package.log" 2>&1 || { echo "FAIL step 3"; tail -20 "$LOGS/ios-$EDITOR_RT-$TARGET_RT-package.log"; exit 1; }
 log "Step 3 OK: $(ls "$PROJ/Content/Managed/IOS" | wc -l | tr -d ' ') files in Content/Managed/IOS"
+
 
 # ---- Step 4: Editor UBT build --------------------------------------------------
 log "Step 4: Editor UBT build"

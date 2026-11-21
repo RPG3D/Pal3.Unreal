@@ -21,7 +21,9 @@ $saved = & $client wait -State Gameplay -TileX 194 -TileY 212 -ActorAction c01 -
 if ($saved.player.tileX -eq $spawn.player.tileX -and $saved.player.tileY -eq $spawn.player.tileY) {
     throw 'The player did not leave the checkpoint spawn tile before saving.'
 }
-& $client save $Slot @rc | Out-Null
+# Compare against the snapshot returned by the save operation itself. The actor
+# can finish a movement step between the preceding wait response and this call.
+$saved = & $client save $Slot @rc | ConvertFrom-Json
 
 & $client scene 2 @rc | Out-Null
 & $client wait -State Gameplay -City q01 -Scene xa -TimeoutSeconds 30 @rc | Out-Null

@@ -15,6 +15,9 @@ namespace Engine.Core.Implementation
         // UObject.SpawnActor resolves the actual world itself.
         static UObject? _worldContext;
 
+        private static readonly bool s_TraceEntity =
+            System.Environment.GetEnvironmentVariable("PAL3_TRACE_ENTITY") == "1";
+
         static int _createdCount;
         public static int CreatedCount => _createdCount;
 
@@ -89,6 +92,15 @@ namespace Engine.Core.Implementation
             var entity = new UEGameEntity(actor);
             entity.Name = name;
             ++_createdCount;
+
+            // PAL3_TRACE_ENTITY=1: sample every 100th creation to expose repeated
+            // spawns (entity-count leaks) without flooding the log.
+            if (s_TraceEntity && _createdCount % 100 == 0)
+            {
+                UnityEngine.Debug.LogWarning(
+                    $"[EntityTrace] created #{_createdCount}: {name}");
+            }
+
             return entity;
         }
     }

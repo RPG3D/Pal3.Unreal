@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------------------------
 //  Copyright (c) 2021-2025, Jiaqi (0x7c13) Liu. All rights reserved.
 //  See LICENSE file in the project root for license information.
 // ---------------------------------------------------------------------------------------------
@@ -531,6 +531,9 @@ namespace Pal3.Game.Camera
             _cameraFollowPlayer = true;
         }
 
+        private static readonly bool s_DebugCamera =
+            Environment.GetEnvironmentVariable("PAL3_DEBUG_CAMERA") == "1";
+
         public void Execute(CameraSetTransformCommand command)
         {
             if (!_asyncCameraAnimationCts.IsCancellationRequested) _asyncCameraAnimationCts.Cancel();
@@ -547,6 +550,15 @@ namespace Pal3.Game.Camera
 
             _lastLookAtPoint = cameraPosition +
                                _cameraTransform.Forward * command.GameBoxDistance.ToUnityDistance();
+
+            // PAL3_DEBUG_CAMERA=1: trace explicit camera placements (init view,
+            // cutscene keyframes) when the view is suspiciously off.
+            if (s_DebugCamera)
+            {
+                EngineLogger.Log($"[Camera] SetTransform yaw={command.Yaw:F1} pitch={command.Pitch:F1} " +
+                                 $"pos=({cameraPosition.x:F1},{cameraPosition.y:F1},{cameraPosition.z:F1}) " +
+                                 $"lookAt=({_lastLookAtPoint.x:F1},{_lastLookAtPoint.y:F1},{_lastLookAtPoint.z:F1})");
+            }
             _cameraOffset = cameraPosition - _lastLookAtPoint;
 
             if (_gameStateManager.GetCurrentState() != GameState.Gameplay)

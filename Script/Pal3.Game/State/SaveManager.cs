@@ -116,7 +116,11 @@ namespace Pal3.Game.State
             _audioManager = Requires.IsNotNull(audioManager, nameof(audioManager));
             _postProcessManager = Requires.IsNotNull(postProcessManager, nameof(postProcessManager));
 
-            _saveFolder = Path.Combine(UnityEngine.Application.persistentDataPath, SAVE_FOLDER_NAME);
+            // UnrealSharp hosts both games in one application. Preserve PAL3's existing
+            // slots while giving PAL3A its own auto-save and 99 manual slots.
+            _saveFolder = Path.Combine(UnityEngine.Application.persistentDataPath,
+                Constants.GameConstants.IsPal3A ? Constants.GameConstants.AppName : string.Empty,
+                SAVE_FOLDER_NAME);
             Directory.CreateDirectory(_saveFolder);
 
             CommandExecutorRegistry<ICommand>.Instance.Register(this);
@@ -191,6 +195,11 @@ namespace Pal3.Game.State
             {
                 throw new FormatException("The save must identify one PAL3 scene and restore player input.");
             }
+            if (commands.OfType<ActorSetWorldPositionCommand>()
+                .Any(position => !float.IsFinite(position.XPosition) || !float.IsFinite(position.ZPosition)))
+            {
+                throw new FormatException("The save contains a non-finite actor position.");
+            }
             var scene = scenes[0];
             Pal3Boot.CheckSceneResources(scene.SceneCityName, scene.SceneName);
 
@@ -249,6 +258,21 @@ namespace Pal3.Game.State
                 foreach (ICommand command in restore.Deferred.Where(command => command is not PlayerEnableInputCommand))
                 {
                     game.Execute(command);
+                }
+                // Script-level world-position commands intentionally snap to a nav
+                // tile. A save records the precise position within that tile.
+                foreach (var position in restore.Deferred.OfType<ActorSetWorldPositionCommand>())
+                {
+                    var actor = current.GetActorGameEntity(position.ActorId);
+                    int layer = actor.GetComponent<ActorMovementController>().GetCurrentLayerIndex();
+                    var tilemap = current.GetTilemap();
+                    var tile = tilemap.GetTilePosition(new Vector3(position.XPosition, 0f, position.ZPosition), layer);
+                    if (!tilemap.IsTilePositionInsideTileMap(tile, layer))
+                    {
+                        throw new FormatException("The saved actor position is outside the navigation map.");
+                    }
+                    var transform = actor.Transform;
+                    transform.Position = new Vector3(position.XPosition, transform.Position.y, position.ZPosition);
                 }
                 ServiceLocator.Instance.Get<GameStateManager>().RemoveGamePlayStateLocker(restore.GameplayLock);
                 ServiceLocator.Instance.Get<InformationManager>().EnableNoteDisplay(true);

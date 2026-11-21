@@ -1,6 +1,8 @@
+using Engine.Core.Abstraction;
 using Engine.Diagnostics;
 using Engine.Services;
 using Pal3.Core.Contract.Constants;
+using GameHost.Contracts;
 using Pal3.Game;
 using Pal3.Game.Data;
 using Pal3.Game.Dev;
@@ -24,13 +26,20 @@ namespace ManagedSharpDemo
             .Where(info => !string.IsNullOrWhiteSpace(info.sceneName))
             .ToDictionary(info => info.cpkName[..^4], info => info.sceneName, StringComparer.OrdinalIgnoreCase);
         internal static readonly string[] Stories = DevCommands.StoryJumpPoints.Keys.ToArray();
-        // Spawn tiles from the upstream presets for these PAL3 scenes.
+        // These shortcuts belong to the compiled game, independently of the
+        // full data-driven travel/world-map menus.
         internal static readonly (string Label, string City, string Scene, int X, int Y)[] Scenes =
         [
+#if PAL3A
+            ("唐家堡 · 登云麓", "Q01", "Q01", 190, 20),
+            ("蜀山 · 回家", "q02", "qH", 91, 114),
+            ("蜀山 · 绿萝嶂", "Q02", "HH", 342, 137),
+#else
             ("渝州 · 唐家堡方向", "q01", "b", 195, 212),
             ("渝州西南 · 客栈", "q01", "xa", 215, 47),
             ("宾化", "q02", "q02", 70, 209),
             ("镇江", "q03", "q03", 325, 165),
+#endif
         ];
 
         private URuntimeJsonWidget? _widget;
@@ -146,6 +155,17 @@ namespace ManagedSharpDemo
                         ? "zh-CN" : "en";
                     URuntimeJsonWidgetLibrary.SetLanguage(language);
                     return;
+                case "variant":
+                {
+                    // PAL3 ↔ PAL3A: persists through the managed host catalog; the new
+                    // assembly set loads on the next editor/package launch (the
+                    // module manifest is chosen at load time).
+                    string current = GameHostServices.Catalog.SelectedGame.ToUpperInvariant();
+                    string next = current.Equals("PAL3A", StringComparison.OrdinalIgnoreCase) ? "PAL3" : "PAL3A";
+                    GameHostServices.Catalog.Select(next.ToLowerInvariant());
+                    Show(pc, _page);
+                    return;
+                }
                 case "resume": Close(pc); return;
             }
             if (!_canTransition) return;
@@ -195,7 +215,8 @@ namespace ManagedSharpDemo
                     string scene = id[6..];
                     if (entries.Contains((city, scene)))
                     {
-                        var preset = Scenes.FirstOrDefault(entry => entry.City == city && entry.Scene == scene);
+                        var preset = Scenes.FirstOrDefault(entry => entry.City.Equals(city, StringComparison.OrdinalIgnoreCase)
+                            && entry.Scene.Equals(scene, StringComparison.OrdinalIgnoreCase));
                         Launch(pc, $"{city}/{scene}", () =>
                         {
                             if (preset.City != null) Pal3Boot.SwitchScene(city, scene, preset.X, preset.Y);
@@ -470,6 +491,16 @@ namespace ManagedSharpDemo
             _widget = null;
         }
 
+        /// <summary>
+        /// Re-renders the current page. Used by the remote automation channel to exercise
+        /// the refresh path (button handlers call Show() the same way).
+        /// </summary>
+        public void Refresh()
+        {
+            APlayerController? pc = UGameplayStatics.GetPlayerController(0);
+            if (pc != null) Show(pc, _page);
+        }
+
         public void Close(APlayerController pc)
         {
             if (_widget == null) return;
@@ -488,8 +519,11 @@ namespace ManagedSharpDemo
             else Pal3UiText.Set(widget, "scenes", "menu.scenes", "切换 PAL3 场景");
             widget.SetElementVisible("scene_scan_spinner", _openScenesWhenReady);
             bool atTitle = Pal3Boot.WaitingForMenuStart;
-            if (atTitle) Pal3UiText.Set(widget, "home_title", "game.title", "仙剑奇侠传三");
-            else Pal3UiText.Set(widget, "home_title", "menu.title", "PAL3 主菜单");
+            bool isPal3A = Pal3.Game.Constants.GameConstants.IsPal3A;
+            Pal3UiText.Set(widget, "home_title",
+                isPal3A ? "game.title.a" : "game.title",
+                Pal3.Game.Constants.GameConstants.AppNameCNFull);
+            ShowLogo(widget);
             string hintKey = Pal3TouchStick.IsSupported
                 ? (atTitle ? "menu.hint_touch_title" : "menu.hint_touch_game")
                 : (atTitle ? "menu.hint_keyboard_title" : "menu.hint_keyboard_game");
@@ -501,6 +535,16 @@ namespace ManagedSharpDemo
                 Pal3UiText.Text("State", OnOff(DebugOverlay.IsOverlayVisible)));
             Pal3UiText.Set(widget, "auto", "menu.auto_state", "自动推进对白 · {State}",
                 Pal3UiText.Text("State", OnOff(Pal3Boot.AutoDialogueEnabled)));
+            {
+                string variant = GameHostServices.Catalog.SelectedGame.ToUpperInvariant();
+                bool available = GameHostServices.Catalog.IsAvailable(variant);
+                string state = variant;
+                if (!variant.Equals(Pal3.Game.Constants.GameConstants.AppName, StringComparison.OrdinalIgnoreCase))
+                    state += " · 重启生效";
+                if (!available) state += " · 未安装";
+                Pal3UiText.Set(widget, "variant", "menu.variant_state", "游戏版本 · {State}",
+                    Pal3UiText.Text("State", state));
+            }
             widget.SetElementVisible("transparent_sticks", Pal3TouchStick.IsSupported);
             if (Pal3TouchStick.IsSupported)
                 Pal3UiText.Set(widget, "transparent_sticks", "menu.sticks_state", "摇杆全透明 · {State}",
@@ -513,6 +557,69 @@ namespace ManagedSharpDemo
             bool canSkipMaze = GetAvailableMazeSkipper() != null;
             widget.SetElementVisible("maze_entrance", canSkipMaze);
             widget.SetElementVisible("maze_exit", canSkipMaze);
+        }
+
+        // Menu logo: the same UILib artwork the loading screen uses (11.tga for PAL3,
+        // 12.tga for PAL3A), so the active game variant is recognisable at a glance.
+        // The logo lives in an atlas, so the crop rectangle has to be cached with the
+        // texture: re-applying the full (0,0,1,1) range on a later menu refresh would
+        // show the whole atlas instead of the logo.
+        private static ITexture2D? _logoTexture;
+        private static string _logoVariant = string.Empty;
+        private static (float Left, float Top, float Right, float Bottom) _logoUv;
+
+        /// <summary>Drops the per-session logo cache (called on session reset).</summary>
+        public static void ResetStatics()
+        {
+            _logoTexture = null;
+            _logoVariant = string.Empty;
+            _logoUv = default;
+        }
+
+        private static void ShowLogo(URuntimeJsonWidget widget)
+        {
+            try
+            {
+                bool isPal3A = Pal3.Game.Constants.GameConstants.IsPal3A;
+                string variant = isPal3A ? "PAL3A" : "PAL3";
+                if (_logoTexture == null || !string.Equals(variant, _logoVariant, StringComparison.Ordinal))
+                {
+                    ISprite? sprite = ServiceLocator.Instance.Get<GameResourceProvider>()
+                        .GetLogoSprite(useCache: false);
+                    if (sprite is UnitySprite { Texture: UnityTexture2D { UeTexture: { } } } unitySprite
+                    && unitySprite.Texture is UnityTexture2D texture)
+                    {
+                        var uv = unitySprite.GetTextureUVs();
+                        if (widget.SetElementImage("menu_logo", texture.UeTexture, uv.Left, uv.Top, uv.Right, uv.Bottom))
+                        {
+                            _logoTexture = sprite.Texture;
+                            _logoVariant = variant;
+                            _logoUv = uv;
+                            widget.SetElementVisible("menu_logo", true);
+                        }
+                    }
+                    else
+                    {
+                        widget.SetElementVisible("menu_logo", false);
+                    }
+                    sprite?.Destroy();
+                    return;
+                }
+
+                // Texture already owned; re-apply the cached crop to this widget instance.
+                if (_logoTexture is UnityTexture2D { UeTexture: { } native })
+                {
+                    widget.SetElementImage("menu_logo", native,
+                        _logoUv.Left, _logoUv.Top, _logoUv.Right, _logoUv.Bottom);
+                    widget.SetElementVisible("menu_logo", true);
+                }
+            }
+            catch (Exception error)
+            {
+                widget.SetElementVisible("menu_logo", false);
+                UnrealSharp.Log.UnrealLogger.LogWarning("Pal3",
+                    $"Could not load the menu logo: {error.Message}");
+            }
         }
 
         private static MazeSkipper? GetAvailableMazeSkipper()

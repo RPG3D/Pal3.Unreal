@@ -12,6 +12,13 @@
 namespace
 {
 	NSString* const Pal3FolderBookmarkKey = @"SharpDemo.Pal3FolderBookmark";
+	FString AuthorizedFolderKey;
+
+	NSString* GetFolderBookmarkKey(const FString& StorageKey)
+	{
+		return StorageKey.IsEmpty() ? Pal3FolderBookmarkKey
+			: [@"SharpDemo.FolderBookmark." stringByAppendingString:StorageKey.GetNSString()];
+	}
 
 	// Game-thread state shared by the bookmark resolver and the picker result.
 	NSURL* AuthorizedPal3Folder = nil;
@@ -24,12 +31,13 @@ namespace
 		AuthorizedPal3Folder = nil;
 	}
 
-	void KeepPal3Folder(NSURL* Folder)
+	void KeepPal3Folder(NSURL* Folder, const FString& StorageKey)
 	{
 		static const FDelegateHandle ExitHandle = FCoreDelegates::OnPreExit.AddStatic(&ReleasePal3Folder);
 		ReleasePal3Folder();
 		// CPK archives reopen their files throughout play, so keep the scope active.
 		AuthorizedPal3Folder = Folder;
+		AuthorizedFolderKey = StorageKey;
 	}
 
 	void FinishFolderSelection(EPal3FolderSelectionResult Result)
@@ -50,6 +58,7 @@ namespace
 
 @interface SharpDemoPal3FolderPickerDelegate : NSObject <UIDocumentPickerDelegate>
 @property (nonatomic, copy) NSString* requiredFile;
+@property (nonatomic, copy) NSString* storageKey;
 @end
 
 @implementation SharpDemoPal3FolderPickerDelegate
@@ -58,6 +67,7 @@ namespace
 {
 	NSURL* Folder = URLs.firstObject;
 	NSString* RequiredFile = self.requiredFile;
+	NSString* StorageKey = self.storageKey;
 	dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^
 	{
 		if (![Folder startAccessingSecurityScopedResource])
@@ -84,10 +94,11 @@ namespace
 			return;
 		}
 
-		AsyncTask(ENamedThreads::GameThread, [Folder, Bookmark]
+		AsyncTask(ENamedThreads::GameThread, [Folder, Bookmark, StorageKey]
 		{
-			KeepPal3Folder(Folder);
-			[NSUserDefaults.standardUserDefaults setObject:Bookmark forKey:Pal3FolderBookmarkKey];
+			const FString Key(StorageKey);
+			KeepPal3Folder(Folder, Key);
+			[NSUserDefaults.standardUserDefaults setObject:Bookmark forKey:GetFolderBookmarkKey(Key)];
 			FolderSelectionResult = EPal3FolderSelectionResult::Selected;
 			bFolderSelectionPending = false;
 		});
@@ -103,10 +114,19 @@ namespace
 
 FString UProjectStorageLibrary::ResolveAuthorizedPal3Folder()
 {
+	return ResolveAuthorizedFolder(TEXT(""));
+}
+
+FString UProjectStorageLibrary::ResolveAuthorizedFolder(const FString& StorageKey)
+{
+	if (AuthorizedPal3Folder && AuthorizedFolderKey != StorageKey)
+	{
+		ReleasePal3Folder();
+	}
 	if (!AuthorizedPal3Folder)
 	{
 		NSUserDefaults* Defaults = NSUserDefaults.standardUserDefaults;
-		NSData* Bookmark = [Defaults dataForKey:Pal3FolderBookmarkKey];
+		NSData* Bookmark = [Defaults dataForKey:GetFolderBookmarkKey(StorageKey)];
 		if (!Bookmark) return {};
 
 		BOOL bStale = NO;
@@ -115,12 +135,12 @@ FString UProjectStorageLibrary::ResolveAuthorizedPal3Folder()
 			relativeToURL:nil bookmarkDataIsStale:&bStale error:nullptr];
 		if (![Folder startAccessingSecurityScopedResource]) return {};
 
-		KeepPal3Folder(Folder);
+		KeepPal3Folder(Folder, StorageKey);
 		if (bStale)
 		{
 			if (NSData* UpdatedBookmark = CreateFolderBookmark(Folder))
 			{
-				[Defaults setObject:UpdatedBookmark forKey:Pal3FolderBookmarkKey];
+				[Defaults setObject:UpdatedBookmark forKey:GetFolderBookmarkKey(StorageKey)];
 			}
 		}
 	}
@@ -129,11 +149,17 @@ FString UProjectStorageLibrary::ResolveAuthorizedPal3Folder()
 
 void UProjectStorageLibrary::RequestPal3FolderSelection(const FString& RequiredFile)
 {
+	RequestFolderSelection(TEXT(""), RequiredFile);
+}
+
+void UProjectStorageLibrary::RequestFolderSelection(const FString& StorageKey, const FString& RequiredFile)
+{
 	if (bFolderSelectionPending) return;
 
 	bFolderSelectionPending = true;
 	FolderSelectionResult = EPal3FolderSelectionResult::None;
 	NSString* ArchivePath = RequiredFile.GetNSString();
+	NSString* Key = StorageKey.GetNSString();
 	dispatch_async(dispatch_get_main_queue(), ^
 	{
 		UIViewController* Presenter = [IOSAppDelegate GetDelegate].Window.rootViewController;
@@ -146,6 +172,7 @@ void UProjectStorageLibrary::RequestPal3FolderSelection(const FString& RequiredF
 
 		static SharpDemoPal3FolderPickerDelegate* Delegate = [[SharpDemoPal3FolderPickerDelegate alloc] init];
 		Delegate.requiredFile = ArchivePath;
+		Delegate.storageKey = Key;
 		UIDocumentPickerViewController* Picker = [[UIDocumentPickerViewController alloc]
 			initForOpeningContentTypes:@[UTTypeFolder] asCopy:NO];
 		Picker.delegate = Delegate;

@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory, Position = 0)]
-    [ValidateSet('status', 'retry-boot', 'pose', 'list', 'slots', 'save', 'load', 'start', 'checkpoint', 'scene', 'scene-script', 'auto', 'advance', 'video', 'choose', 'overlay', 'demo', 'move', 'move-to', 'rotate-camera', 'touch-sticks', 'interact', 'wait')]
+    [ValidateSet('status', 'retry-boot', 'pose', 'list', 'slots', 'save', 'load', 'start', 'checkpoint', 'scene', 'scene-script', 'auto', 'advance', 'video', 'choose', 'overlay', 'demo', 'move', 'move-to', 'rotate-camera', 'touch-sticks', 'interact', 'gc', 'wait')]
     [string] $Command,
     [Parameter(Position = 1)] [string] $Argument,
     [string] $Directory = $env:PAL3_AUTOMATION_DIR,

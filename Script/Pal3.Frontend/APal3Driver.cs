@@ -1,7 +1,7 @@
-// UE-side driver actor for the managed Pal3 runtime layer.
+﻿// UE-side driver actor for the managed Pal3 runtime layer.
 // Bridges UE's per-frame tick into the managed world:
 //   ReceiveTick -> GameEntityScriptRuntime.TickAll (coroutines + script lifecycle + Time state)
-// Spawned by AScriptGameMode.BeginPlay. Deliberately free of gameplay logic -
+// Spawned on demand by Pal3GameModule's managed session. Deliberately free of gameplay logic -
 // everything managed lives in Pal3.Game (see Stubs/GameEntityScriptRuntime.cs).
 
 using System;
@@ -21,11 +21,19 @@ using UnrealSharp.InputCore;
 namespace ManagedSharpDemo
 {
     [UClass]
+#if PAL3A
+    public partial class APal3ADriver : AActor
+#else
     public partial class APal3Driver : AActor
+#endif
     {
         private double _lastWorldRealTime;
 
+#if PAL3A
+        public APal3ADriver()
+#else
         public APal3Driver()
+#endif
         {
             _startMenu = new(_touchStick);
             _automation = new(_touchStick);
@@ -42,6 +50,7 @@ namespace ManagedSharpDemo
             // Skipping this made the 2nd PIE run show the old dialogue line, skip the
             // full boot (static _fullBootStarted) and then crash on a stale coroutine.
             Pal3Boot.ResetForNewSession();
+            Pal3StartMenu.ResetStatics();
             JsonUiDemo.Hide();
 
             // Give the entity factory a world: from here on GameEntityFactory.Create
@@ -232,7 +241,18 @@ namespace ManagedSharpDemo
 
         [UFunction(FunctionFlags.BlueprintCallable)]
         public string ExecutePal3Command(string command, string argument)
-            => _automation.ExecuteRemote(command, argument, CloseStartMenu);
+        {
+            // Dev/automation only: re-render the start menu (the button handlers do the
+            // same Show() call), so UI refresh paths can be verified without synthetic
+            // input, which Slate drops in automation environments.
+            if (string.Equals(command, "refresh-menu", StringComparison.OrdinalIgnoreCase))
+            {
+                _startMenu.Refresh();
+                return "{\"ok\":true}";
+            }
+
+            return _automation.ExecuteRemote(command, argument, CloseStartMenu);
+        }
 
         private void CloseStartMenu()
         {

@@ -35,6 +35,14 @@ namespace ManagedSharpDemo
         public void Start()
         {
             string? directory = Environment.GetEnvironmentVariable("PAL3_AUTOMATION_DIR");
+            if (string.IsNullOrWhiteSpace(directory))
+            {
+                // Android launches through ActivityManager, so host shell environment
+                // variables do not reach the app. Reuse UE's command-line parser.
+                UnrealSharp.Engine.SystemLibrary.ParseCommandLine(UnrealSharp.Engine.SystemLibrary.CommandLine,
+                    out _, out _, out var parameters);
+                parameters.TryGetValue("Pal3AutomationDir", out directory);
+            }
             if (string.IsNullOrWhiteSpace(directory)) return;
 
             try
@@ -141,6 +149,9 @@ namespace ManagedSharpDemo
                         !UnrealSharp.RuntimeWidgetLayout.URuntimeJsonWidgetLibrary.SetLanguage(request.Argument))
                         throw new ArgumentException("Unsupported UI language.");
                     return new { language = UnrealSharp.RuntimeWidgetLayout.URuntimeJsonWidgetLibrary.Language };
+                case "gc":
+                    UnrealSharp.Engine.SystemLibrary.CollectGarbage();
+                    return new { scheduled = true };
                 case "auto":
                     if (!bool.TryParse(request.Argument, out bool auto)) throw new ArgumentException("Use true or false.");
                     Pal3Boot.AutoDialogueEnabled = auto;

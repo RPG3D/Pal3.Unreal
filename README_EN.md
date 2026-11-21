@@ -65,6 +65,7 @@ $project = (Resolve-Path .\SharpDemo.uproject).Path
 $projectDir = Split-Path -Parent $project
 $ue = 'D:\Code\UE5\Engine'
 $env:PAL3_DATA_PATH = 'E:\Program Files (x86)\Steam\steamapps\common\PAL3'
+$env:PAL3A_DATA_PATH = 'E:\Program Files (x86)\Steam\steamapps\common\PAL3A'
 
 & "$ue\Build\BatchFiles\Build.bat" SharpDemoEditor Win64 Development "-Project=$project" -WaitMutex
 if ($LASTEXITCODE -ne 0) { throw 'SharpDemoEditor build failed' }
@@ -74,10 +75,10 @@ $managedDir = Join-Path $projectDir 'Binaries\Managed\net10.0'
 & "$ue\Build\BatchFiles\RunUAT.bat" BuildUserSolution "-ScriptDir=$scriptDir" "-Project=$project" "-OutputPath=$managedDir" -TargetConfiguration=Development -WaitForUATMutex
 if ($LASTEXITCODE -ne 0) { throw 'Managed publish failed' }
 
-& "$ue\Binaries\Win64\UnrealEditor.exe" $project -game -UnrealSharpSkipManagedBuild -RCWebControlEnable -log
+& "$ue\Binaries\Win64\UnrealEditor.exe" $project -game -RCWebControlEnable -log
 ```
 
-You can also open `SharpDemo.uproject` in the editor and start PIE in the default `LV_Pal3` map. For managed-only changes, run `BuildUserSolution` directly. After changing native `UFUNCTION` declarations, close editor or test processes using the module, rebuild the native module, and publish the managed code.
+Open `SharpDemo.uproject` and start PIE in `LV_Pal3`. `BuildUserSolution` builds and loads both games as ordinary UnrealSharp projects; the menu selects which session to start. The games share source files and use distinct assembly and UE type names. C# hot reload uses the existing UnrealSharp workflow, without a custom assembly-set loader or a global reload lock. After changing native `UFUNCTION` declarations, close the editor, rebuild native code and regenerate bindings. See [project composition and verification](Docs/MANAGED_GAME_MODULES.md).
 
 If an incremental build misses `RuntimeWidgetLayout.dll`, publish its bindings separately from the `Script` directory.
 
@@ -85,7 +86,7 @@ If an incremental build misses `RuntimeWidgetLayout.dll`, publish its bindings s
 dotnet publish ..\Intermediate\UnrealSharp\UHT\Editor\RuntimeWidgetLayout\RuntimeWidgetLayout.csproj -c Release -p:UETargetType=Editor -o ..\Binaries\Managed\net10.0
 ```
 
-When running multiple editor instances, publish the managed assemblies first and pass `-UnrealSharpSkipManagedBuild` to the test instances. When launching with F5 in Visual Studio, add this flag to the debug command arguments. The instance will load the existing assemblies and skip startup compilation and C# hot reload.
+Avoid simultaneous managed builds from multiple editors sharing the same output directory. Use UnrealSharp hot reload for normal development and its existing editor settings to choose automatic reload behavior.
 
 To work with UE C++ and PAL3 C# code in one Visual Studio solution, generate the UE solution, then run `dotnet run --project tools/MergeScriptSln -- SharpDemo.sln` from the project root and open `SharpDemo.mixed.sln`. You can also supply `SharpDemo.slnx`, which produces `SharpDemo.mixed.slnx`. Select `SharpDemo` as the startup project and launch with `Development Editor | Win64`.
 

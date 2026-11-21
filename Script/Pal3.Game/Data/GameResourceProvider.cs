@@ -591,7 +591,11 @@ namespace Pal3.Game.Data
                 !videoName.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'))
                 throw new ArgumentException($"Invalid video name: {videoName}", nameof(videoName));
 
-            return Path.Combine(Application.persistentDataPath, "Movies", videoName.ToLowerInvariant() + ".mp4");
+            // The original games contain different movies with identical names.
+            // Legacy unqualified cache entries have ambiguous ownership, so leave
+            // them untouched and rebuild under the active game's directory.
+            return Path.Combine(Application.persistentDataPath, "Movies", Constants.GameConstants.AppName,
+                videoName.ToLowerInvariant() + ".mp4");
         }
 
         public (string Path, bool NeedsConversion) PrepareVideoSource(string videoName, string cachePath, bool stageReadyVideo)

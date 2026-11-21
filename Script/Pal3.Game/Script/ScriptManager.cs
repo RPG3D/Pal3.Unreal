@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------------------------
 //  Copyright (c) 2021-2025, Jiaqi (0x7c13) Liu. All rights reserved.
 //  See LICENSE file in the project root for license information.
 // ---------------------------------------------------------------------------------------------
@@ -132,7 +132,12 @@ namespace Pal3.Game.Script
         internal static PalScriptType GetScriptType(uint scriptId) =>
             scriptId < ScriptConstants.SystemScriptIdMax ? PalScriptType.System : PalScriptType.Scene;
 
-        private bool IsScriptScheduled(uint scriptId) =>
+        /// <summary>
+        /// Whether the script is pending or currently running. Callers that need to
+        /// wait for a script's completion notification use this to detect the case
+        /// where it already finished (the notification is not replayed).
+        /// </summary>
+        internal bool IsScriptScheduled(uint scriptId) =>
             _pendingScripts.Any(script => script.ScriptId == scriptId) ||
             _runningScripts.Any(script => script.ScriptId == scriptId && !script.IsDisposed);
 

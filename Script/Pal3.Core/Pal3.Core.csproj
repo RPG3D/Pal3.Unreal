@@ -6,23 +6,24 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <EnableDynamicLoading>true</EnableDynamicLoading>
+    <AssemblyName>Pal3.Core</AssemblyName>
     <DefineConstants>$(DefineConstants);PAL3</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Newtonsoft.Json">
-      <HintPath>Libraries\Newtonsoft.Json.dll</HintPath>
+      <HintPath>Libraries/Newtonsoft.Json.dll</HintPath>
     </Reference>
     <Reference Include="INIFileParser">
-      <HintPath>Libraries\INIFileParser.dll</HintPath>
-    </Reference>
-    <Reference Include="SharpDemo">
-      <HintPath>..\..\Binaries\Managed\net10.0\SharpDemo.dll</HintPath>
-    </Reference>
-    <Reference Include="RuntimeWidgetLayout">
-      <HintPath>..\..\Binaries\Managed\net10.0\RuntimeWidgetLayout.dll</HintPath>
+      <HintPath>Libraries/INIFileParser.dll</HintPath>
     </Reference>
     <Reference Include="RuntimeBinkVideo">
       <HintPath>../../Binaries/Managed/net10.0/RuntimeBinkVideo.dll</HintPath>
+    </Reference>
+    <Reference Include="RuntimeWidgetLayout">
+      <HintPath>../../Binaries/Managed/net10.0/RuntimeWidgetLayout.dll</HintPath>
+    </Reference>
+    <Reference Include="SharpDemo">
+      <HintPath>../../Binaries/Managed/net10.0/SharpDemo.dll</HintPath>
     </Reference>
   </ItemGroup>
 </Project>

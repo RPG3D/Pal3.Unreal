@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Pal3.Frontend</AssemblyName>
+    <DefineConstants>$(DefineConstants);PAL3</DefineConstants>
+  </PropertyGroup>
+  <Import Project="../../Plugins/UnrealSharp/UnrealSharp.Shared.props" />
+  <ItemGroup>
+    <ProjectReference Include="../Pal3.Game/Pal3.Game.csproj" />
+    <Reference Include="SharpDemo">
+      <HintPath>../../Binaries/Managed/net10.0/SharpDemo.dll</HintPath>
+    </Reference>
+    <Reference Include="RuntimeWidgetLayout">
+      <HintPath>../../Binaries/Managed/net10.0/RuntimeWidgetLayout.dll</HintPath>
+    </Reference>
+    <Reference Include="RuntimeBinkVideo">
+      <HintPath>../../Binaries/Managed/net10.0/RuntimeBinkVideo.dll</HintPath>
+    </Reference>
+    <ProjectReference Include="../GameHost.Contracts/GameHost.Contracts.csproj" />
+  </ItemGroup>
+</Project>

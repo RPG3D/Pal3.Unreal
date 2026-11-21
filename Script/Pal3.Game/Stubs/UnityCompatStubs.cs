@@ -1,4 +1,4 @@
-// Stubs for Unity/Engine types not yet ported to UnrealSharp compat layer.
+﻿// Stubs for Unity/Engine types not yet ported to UnrealSharp compat layer.
 // These let Pal3.Game compile; UI/Input/Video/Renderer functionality is deferred (Batch 4).
 // Replace with real UE (UMG / EnhancedInput / Engine.Renderer UE impl) over time.
 // NOTE: stub members are minimal common surface; expand as CS1061 errors reveal real usage.
@@ -1276,14 +1276,101 @@ namespace Engine.UI
 
 namespace IngameDebugConsole
 {
+    /// <summary>
+    /// Text-command console (IngameDebugConsole in Unity). The ported game queues
+    /// strings such as "CameraSetTransform -21.69 -22.48 688 182.87 263.07 531.61"
+    /// (MainMenu's init view) and expects them to run through the registered
+    /// handlers. Upstream registered one typed Action per command; here the name is
+    /// resolved to the matching SceCommand class and constructed reflectively with
+    /// the parsed arguments, then dispatched through Pal3Game.Execute — same
+    /// dispatch path the .sce parser uses.
+    /// </summary>
     public static class DebugLogConsole
     {
+        private static readonly Dictionary<string, Type> CommandTypes = new(StringComparer.OrdinalIgnoreCase);
+
         public static void AddCommand(string command, string description, Action method) { }
         public static void AddCommand<T>(string command, string description, Action<T> method) { }
         public static void AddCommandStatic(string command, string description, Type type, string methodName) { }
-        public static void RemoveCommand(string command) { }
-        public static void ExecuteCommand(string command) { }
-        public static void FetchArgumentsFromCommand(string command, List<string> arguments) { }
+
+        public static void RemoveCommand(string command)
+        {
+            lock (CommandTypes) { CommandTypes.Remove(command); }
+        }
+
+        public static void ExecuteCommand(string command)
+        {
+            if (string.IsNullOrWhiteSpace(command)) return;
+
+            string[] parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            string name = parts[0];
+            Type? commandType = ResolveType(name);
+            if (commandType == null)
+            {
+                Engine.Logging.EngineLogger.LogWarning($"[Console] Unknown text command: {command}");
+                return;
+            }
+
+            try
+            {
+                var ctor = commandType.GetConstructors().OrderBy(c => c.GetParameters().Length).First();
+                var parameters = ctor.GetParameters();
+                object?[] args = new object?[parameters.Length];
+                for (int i = 0; i < parameters.Length; i++)
+                {
+                    string token = i + 1 < parts.Length ? parts[i + 1] : string.Empty;
+                    args[i] = ConvertToken(token, parameters[i].ParameterType);
+                }
+
+                object instance = ctor.Invoke(args);
+                if (instance is Pal3.Core.Command.ICommand pal3Command)
+                {
+                    global::Pal3.Game.Pal3.Instance.Execute(pal3Command);
+                }
+            }
+            catch (Exception error)
+            {
+                Engine.Logging.EngineLogger.LogWarning(
+                    $"[Console] Failed to execute '{command}': {error.GetBaseException().Message}");
+            }
+        }
+
+        private static object? ConvertToken(string token, Type type)
+        {
+            if (type == typeof(string)) return token;
+            if (type == typeof(bool)) return token is "1" or "true" or "True";
+            if (type == typeof(byte)) return byte.Parse(token, System.Globalization.CultureInfo.InvariantCulture);
+            if (type == typeof(short)) return short.Parse(token, System.Globalization.CultureInfo.InvariantCulture);
+            if (type == typeof(ushort)) return ushort.Parse(token, System.Globalization.CultureInfo.InvariantCulture);
+            if (type == typeof(int)) return int.Parse(token, System.Globalization.CultureInfo.InvariantCulture);
+            if (type == typeof(uint)) return uint.Parse(token, System.Globalization.CultureInfo.InvariantCulture);
+            if (type == typeof(long)) return long.Parse(token, System.Globalization.CultureInfo.InvariantCulture);
+            if (type == typeof(float)) return float.Parse(token, System.Globalization.CultureInfo.InvariantCulture);
+            if (type == typeof(double)) return double.Parse(token, System.Globalization.CultureInfo.InvariantCulture);
+            return string.IsNullOrEmpty(token) ? null : Convert.ChangeType(token, type);
+        }
+
+        private static Type? ResolveType(string commandName)
+        {
+            lock (CommandTypes)
+            {
+                if (CommandTypes.TryGetValue(commandName, out Type? cached)) return cached;
+
+                // Text commands are the Sce command class names without the suffix
+                // (CameraSetTransform -> CameraSetTransformCommand).
+                Type? found = typeof(Pal3.Core.Command.ICommand).Assembly.GetTypes().FirstOrDefault(t =>
+                    t.Namespace == "Pal3.Core.Command.SceCommands" &&
+                    t.Name.Equals(commandName + "Command", StringComparison.OrdinalIgnoreCase));
+                if (found != null) CommandTypes[commandName] = found;
+                return found;
+            }
+        }
+
+        public static void FetchArgumentsFromCommand(string command, List<string> arguments)
+        {
+            string[] parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 1; i < parts.Length; i++) arguments.Add(parts[i]);
+        }
     }
 
     public class DebugLogManager

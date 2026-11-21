@@ -148,6 +148,10 @@ namespace Engine.Renderer
                 _ownsMaterial = true;
                 Pal3TransientAssets.Track(this, _material);
                 UPal3AssetHelper.SetVectorParameter(_material, new FName("TintColor"), new FLinearColor(1, 1, 1, 1));
+                // Match Pal3/Sprite's forced alpha=1 for both PAL3 DDS and
+                // PAL3A 24-bit TGA sprites. Preserve alpha in other materials.
+                if (_useAdditiveBlend)
+                    UPal3AssetHelper.SetScalarParameter(_material, new FName("IgnoreTextureAlpha"), 1f);
             }
 
             _quad = actor.AddComponentByClass<UProceduralMeshComponent>(false, new FTransform());

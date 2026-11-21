@@ -1,4 +1,4 @@
-// Stub types needed by Engine files. Thin wrappers; wire to UE in later phases.
+﻿// Stub types needed by Engine files. Thin wrappers; wire to UE in later phases.
 namespace UnityEngine
 {
     using System;
@@ -488,6 +488,8 @@ namespace UnityEngine
         public static Light? sun = null;
         public static bool fog = false;
         public static Color fogColor = Color.gray;
+        // PAL3A scenes enable linear fog via SceneEnableFogCommand (unused by PAL3).
+        public static FogMode fogMode = FogMode.Linear;
         public static float fogDensity = 0.01f;
         public static float fogStartDistance = 0f;
         public static float fogEndDistance = 300f;
@@ -539,6 +541,8 @@ namespace UnityEngine
 
         private static float Clamp01(float v) => v < 0f ? 0f : (v > 1f ? 1f : v);
     }
+
+    public enum FogMode { Linear = 1, Exponential = 2, ExponentialSquared = 3 }
 
     public enum AudioRolloffMode { Logarithmic = 0, Linear = 1, Custom = 2 }
 

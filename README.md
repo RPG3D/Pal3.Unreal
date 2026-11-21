@@ -37,7 +37,8 @@ SharpDemo 是 **UnrealSharp 移动平台移植项目**的配套工程，用来�
 |---|---|
 | `Script/Pal3.Core`、`Script/Pal3.Game` | 原版资源格式、脚本指令和玩法。对照本机 PAL3.Unity 的 `Assets/Scripts` |
 | `Script/Engine`、`Script/UnityEngine`、`Script/Pal3.Game/Stubs` | 引擎抽象、Unity 兼容、实体与生命周期桥接 |
-| `Script/ManagedSharpDemo` | UE 侧启动和逐帧驱动、PAL3 菜单、HUD 与自动化入口 |
+| `Script/GameHost.Contracts`、`Script/GameHost`、`Script/ManagedSharpDemo` | 项目 C# 契约、游戏列表与会话选择、UE 启动入口 |
+| `Script/Pal3.Frontend` | PAL3 的逐帧驱动、JSON 布局、菜单、HUD 与自动化入口 |
 | `Source/RuntimeWidgetLayout`、`Source/SharpDemo` | JSON UMG 和网格、资源、音频等原生接口 |
 | `Plugins/UnrealSharp` | 独立 Git 子模块，负责托管运行时、UE 绑定生成和跨语言调用 |
 
@@ -65,6 +66,7 @@ $project = (Resolve-Path .\SharpDemo.uproject).Path
 $projectDir = Split-Path -Parent $project
 $ue = 'D:\Code\UE5\Engine'
 $env:PAL3_DATA_PATH = 'E:\Program Files (x86)\Steam\steamapps\common\PAL3'
+$env:PAL3A_DATA_PATH = 'E:\Program Files (x86)\Steam\steamapps\common\PAL3A'
 
 & "$ue\Build\BatchFiles\Build.bat" SharpDemoEditor Win64 Development "-Project=$project" -WaitMutex
 if ($LASTEXITCODE -ne 0) { throw 'SharpDemoEditor build failed' }
@@ -74,10 +76,13 @@ $managedDir = Join-Path $projectDir 'Binaries\Managed\net10.0'
 & "$ue\Build\BatchFiles\RunUAT.bat" BuildUserSolution "-ScriptDir=$scriptDir" "-Project=$project" "-OutputPath=$managedDir" -TargetConfiguration=Development -WaitForUATMutex
 if ($LASTEXITCODE -ne 0) { throw 'Managed publish failed' }
 
-& "$ue\Binaries\Win64\UnrealEditor.exe" $project -game -UnrealSharpSkipManagedBuild -RCWebControlEnable -log
+dotnet run --project tools/ManagedModules/ModulePublisher.csproj -- Editor all --verify
+if ($LASTEXITCODE -ne 0) { throw 'Managed delivery verification failed' }
+
+& "$ue\Binaries\Win64\UnrealEditor.exe" $project -game -RCWebControlEnable -log
 ```
 
-也可用编辑器打开 `SharpDemo.uproject`，在默认地图 `LV_Pal3` 开始 PIE。单改托管代码时可直接运行 `BuildUserSolution`。改原生 `UFUNCTION` 时，先关闭占用该模块的编辑器或测试进程，再重新构建原生模块并发布托管代码。
+也可用编辑器打开 `SharpDemo.uproject`，在默认地图 `LV_Pal3` 开始 PIE。`BuildUserSolution` 正常构建并装载两套游戏工程；菜单只选择启动哪个会话。游戏使用不同的程序集名和 UE 类型名，复用源码，不向插件添加集合加载器或热重载锁。C# 热重载沿用 UnrealSharp 原有流程；重复 PIE 会重新创建游戏会话。改原生 `UFUNCTION` 时，先关闭编辑器或测试进程，再重新构建原生模块及生成绑定。详见 [工程组成和验证](Docs/MANAGED_GAME_MODULES.md)。
 
 如果增量构建漏发了 `RuntimeWidgetLayout.dll`，可在 `Script` 目录单独发布对应绑定。
 
@@ -85,13 +90,13 @@ if ($LASTEXITCODE -ne 0) { throw 'Managed publish failed' }
 dotnet publish ..\Intermediate\UnrealSharp\UHT\Editor\RuntimeWidgetLayout\RuntimeWidgetLayout.csproj -c Release -p:UETargetType=Editor -o ..\Binaries\Managed\net10.0
 ```
 
-多开编辑器时先发布一次托管程序集，再给用于测试的编辑器实例传入 `-UnrealSharpSkipManagedBuild`。用 Visual Studio F5 启动时，将它追加到调试命令参数中。该实例会加载现有程序集，并跳过启动编译和 C# 热重载。
+避免多个编辑器同时编译同一份托管输出。日常开发直接使用 UnrealSharp 的 C# 热重载；若需调整自动重载时机，使用插件现有的编辑器设置。
 
 要在 Visual Studio 同时查看 UE 和 PAL3 的 C++、C# 代码，先生成 UE 解决方案，再从项目根目录运行 `dotnet run --project tools/MergeScriptSln -- SharpDemo.sln`，然后打开 `SharpDemo.mixed.sln`。输入也可以用 `SharpDemo.slnx`，此时输出为 `SharpDemo.mixed.slnx`。选 `SharpDemo` 为启动项目，用 `Development Editor | Win64` 启动。
 
 PAL3 的宿主地图、材质和字体资产放在 `Content/PAL3`，由 `DefaultGame.ini` 的 `DirectoriesToAlwaysCook` 指定 Cook 目录。JSON-UMG 默认字体在同一文件的 `[RuntimeWidgetLayout.Fonts]` 中配置，目前指向方正魏碑。其他机器可将字体文件命名为 `Pal3Weibei.ttf`，在编辑器中导入 `Content/PAL3/Fonts`，并选择同时创建 Font 资产。未导入时使用 UE 默认字体。
 
-启动前设置 `PAL3_AUTOSTART=1` 或传入 `-PAL3Autostart`，可跳过标题菜单，直接进入开场并启用自动对白。
+默认先显示游戏列表，选中并开始后才加载对应游戏 DLL。传入 `-GameHostAutostart` 可跳过游戏列表；配合 `PAL3_AUTOSTART=1` 或 `-PAL3Autostart` 可进一步跳过 PAL3 标题菜单，直接进入开场并启用自动对白。
 
 ## 玩法与调试入口
 
@@ -107,6 +112,6 @@ PAL3 的宿主地图、材质和字体资产放在 `Content/PAL3`，由 `Default
 | 存档 | 左侧滚动选择槽位。可操作且没有运行脚本时可写手动槽 1–99。槽 0 为自动存档，统一读写 `Saved/Saves` |
 | 自动化 | `tools/pal3-play.ps1` 通过 RC 或本地文件调用同一套游戏命令。移动使用游戏命令直接驱动 |
 
-JSON 定义 UMG 布局，C# 负责交互与数据。`RuntimeWidgetLayout` 提供通用的布局、换页和控件 API。主菜单的首页和剧情页通过 `WidgetSwitcher` 切换，场景页按 PAL3 场景档案分组，存读档页按槽位生成。布局文件随 UE 打包为 UFS 文件，运行时通过 UE 文件接口按项目相对路径读取。 [主菜单布局](Script/ManagedSharpDemo/Layouts/Pal3StartMenu.json)
+JSON 定义 UMG 布局，C# 负责交互与数据。`RuntimeWidgetLayout` 提供通用的布局、换页和控件 API。主菜单的首页和剧情页通过 `WidgetSwitcher` 切换，场景页按 PAL3 场景档案分组，存读档页按槽位生成。布局文件随 UE 打包为 UFS 文件，运行时通过 UE 文件接口按项目相对路径读取。 [主菜单布局](Script/Pal3.Frontend/Layouts/Pal3StartMenu.json)
 
-界面的中文原文保留在布局和托管文本模板中，英文翻译放在 [Lang-en.json](Script/ManagedSharpDemo/Layouts/Lang-en.json)，通过 `textKey` 匹配。文本动态注册到 UE 原生多语言系统，并以 `FText` 显示。
+界面的中文原文保留在布局和托管文本模板中，英文翻译放在 [Lang-en.json](Script/Pal3.Frontend/Layouts/Lang-en.json)，通过 `textKey` 匹配。文本动态注册到 UE 原生多语言系统，并以 `FText` 显示。

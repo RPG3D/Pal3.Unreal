@@ -1,0 +1,20 @@
+{
+  "gameItemTemplate": {
+    "type": "button", "fontSize": 30, "position": [0, 0], "size": [900, 94],
+    "normalColor": [0.12, 0.19, 0.29, 1], "hoverColor": [0.19, 0.29, 0.42, 1]
+  },
+  "gameItemGap": 18,
+  "root": { "type": "canvas", "children": [
+    { "type": "border", "anchor": "center", "size": [1000, 600], "color": [0.04, 0.06, 0.10, 0.98],
+      "child": { "type": "canvas", "children": [
+        { "type": "text", "text": "选择游戏", "textKey": "host.choose", "fontSize": 36, "position": [40, 28], "size": [660, 64] },
+        { "type": "button", "id": "host_language", "text": "English", "textKey": "menu.language", "fontSize": 26, "position": [740, 28], "size": [220, 64] },
+        { "type": "scrollbox", "id": "host_game_viewport", "position": [40, 112], "size": [920, 248],
+          "child": { "type": "canvas", "id": "host_game_rows", "children": [] } },
+        { "type": "text", "id": "host_selected", "fontSize": 24, "position": [40, 376], "size": [920, 48] },
+        { "type": "text", "id": "host_error", "fontSize": 23, "wrap": true, "position": [40, 428], "size": [920, 60] },
+        { "type": "button", "id": "host_start", "text": "开始游戏", "textKey": "host.start", "fontSize": 30, "position": [300, 502], "size": [400, 76] }
+      ] }
+    }
+  ] }
+}

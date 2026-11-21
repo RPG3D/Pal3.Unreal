@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using GameHost;
 using UnrealSharp;
 using UnrealSharp.Attributes;
 using UnrealSharp.CoreUObject;
@@ -16,28 +17,25 @@ namespace ManagedSharpDemo
 
         public override void BeginPlay()
         {
-            UnrealSharp.Log.UnrealLogger.LogWarning("ManagedSharpDemo", "[PIE-Diag] GameMode BeginPlay dispatched, world=" + (Engine.Core.Implementation.UEGameEntityFactory.TryGetWorldContext() != null ? "has-ctx" : "no-ctx"));
+            UnrealSharp.Log.UnrealLogger.LogWarning("ManagedSharpDemo", "[PIE-Diag] GameMode BeginPlay dispatched, world=" + (UGameplayStatics.GetPlayerController(0) != null ? "has-player" : "no-player"));
             base.BeginPlay();
             UnrealSharp.Log.UnrealLogger.LogWarning("ManagedSharpDemo", "[PIE-Diag] base.BeginPlay done");
 
-#if PAL3
             // PIE fix: spawning the driver inside GameModeBase::BeginPlay deadlocks the
             // PIE world's begin-play dispatch. Schedule the spawn for the next tick —
             // the world is playing by then and the spawn runs outside the dispatch.
             UnrealSharp.Log.UnrealLogger.LogWarning("ManagedSharpDemo",
                 "[PIE-Diag] GameMode BeginPlay done (driver spawn deferred to next tick)");
-            UnrealSharp.Engine.SystemLibrary.SetTimerForNextTick(this, "SpawnPal3DriverNextTick");
-#endif
+            UnrealSharp.Engine.SystemLibrary.SetTimerForNextTick(this, "SpawnGameHostNextTick");
         }
 
-#if PAL3
         [UFunction]
-        public void SpawnPal3DriverNextTick()
+        public void SpawnGameHostNextTick()
         {
             try
             {
-                TSubclassOf<APal3Driver> driverClass = new(typeof(APal3Driver));
-                APal3Driver? driver = UnrealSharp.Engine.UGameplayStatics.SpawnActor(
+                TSubclassOf<AGameHostDriver> driverClass = new(typeof(AGameHostDriver));
+                AGameHostDriver? driver = UnrealSharp.Engine.UGameplayStatics.SpawnActor(
                     actorType: driverClass,
                     spawnMethod: UnrealSharp.Engine.ESpawnActorCollisionHandlingMethod.AlwaysSpawn);
 
@@ -50,6 +48,5 @@ namespace ManagedSharpDemo
                     "[PIE-Diag] driver spawn failed: " + e.GetType().Name + " " + e.Message);
             }
         }
-#endif
     }
 }

@@ -98,7 +98,7 @@ MyGame.exe -debughangdetection -log
 
 ## 6. PAL3 主菜单布局
 
-主菜单布局位于 `Script/ManagedSharpDemo/Layouts/Pal3StartMenu.json`。首页和剧情由 UMG `WidgetSwitcher` 切换。场景页按原版场景档案分组，由 `Pal3TravelMenuLayout` 和大地图共用布局。四个既有场景保留预设落点，其余场景在选择时从导航数据找可行走的落点并避开自动触发区。存读档页面由 `Pal3SaveMenuLayout` 按槽位数量生成，左边滚动选档，右边读取或写入。
+主菜单布局位于 `Script/Pal3.Frontend/Layouts/Pal3StartMenu.json`。首页和剧情由 UMG `WidgetSwitcher` 切换。场景页按原版场景档案分组，由 `Pal3TravelMenuLayout` 和大地图共用布局。四个既有场景保留预设落点，其余场景在选择时从导航数据找可行走的落点并避开自动触发区。存读档页面由 `Pal3SaveMenuLayout` 按槽位数量生成，左边滚动选档，右边读取或写入。
 
 文本和按钮的 `fontAsset` 可填写字体别名（如 `FZWB`）、包路径（如 `/Game/PAL3/Fonts/Pal3Weibei_Font`）或完整对象路径。省略时使用 `DefaultGame.ini` 中 `[RuntimeWidgetLayout.Fonts]` 的 `Default`。同一配置段的 `FontSizeOffset` 会加到每个 JSON 文本和按钮标签的字号上，当前为 `2`。C# 和蓝图可用 `AddFontMapping` 注册或覆盖别名。蓝图用 `SetDefaultFont`，C# 给 `DefaultFont` 属性赋值。运行时设置影响随后创建的控件。字体资产未安装时回退到 UE 默认字体。
 
@@ -107,12 +107,16 @@ MyGame.exe -debughangdetection -log
 布局作为独立 JSON 文件发布。开发环境修改后，重新创建对应控件即可读取新文件，例如关闭并重开主菜单，或重新进入 PIE。调整位置和样式时保留现有 ID，C# 用这些 ID 绑定按钮和数据。更新 APK 里的布局时，重新 Stage 并打包 UFS 文件。若新增或修改原生 `UFUNCTION`，先重编原生模块并更新绑定。增量构建漏发 `RuntimeWidgetLayout.dll` 时按[构建说明](../README.md#windows-开发启动)单独发布 glue。
 
 ```powershell
-$env:PAL3_MENU_LAYOUT = 'D:/UEProject/SharpDemo/Script/ManagedSharpDemo/Layouts/Pal3StartMenu.json'
+$env:PAL3_MENU_LAYOUT = 'D:/UEProject/SharpDemo/Script/Pal3.Frontend/Layouts/Pal3StartMenu.json'
 ```
 
 ## 7. PAL3 剧情与场景自动化
 
-启动编辑器或独立游戏前，给进程设置 `PAL3_AUTOMATION_DIR`。建议每个进程用独立目录。未设置时，运行时不会轮询本地文件。开始 PIE 后，驱动发布会话 ID，客户端向该会话写入带截止时间的请求，游戏线程执行并返回 JSON。客户端超时时会保留最后一次读到的状态，若无响应可继续查托管看门狗日志。
+启动编辑器或独立游戏前，给进程设置 `PAL3_AUTOMATION_DIR`。建议每个进程用独立目录。未指定自动化目录时，运行时不会轮询本地文件。开始 PIE 后，驱动发布会话 ID，客户端向该会话写入带截止时间的请求，游戏线程执行并返回 JSON。客户端超时时会保留最后一次读到的状态，若无响应可继续查托管看门狗日志。
+
+默认先显示通用游戏列表，选择并开始后才创建 PAL3 Driver。桌面 RC 可先调用 `AGameHostDriver.ExecuteGameCommand` 的 `host-select`、`host-start`，再使用下文的 PAL3 命令。自动化启动参数 `-GameHostAutostart` 可直接加载已选游戏。
+
+Android 的 ActivityManager 启动流程不会继承主机 shell 的环境变量，可通过 UE 启动参数 `-GameHostAutostart -Pal3AutomationDir=<设备上的可写绝对目录>` 启用同一文件命令通道。建议使用应用自身 Saved 下的测试目录。通过 adb 推送请求时，先写入临时文件，再在设备端重命名为 `.request.json`，避免游戏读到半份请求。UE 自带 WebRemoteControl 模块的默认平台列表仅包含桌面平台，Android 装机回归可使用此通道执行相同的游戏命令。
 
 ```powershell
 # 在启动 UE 的 PowerShell 中设置，然后从同一个环境运行客户端
@@ -197,6 +201,21 @@ $driver = '/Game/PAL3/Maps/LV_Pal3.LV_Pal3:PersistentLevel.Pal3Driver_C_0'
 `save` 需要可操作状态，显式指定槽位可覆盖。回归脚本要求空槽，从渝州出生点移到相邻地块后保存，切到另一张 PAL3 地图再恢复，核对场景、地块、世界坐标、主线变量、队伍和控制权。`load` 返回表示读档已提交，`status` 中的 `loadingSave` 和 `saveLoadError` 用于查看完成情况。失败恢复见[当前已知问题](../README.md#当前已知问题与后续项)。
 
 ## 8. 内存排查
+
+### 动态程序集的 UE GC 引用校验
+
+2026-11-22 01:18:58 的 Android 退出由 UE 致命错误触发：`CSManager` 位于启动期的 Disregard for GC 区域，其 `Assemblies` 属性随后引用了 7 个普通运行时程序集 UObject，违反该区域的引用约束。管理器的引用容器改由独立 `FGCObject` 枚举，管理器销毁时解除登记，覆盖程序集、包与查询缓存。
+
+Android 的退出历史将该次事件记为 `EXIT_SELF / 0`，但引擎日志随后明确记录了 `StaticShutdownAfterError` 与 `FAndroidMisc::RequestExit`。因此退出码须与同一进程的 UE Fatal 日志交叉核对。
+
+自动化命令 `gc` 通过 UE API 请求帧末完整回收，随后再次读取状态确认进程与游戏会话仍存活：
+
+```powershell
+.\tools\pal3-play.ps1 gc -ObjectPath $driver
+.\tools\pal3-play.ps1 status -ObjectPath $driver
+```
+
+Android 文件命令通道使用相同的 `gc` 命令。短时间进入标题界面不足以覆盖周期性 GC，应主动触发多次回收并确认两部游戏均能继续响应。
 
 主仓库固定的 UnrealSharp 子模块已包含内存统计。初始化或更新子模块后重新构建，即可在下表所列的构建中使用相应命令。旧提交 `04044630` 可用下文的 UE 进程、对象和 PAL3 音频指标排查。
 

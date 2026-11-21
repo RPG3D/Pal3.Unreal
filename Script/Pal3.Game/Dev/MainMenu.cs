@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------------------------
 //  Copyright (c) 2021-2025, Jiaqi (0x7c13) Liu. All rights reserved.
 //  See LICENSE file in the project root for license information.
 // ---------------------------------------------------------------------------------------------
@@ -863,6 +863,20 @@ namespace Pal3.Game.Dev
                     _saveManager.IsAutoSaveEnabled = true;
                 }
             }
+            else if (!Engine.Services.ServiceLocator.Instance.Get<ScriptManager>().IsScriptScheduled(command.SceneScriptId))
+            {
+                // The scene script already finished before this notification was handled
+                // (short scripts such as PAL3A's q02/qn08y run to completion inside the
+                // scene load). Waiting would hang forever and the deferred camera/input
+                // commands would never be applied, leaving the init view at the parked
+                // (77,77,77) position.
+                ExecuteCommands(string.Join('\n', _deferredExecutionCommands));
+                _deferredExecutionCommands.Clear();
+                if (!_isInInitView && !_saveManager.IsRestoring)
+                {
+                    _saveManager.IsAutoSaveEnabled = true;
+                }
+            }
             else
             {
                 Pal3.Instance.StartCoroutine(ExecuteDeferredCommandsAfterSceneScriptFinishedAsync(
@@ -872,12 +886,20 @@ namespace Pal3.Game.Dev
 
         private IEnumerator ExecuteDeferredCommandsAfterSceneScriptFinishedAsync(uint scriptId)
         {
-            var waiter = new WaitUntilScriptFinished(PalScriptType.Scene, scriptId);
-            yield return waiter;
-            if (waiter.Failed)
+            // Only wait when the script is actually still pending/running. A short
+            // scene script (e.g. PAL3A's q02/qn08y) can finish before this coroutine's
+            // first step; its completion notification is not replayed, so waiting
+            // would hang forever and the deferred camera/input commands would never
+            // run (init view frozen at the parked (77,77,77) position).
+            if (Engine.Services.ServiceLocator.Instance.Get<ScriptManager>().IsScriptScheduled(scriptId))
             {
-                _deferredExecutionCommands.Clear();
-                yield break;
+                var waiter = new WaitUntilScriptFinished(PalScriptType.Scene, scriptId);
+                yield return waiter;
+                if (waiter.Failed)
+                {
+                    _deferredExecutionCommands.Clear();
+                    yield break;
+                }
             }
 
             if (_deferredExecutionCommands.Count > 0)

@@ -74,7 +74,7 @@ namespace ManagedSharpDemo
             }
             catch (System.Exception e)
             {
-                Engine.Diagnostics.DebugOverlay.Error("[JsonUi] create failed: " + e.Message);
+                UnrealSharp.Log.UnrealLogger.LogWarning("GameUI", "[JsonUi] create failed: " + e.Message);
             }
         }
 
