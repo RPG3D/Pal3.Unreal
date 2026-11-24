@@ -57,6 +57,9 @@ namespace ManagedSharpDemo
         private URuntimeJsonWidget? _loading;
         private URuntimeJsonWidget? _caption;
         private URuntimeJsonWidget? _cameraCurtain;
+        private URuntimeJsonWidget? _taskHint;
+        private string? _lastTaskHint;
+        private bool _taskHintLayoutFailed;
         private UTexture2D? _captionTexture;
         private ITexture2D? _loadingLogoTexture;
         private readonly List<UnityTexture2D> _loadingArtwork = new();
@@ -83,6 +86,7 @@ namespace ManagedSharpDemo
                 UpdateDiagnostics(deltaTime);
                 UpdateDialogue();
                 UpdateCaption();
+                UpdateTaskHint();
             }
             catch (Exception e)
             {
@@ -403,6 +407,41 @@ namespace ManagedSharpDemo
             SetVisible(_caption, true);
         }
 
+        private void UpdateTaskHint()
+        {
+#if PAL3A
+            string text = "";
+            if (Pal3Boot.IsGameReady && !Pal3Boot.WaitingForMenuStart)
+            {
+                var tasks = ServiceLocator.Instance.Get<Pal3.Game.GameSystems.Task.TaskManager>();
+                if (tasks.IsTaskInfoEnabled) text = tasks.CurrentMainTaskDescription;
+            }
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                if (_taskHint != null) SetVisible(_taskHint, false);
+                return;
+            }
+
+            if (_taskHint == null)
+            {
+                if (_taskHintLayoutFailed) return;
+                _taskHint = Pal3UiLayout.Create("Pal3TaskHint", 35);
+                if (_taskHint == null)
+                {
+                    _taskHintLayoutFailed = true;
+                    return;
+                }
+            }
+            if (_lastTaskHint != text)
+            {
+                _taskHint.SetElementText("task_hint", text);
+                _lastTaskHint = text;
+            }
+            SetVisible(_taskHint, true);
+#endif
+        }
+
         private static void SetVisible(URuntimeJsonWidget widget, bool visible)
         {
             var visibility = visible ? ESlateVisibility.HitTestInvisible : ESlateVisibility.Collapsed;
@@ -416,6 +455,7 @@ namespace ManagedSharpDemo
             if (_loading != null) URuntimeJsonWidgetLibrary.RemoveJsonWidget(_loading);
             if (_caption != null) URuntimeJsonWidgetLibrary.RemoveJsonWidget(_caption);
             if (_cameraCurtain != null) URuntimeJsonWidgetLibrary.RemoveJsonWidget(_cameraCurtain);
+            if (_taskHint != null) URuntimeJsonWidgetLibrary.RemoveJsonWidget(_taskHint);
             _loadingLogoTexture?.Destroy();
             foreach (var texture in _loadingArtwork) texture.Destroy();
             _loadingArtwork.Clear();
@@ -424,6 +464,9 @@ namespace ManagedSharpDemo
             _loading = null;
             _caption = null;
             _cameraCurtain = null;
+            _taskHint = null;
+            _lastTaskHint = null;
+            _taskHintLayoutFailed = false;
             _loadingLogoTexture = null;
             _loadingMarkerFrames = [];
             _displayedLoadingMarkerFrame = -1;

@@ -1,0 +1,21 @@
+{
+  "root": {
+    "type": "canvas",
+    "children": [
+      {
+        "type": "text",
+        "id": "task_hint",
+        "text": "",
+        "anchor": "top_right",
+        "position": [-38, 142],
+        "size": [680, 120],
+        "fontSize": 18,
+        "color": [1, 1, 1, 1],
+        "shadowOffset": [1.5, 1.5],
+        "shadowColor": [0, 0, 0, 0.9],
+        "align": "right",
+        "wrap": true
+      }
+    ]
+  }
+}

@@ -36,6 +36,11 @@ namespace Pal3.Game.GameSystems.Task
 
         private readonly TextMeshProUGUI _taskInfoText;
 
+        // The UE HUD reads the same presentation state that the upstream task
+        // commands and game-state notifications already update.
+        public string CurrentMainTaskDescription => _taskInfoText.text;
+        public bool IsTaskInfoEnabled => _taskInfoText.enabled;
+
         public TaskManager(GameResourceProvider resourceProvider, TextMeshProUGUI taskInfoText)
         {
             Requires.IsNotNull(resourceProvider, nameof(resourceProvider));

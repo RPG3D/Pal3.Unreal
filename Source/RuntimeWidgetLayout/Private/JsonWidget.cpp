@@ -206,6 +206,11 @@ namespace
 		}
 		Text->SetFont(Font);
 
+		FVector2D ShadowOffset;
+		if (GetVector2(Element, TEXT("shadowOffset"), ShadowOffset)) Text->SetShadowOffset(ShadowOffset);
+		FLinearColor ShadowColor;
+		if (GetColor(Element, TEXT("shadowColor"), ShadowColor)) Text->SetShadowColorAndOpacity(ShadowColor);
+
 		FLinearColor Color(1.0f, 1.0f, 1.0f, 1.0f);
 		if (GetColor(Element, TEXT("color"), Color))
 		{
