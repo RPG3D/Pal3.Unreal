@@ -49,9 +49,19 @@ dotnet run --project tools/ManagedModules/ModulePublisher.csproj -- Android all 
 dotnet run --project tools/ManagedModules/ModulePublisher.csproj -- Editor all --verify
 ```
 
+`--verify` 只检查普通启动布局、程序集身份、入口和依赖顺序，不证明产物的构建配置、架构或后端。该模式拒绝 `--configuration`、`--architecture`、`--target-type`、`--framework`、`--backend` 等构建参数；需要指定构建时执行实际发布。项目没有为此向插件添加新的清单协议。
+
+四个项目打包入口在 Game→Editor 切换后统一调用 `Editor all`，先准备现有绑定再编译用户代码；不能仅依赖原生增量构建重发已清理的 DLL。
+
+发布工具通过标准 `-ScriptsForProject` 将 UAT 构建记录归属到当前项目，与 Cook 子进程使用同一上下文；`-ScriptDir` 仍限定为当前插件的 `Build/Scripts`，避免扫描 Saved 中的历史源码备份。
+
+独立 Cook 与 UAT 托管 Cook 都保留 automation 模块的正常发现和编译。托管上下文按 UAT 自带的继承环境识别，仅跳过运行中 UAT 主程序的自编译，用户 C# 仍照常构建；空缓存与错误退出验证见 [Cook 兼容性修复记录](PAL3A_COOK_COMPATIBILITY_2026-11-25.md)。
+
 移动端通过 SDK 既有规则从 Content/Managed/Android 或 IOS 收录标准 DLL/PDB/LoadOrder。桌面沿用普通 UAT archive 的 Binaries/Managed 布局，由项目 staging 映射；不把 Game 输出复制到 Editor 输出。未使用哈希 DLL 名、模块 schema、HostAssemblies/FrameworkAssemblies 清单、private ALC 或 caller-owned prepared 输出接口。
 
 ## 回归
+
+普通加载结构下的完整 APK/IPA 及双游戏真机回归，见 [移动端验证记录（2026-11-25）](PAL3A_ORDINARY_MOBILE_VALIDATION_2026-11-25.md)。
 
 ```powershell
 dotnet run --project tools/ManagedModules/Tests/ManagedModules.Tests.csproj -c Release

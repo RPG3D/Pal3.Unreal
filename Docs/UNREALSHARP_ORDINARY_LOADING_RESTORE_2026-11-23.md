@@ -24,7 +24,7 @@ Demo 用于验证 UnrealSharp 手机版；双游戏组合由项目适应插件�
 | Skeleton延迟解析与无效method handle保护 | 保留引擎/Mono类型初始化时序修复，普通UClass双工程及游戏运行验证。 |
 | 必需启动/editor程序集失败终止 | 避免缺失程序集后继续执行未初始化回调；底层加载失败语义恢复原有Fatal。 |
 | 同目录多工程监听 | 独立的两个普通csproj共享源码，修复前只更新第一个；按工程登记监听后两个都更新。 |
-| Cook的嵌套UAT子实例协议 | 外层UAT启动Cook时继续构建用户C#，复用已编译automation模块，使用UE既有child-instance协议；不新增跳过用户构建的开关。 |
+| Cook的嵌套UAT子实例协议 | 外层UAT启动Cook时继续构建用户C#，使用UE既有child-instance协议；automation模块保留正常发现与增量编译，托管上下文由UAT继承环境识别。 |
 | 无界面初始化失败可靠退出 | 实测Mac的RequestExitWithStatus在此路径忽略退出码，早期Fatal又可能卡在UI恢复；在初始化尚未完成的无人值守路径刷新错误日志并以失败码退出，消除假阳性。 |
 | SDK的Android crypto JNI/JAR配套 | 独立runtime移植修复，SDK指针不变。 |
 
@@ -78,3 +78,23 @@ Cook验证过程中首先遇到旧Zen项目存储404，改用独立本地CookOut
 相对原移动端基线，插件当前收敛为10文件、+85/-13（其中包含SDK gitlink），SDK内部另有5文件、+52行通用加密修复。当前保留的普通修复与旧集合框架的实现测试分开统计；旧75项检查不再作为已删除框架的当前验收。更早的fixed-bundle/ownership报告保留为历史，当前架构以MANAGED_GAME_MODULES.md和本记录为准。
 
 证据位于Saved/Review/Pal3A-Upstream-Restore-20261123：前后热重载结果、15项CLI检查、两游戏状态/存档结果、两平台标准发布、native构建以及Cook日志。本地Rider引擎GUID、个人配置和用户正式存档保持原样。
+
+## 2026-11-24 包装与回归脚本修正
+
+amend 后复审发现的三个 P2 均在项目侧修复，插件与 SDK 没有新增修改：
+
+- 四个打包入口在进入 Cook 前统一调用 `ModulePublisher Editor all`，执行普通 `BuildUserGlue → BuildUserSolution`。Windows 的 `--skip-editor` 仍会准备托管绑定。
+- `--verify` 明确只验证启动布局、程序集身份、入口和依赖顺序，拒绝 configuration、architecture、target-type、framework、backend 等构建参数以及 publish-host/plan 组合。需要指定构建时执行实际发布；没有增加产物清单协议。
+- 编辑器回归脚本把源码恢复放在内层清理，进程退出与日志关闭放在外层清理。运行前删除旧 Result.json，全部清理成功后才写通过结果。
+
+本轮验证：
+
+- 移走 SharpDemo、RuntimeWidgetLayout、RuntimeBinkVideo 三个绑定 DLL 后，统一入口重新生成全部 DLL，日志确认绑定准备先于用户代码编译。
+- 24 项托管检查通过；错误的 Shipping/IOSSimulator 校验参数返回失败，普通布局校验通过并提示能力边界。
+- 5 项隔离失败分支测试通过，覆盖恢复超时、DLL 读取失败、源码写回失败、进程强制退出与成功结果写入顺序；这些测试不启动编辑器。
+- 实际 Mac 编辑器回归通过：两个普通探针热重载、两套 Frontend 重新编译、PAL3A 标题/场景/隔离存读档/GC；源码恢复后编辑器退出，峰值 RSS 3973 MiB。
+- Shell/Python 语法和 diff 检查通过。Mac 未安装 PowerShell，Windows 批处理及 PowerShell 入口没有实际执行；本轮没有重新打包 APK/IPA或使用模拟器。
+
+证据位于 `Saved/Review/Pal3A-P2-Fix-20261124/`。本轮修复尚未提交或推送，本地 Rider GUID 和个人配置保持原样。
+
+2026-11-25 补充：普通独立 Cook、仅带 CrashForUAT 的独立 Cook、UAT 托管 Cook 均从空项目构建记录完成真实 Cook，且两份测试程序集实际重编译。故意的用户 C# 错误仍使 Editor-Cmd=1、外层 UAT=25；详见 [Cook 兼容性修复记录](PAL3A_COOK_COMPATIBILITY_2026-11-25.md)。完整移动安装包与双端设备验证见 [移动验证记录](PAL3A_ORDINARY_MOBILE_VALIDATION_2026-11-25.md)。

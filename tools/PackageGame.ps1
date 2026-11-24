@@ -35,8 +35,8 @@ $flat = Join-Path $projectRoot 'Binaries/Managed/net10.0'
 # development folder. Editor builds must use their own generated glue/host.
 $installed = Join-Path $flat 'UnrealSharpBuild.flag'
 if (Test-Path -LiteralPath $installed) { Remove-Item -LiteralPath $installed }
-& $uat BuildUserSolution "-Project=$project" "-ScriptDir=$(Join-Path $projectRoot 'Plugins/UnrealSharp/Build/Scripts')" "-OutputPath=$flat" -TargetConfiguration=Development
-CheckExit 'Editor managed host prerequisite'
+& dotnet run --project (Join-Path $projectRoot 'tools/ManagedModules/ModulePublisher.csproj') -- Editor all --engine-root $EngineRoot
+CheckExit 'Editor glue and managed solution prerequisite'
 if (!$ArchiveDirectory) { $ArchiveDirectory = Join-Path $projectRoot ("ArchivedBuilds/" + $Platform + '-' + $Configuration) }
 $package = @('BuildCookRun',"-project=$project",'-Build',"-Target=$target","-TargetPlatform=$Platform","-ClientConfig=$Configuration",'-Pak','-Stage','-Archive','-package','-nocompileuat',"-archivedirectory=$ArchiveDirectory")
 if ($SkipCook) { $package += '-skipcook' } else { $package += '-Cook' }

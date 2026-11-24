@@ -144,6 +144,12 @@ rem ============================================================================
 rem Step 3 - Package APK (Cook + Pak + Stage + Archive)
 rem ============================================================================
 :step3
+rem Prepare existing Editor bindings even when the native Editor build was skipped.
+dotnet run --project "%PROJ_DIR%\tools\ManagedModules\ModulePublisher.csproj" -- Editor all --engine-root "%ENGINE%"
+if %ERRORLEVEL% neq 0 (
+    echo [FAIL] Editor glue and managed solution prerequisite failed
+    exit /b 1
+)
 echo.
 echo ==============================================================
 echo [Step 3/4] Packaging APK (BuildCookRun Android)...

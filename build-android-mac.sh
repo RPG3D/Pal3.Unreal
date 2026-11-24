@@ -95,6 +95,11 @@ log "Step 4: Editor UBT build"
   > "$LOGS/combo$COMBO-editor.log" 2>&1 || { echo "FAIL step 4"; tail -20 "$LOGS/combo$COMBO-editor.log"; exit 1; }
 log "Step 4 OK"
 
+log "Step 4.5: prepare Editor glue and managed solution"
+dotnet run --project "$PROJ/tools/ManagedModules/ModulePublisher.csproj" -- Editor all --engine-root "$ENGINE" \
+  > "$LOGS/combo$COMBO-editor-managed.log" 2>&1 || { echo "FAIL step 4.5"; tail -20 "$LOGS/combo$COMBO-editor-managed.log"; exit 1; }
+log "Step 4.5 OK"
+
 # ---- Step 5: BuildCookRun -> APK ---------------------------------------------
 # UBT never prunes stale staged/native outputs; wipe them so a package never
 # inherits the previous combo's binaries.

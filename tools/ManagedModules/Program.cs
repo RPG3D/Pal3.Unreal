@@ -15,6 +15,7 @@ for (int index = 2; index < args.Length; index++)
 }
 var allowed = new[] { "publish-host", "verify", "plan", "engine-root", "configuration", "architecture", "target-type", "framework", "backend" };
 if (options.Keys.Any(key => !allowed.Contains(key))) throw new ArgumentException("Unknown publisher option.");
+ManagedPackage.ValidateVerificationOptions(options);
 ManagedBuildPlan plan = ManagedBuildPlan.Create(root, args[0], options);
 string destination = plan.IsEditor ? Path.Combine(root, "Binaries/Managed", plan.TargetFramework) : Path.Combine(root, "Content/Managed", plan.Platform);
 if (options.ContainsKey("plan")) { Console.WriteLine(JsonSerializer.Serialize(new { plan, destination }, new JsonSerializerOptions { WriteIndented = true })); return; }
@@ -27,12 +28,14 @@ if (!options.ContainsKey("verify"))
     {
         // Target switches can invalidate generated output DLLs while their UHT
         // source stays unchanged. Prepare the normal glue before user projects.
-        Run(uat, ["BuildUserGlue", "-Project=" + Path.Combine(root, "SharpDemo.uproject"),
+        Run(uat, ["BuildUserGlue", "-ScriptsForProject=" + Path.Combine(root, "SharpDemo.uproject"), "-Project=" + Path.Combine(root, "SharpDemo.uproject"),
             "-ScriptDir=" + Path.Combine(root, "Plugins/UnrealSharp/Build/Scripts"),
             "-TargetType=Editor", "-TargetConfiguration=" + plan.Configuration,
             "-OutputDirectory=" + destination], root);
     }
-    var command = new List<string> { plan.IsEditor ? "BuildUserSolution" : plan.IsMobile ? "PackageProjectMobile" : "PackageProject", "-Project=" + Path.Combine(root, "SharpDemo.uproject"), "-ScriptDir=" + Path.Combine(root, "Plugins/UnrealSharp/Build/Scripts") };
+    // Scope UAT's build records to the same project root the Cook child uses.
+    // Keep discovery restricted to this plugin's scripts, excluding Saved backups.
+    var command = new List<string> { plan.IsEditor ? "BuildUserSolution" : plan.IsMobile ? "PackageProjectMobile" : "PackageProject", "-ScriptsForProject=" + Path.Combine(root, "SharpDemo.uproject"), "-Project=" + Path.Combine(root, "SharpDemo.uproject"), "-ScriptDir=" + Path.Combine(root, "Plugins/UnrealSharp/Build/Scripts") };
     if (plan.IsEditor) command.AddRange(["-OutputPath=" + destination, "-TargetConfiguration=" + plan.Configuration]);
     else
     {
@@ -51,7 +54,9 @@ if (!options.ContainsKey("verify"))
     Directory.CreateDirectory(stamps);
     File.WriteAllText(Path.Combine(stamps, plan.Store + ".stamp"), Guid.NewGuid().ToString());
 }
-Console.WriteLine("Verified ordinary UnrealSharp solution: " + destination);
+Console.WriteLine(options.ContainsKey("verify")
+    ? "Verified startup layout only (configuration, architecture and backend not checked): " + destination
+    : "Built and verified ordinary startup layout: " + destination);
 
 static void Run(string executable, IEnumerable<string> arguments, string directory)
 {

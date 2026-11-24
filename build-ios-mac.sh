@@ -83,6 +83,11 @@ log "Step 4: Editor UBT build"
   > "$LOGS/ios-$EDITOR_RT-$TARGET_RT-editor.log" 2>&1 || { echo "FAIL step 4"; tail -20 "$LOGS/ios-$EDITOR_RT-$TARGET_RT-editor.log"; exit 1; }
 log "Step 4 OK"
 
+log "Step 4.5: prepare Editor glue and managed solution"
+dotnet run --project "$PROJ/tools/ManagedModules/ModulePublisher.csproj" -- Editor all --engine-root "$ENGINE" \
+  > "$LOGS/ios-$EDITOR_RT-$TARGET_RT-editor-managed.log" 2>&1 || { echo "FAIL step 4.5"; tail -20 "$LOGS/ios-$EDITOR_RT-$TARGET_RT-editor-managed.log"; exit 1; }
+log "Step 4.5 OK"
+
 # ---- Step 5: BuildCookRun -> .app ----------------------------------------------
 # UBT never prunes staged frameworks, so a previous run's Mono.framework (or
 # CoreCLR.framework) survives into the next bundle. Wipe the staging tree so the

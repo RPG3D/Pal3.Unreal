@@ -9,6 +9,16 @@ public static class ManagedPackage
 {
     public static readonly string[] GameAssemblies = ["Pal3.Core", "Pal3.Engine", "Pal3.Game", "Pal3.Frontend", "Pal3.UnityEngine", "Pal3A.Core", "Pal3A.Engine", "Pal3A.Game", "Pal3A.Frontend", "Pal3A.UnityEngine"];
 
+    public static void ValidateVerificationOptions(IReadOnlyDictionary<string, string> options)
+    {
+        if (!options.ContainsKey("verify")) return;
+        string[] buildOptions = ["configuration", "architecture", "target-type", "framework", "backend", "publish-host", "plan"];
+        string[] unsupported = buildOptions.Where(options.ContainsKey).ToArray();
+        if (unsupported.Length != 0)
+            throw new ArgumentException("--verify checks startup layout only; it cannot verify build parameters: "
+                + string.Join(", ", unsupported.Select(key => "--" + key)) + ". Publish the requested build instead.");
+    }
+
     public static void Verify(string directory, bool editor)
     {
         using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "UserCode.LoadOrder.json")));

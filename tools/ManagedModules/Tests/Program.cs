@@ -68,4 +68,17 @@ Reject(()=>ManagedPackage.Verify(package,true),"missing second game is rejected 
 File.WriteAllText(manifest,JsonSerializer.Serialize(new {Collectible=true,Priority=0,LoadOrder=names}));
 File.WriteAllBytes(Path.Combine(package,"Pal3.Core.dll"),Compile("Wrong.Identity","public class Entry {}"));
 Reject(()=>ManagedPackage.Verify(package,true),"mismatched physical and CLR assembly names are rejected");
+ManagedPackage.ValidateVerificationOptions(new Dictionary<string,string> { ["verify"]="true" });
+Check(true,"layout verification accepts its supported parameter set");
+foreach (string option in new[] { "configuration", "architecture", "target-type", "framework", "backend", "publish-host", "plan" })
+{
+    try
+    {
+        ManagedPackage.ValidateVerificationOptions(new Dictionary<string,string> { ["verify"]="true", [option]="unsupported" });
+        throw new Exception("Verification accepted an uncheckable build parameter: " + option);
+    }
+    catch (ArgumentException) { Check(true,"layout verification rejects --" + option + " rather than implying a build-plan check"); }
+}
+ManagedPackage.ValidateVerificationOptions(new Dictionary<string,string> { ["configuration"]="Shipping", ["architecture"]="IOSSimulator" });
+Check(true,"actual publication still accepts requested build parameters");
 Console.WriteLine(count+" ordinary loader/project checks passed.");
